@@ -49,8 +49,22 @@ export const CELO_SEPOLIA_TOKENS: Record<string, TokenInfo> = {
     name: 'Celo Dollar (Alt)',
     decimals: 18,
     address: '0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b'
-  }
+  },
 };
+
+// SovAds Token (SOV) - Add dynamically if address is provided
+const SOV_TOKEN_ADDRESS = typeof window !== 'undefined' 
+  ? (process.env.NEXT_PUBLIC_SOV_TOKEN_ADDRESS || '')
+  : (process.env.NEXT_PUBLIC_SOV_TOKEN_ADDRESS || '');
+
+if (SOV_TOKEN_ADDRESS && SOV_TOKEN_ADDRESS !== '0x0000000000000000000000000000000000000000') {
+  CELO_SEPOLIA_TOKENS[SOV_TOKEN_ADDRESS.toLowerCase()] = {
+    symbol: 'SOV',
+    name: 'SovAds Token',
+    decimals: 18,
+    address: SOV_TOKEN_ADDRESS
+  };
+}
 
 /**
  * Get token information by address
@@ -94,5 +108,23 @@ export function getTokenLabel(address: string | null | undefined): string {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
   }
   return 'Unknown Token';
+}
+
+/**
+ * Get all available tokens (including SOV if configured)
+ * @returns Array of token addresses
+ */
+export function getAllTokenAddresses(): string[] {
+  return Object.values(CELO_SEPOLIA_TOKENS).map(token => token.address);
+}
+
+/**
+ * Check if address is SovAds token
+ * @param address - Token contract address
+ * @returns True if address is SovAds token
+ */
+export function isSovAdsToken(address: string | null | undefined): boolean {
+  const info = getTokenInfo(address);
+  return info?.symbol === 'SOV';
 }
 

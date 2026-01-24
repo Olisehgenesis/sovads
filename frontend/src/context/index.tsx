@@ -18,8 +18,8 @@ if (!projectId) {
 const metadata = {
   name: 'SovAds',
   description: 'Decentralized Ad Network',
-  url: 'https://sovads.com', // Update with your domain
-  icons: ['https://sovads.com/icon.png'] // Update with your icon
+  url: process.env.NEXT_PUBLIC_APP_URL || 'https://ads.sovseas.xyz',
+  icons: [process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/icon.png` : 'https://ads.sovseas.xyz/icon.png']
 }
 
 // Create the modal

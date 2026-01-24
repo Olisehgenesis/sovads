@@ -160,3 +160,31 @@ export interface CallbackLog {
   timestamp: Date
 }
 
+export interface ViewerPoints {
+  _id: string
+  wallet?: string | null // User's wallet address (null if not connected)
+  fingerprint: string // Browser fingerprint for anonymous users
+  totalPoints: number // Total SOV points earned
+  claimedPoints: number // Points already claimed
+  pendingPoints: number // Points available to claim
+  lastInteraction: Date // Last time user interacted with an ad
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface ViewerReward {
+  _id: string
+  viewerId: string // Reference to ViewerPoints _id
+  wallet?: string // Wallet if connected
+  fingerprint?: string // Fingerprint if anonymous
+  type: 'IMPRESSION' | 'CLICK' | 'ENGAGEMENT'
+  campaignId: string
+  adId: string
+  siteId: string
+  points: number // SOV points awarded
+  claimed: boolean
+  claimedAt?: Date
+  claimTxHash?: string
+  timestamp: Date
+}
+

@@ -140,6 +140,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
     "bannedUsers(address)": FunctionFragment;
     "campaignCount()": FunctionFragment;
     "campaigns(uint256)": FunctionFragment;
+    "cancelCampaign(uint256)": FunctionFragment;
     "claimOrderCount()": FunctionFragment;
     "claimOrders(uint256)": FunctionFragment;
     "collectFees(address,uint256)": FunctionFragment;
@@ -157,6 +158,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
     "getTotalProtocolFees()": FunctionFragment;
     "isPublisher(address)": FunctionFragment;
     "isUserBanned(address)": FunctionFragment;
+    "minimumClaimAmount()": FunctionFragment;
     "owner()": FunctionFragment;
     "pause()": FunctionFragment;
     "pauseCampaign(uint256)": FunctionFragment;
@@ -169,9 +171,11 @@ export interface SovAdsManagerInterface extends utils.Interface {
     "renounceOwnership()": FunctionFragment;
     "resumeCampaign(uint256)": FunctionFragment;
     "setFeePercent(uint256)": FunctionFragment;
+    "setMinimumClaimAmount(uint256)": FunctionFragment;
     "subscribePublisher(string[])": FunctionFragment;
     "supportedTokens(address)": FunctionFragment;
     "supportedTokensList(uint256)": FunctionFragment;
+    "topUpCampaign(uint256,uint256)": FunctionFragment;
     "transferOwnership(address)": FunctionFragment;
     "unbanUser(address)": FunctionFragment;
     "unpause()": FunctionFragment;
@@ -186,6 +190,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
       | "bannedUsers"
       | "campaignCount"
       | "campaigns"
+      | "cancelCampaign"
       | "claimOrderCount"
       | "claimOrders"
       | "collectFees"
@@ -203,6 +208,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
       | "getTotalProtocolFees"
       | "isPublisher"
       | "isUserBanned"
+      | "minimumClaimAmount"
       | "owner"
       | "pause"
       | "pauseCampaign"
@@ -215,9 +221,11 @@ export interface SovAdsManagerInterface extends utils.Interface {
       | "renounceOwnership"
       | "resumeCampaign"
       | "setFeePercent"
+      | "setMinimumClaimAmount"
       | "subscribePublisher"
       | "supportedTokens"
       | "supportedTokensList"
+      | "topUpCampaign"
       | "transferOwnership"
       | "unbanUser"
       | "unpause"
@@ -249,6 +257,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
   ): string;
   encodeFunctionData(
     functionFragment: "campaigns",
+    values: [PromiseOrValue<BigNumberish>]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "cancelCampaign",
     values: [PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
@@ -332,6 +344,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     functionFragment: "isUserBanned",
     values: [PromiseOrValue<string>]
   ): string;
+  encodeFunctionData(
+    functionFragment: "minimumClaimAmount",
+    values?: undefined
+  ): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
   encodeFunctionData(functionFragment: "pause", values?: undefined): string;
   encodeFunctionData(
@@ -377,6 +393,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
+    functionFragment: "setMinimumClaimAmount",
+    values: [PromiseOrValue<BigNumberish>]
+  ): string;
+  encodeFunctionData(
     functionFragment: "subscribePublisher",
     values: [PromiseOrValue<string>[]]
   ): string;
@@ -387,6 +407,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
   encodeFunctionData(
     functionFragment: "supportedTokensList",
     values: [PromiseOrValue<BigNumberish>]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "topUpCampaign",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
     functionFragment: "transferOwnership",
@@ -417,6 +441,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "campaigns", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "cancelCampaign",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(
     functionFragment: "claimOrderCount",
     data: BytesLike
@@ -482,6 +510,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     functionFragment: "isUserBanned",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(
+    functionFragment: "minimumClaimAmount",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "pause", data: BytesLike): Result;
   decodeFunctionResult(
@@ -516,6 +548,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "setMinimumClaimAmount",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "subscribePublisher",
     data: BytesLike
   ): Result;
@@ -525,6 +561,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "supportedTokensList",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "topUpCampaign",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
@@ -860,6 +900,11 @@ export interface SovAdsManager extends BaseContract {
       }
     >;
 
+    cancelCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
+
     claimOrderCount(overrides?: CallOverrides): Promise<[BigNumber]>;
 
     claimOrders(
@@ -963,6 +1008,8 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[boolean]>;
 
+    minimumClaimAmount(overrides?: CallOverrides): Promise<[BigNumber]>;
+
     owner(overrides?: CallOverrides): Promise<[string]>;
 
     pause(
@@ -1024,6 +1071,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
+    setMinimumClaimAmount(
+      _minimumAmount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
+
     subscribePublisher(
       _sites: PromiseOrValue<string>[],
       overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -1038,6 +1090,12 @@ export interface SovAdsManager extends BaseContract {
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<[string]>;
+
+    topUpCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
 
     transferOwnership(
       newOwner: PromiseOrValue<string>,
@@ -1110,6 +1168,11 @@ export interface SovAdsManager extends BaseContract {
       paused: boolean;
     }
   >;
+
+  cancelCampaign(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
 
   claimOrderCount(overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -1214,6 +1277,8 @@ export interface SovAdsManager extends BaseContract {
     overrides?: CallOverrides
   ): Promise<boolean>;
 
+  minimumClaimAmount(overrides?: CallOverrides): Promise<BigNumber>;
+
   owner(overrides?: CallOverrides): Promise<string>;
 
   pause(
@@ -1275,6 +1340,11 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
+  setMinimumClaimAmount(
+    _minimumAmount: PromiseOrValue<BigNumberish>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
+
   subscribePublisher(
     _sites: PromiseOrValue<string>[],
     overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -1289,6 +1359,12 @@ export interface SovAdsManager extends BaseContract {
     arg0: PromiseOrValue<BigNumberish>,
     overrides?: CallOverrides
   ): Promise<string>;
+
+  topUpCampaign(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    _amount: PromiseOrValue<BigNumberish>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
 
   transferOwnership(
     newOwner: PromiseOrValue<string>,
@@ -1361,6 +1437,11 @@ export interface SovAdsManager extends BaseContract {
         paused: boolean;
       }
     >;
+
+    cancelCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: CallOverrides
+    ): Promise<void>;
 
     claimOrderCount(overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -1465,6 +1546,8 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<boolean>;
 
+    minimumClaimAmount(overrides?: CallOverrides): Promise<BigNumber>;
+
     owner(overrides?: CallOverrides): Promise<string>;
 
     pause(overrides?: CallOverrides): Promise<void>;
@@ -1522,6 +1605,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
+    setMinimumClaimAmount(
+      _minimumAmount: PromiseOrValue<BigNumberish>,
+      overrides?: CallOverrides
+    ): Promise<void>;
+
     subscribePublisher(
       _sites: PromiseOrValue<string>[],
       overrides?: CallOverrides
@@ -1536,6 +1624,12 @@ export interface SovAdsManager extends BaseContract {
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<string>;
+
+    topUpCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
+      overrides?: CallOverrides
+    ): Promise<void>;
 
     transferOwnership(
       newOwner: PromiseOrValue<string>,
@@ -1750,6 +1844,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
+    cancelCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
+
     claimOrderCount(overrides?: CallOverrides): Promise<BigNumber>;
 
     claimOrders(
@@ -1829,6 +1928,8 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
+    minimumClaimAmount(overrides?: CallOverrides): Promise<BigNumber>;
+
     owner(overrides?: CallOverrides): Promise<BigNumber>;
 
     pause(
@@ -1881,6 +1982,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
+    setMinimumClaimAmount(
+      _minimumAmount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
+
     subscribePublisher(
       _sites: PromiseOrValue<string>[],
       overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -1894,6 +2000,12 @@ export interface SovAdsManager extends BaseContract {
     supportedTokensList(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
+    ): Promise<BigNumber>;
+
+    topUpCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
     transferOwnership(
@@ -1943,6 +2055,11 @@ export interface SovAdsManager extends BaseContract {
     campaigns(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
+    cancelCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
     claimOrderCount(overrides?: CallOverrides): Promise<PopulatedTransaction>;
@@ -2030,6 +2147,10 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
+    minimumClaimAmount(
+      overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
     owner(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     pause(
@@ -2082,6 +2203,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
+    setMinimumClaimAmount(
+      _minimumAmount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<PopulatedTransaction>;
+
     subscribePublisher(
       _sites: PromiseOrValue<string>[],
       overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -2095,6 +2221,12 @@ export interface SovAdsManager extends BaseContract {
     supportedTokensList(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
+    topUpCampaign(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
     transferOwnership(

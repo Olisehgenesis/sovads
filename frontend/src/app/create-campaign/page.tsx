@@ -24,19 +24,41 @@ export default function CreateCampaign() {
   const { address } = useAccount();
   const { createCampaign, isLoading, error, getSupportedTokens } = useAds();
   
-  const [formData, setFormData] = useState<CampaignFormData>({
-    name: '',
-    description: '',
-    bannerUrl: '',
-    targetUrl: '',
-    budget: '',
-    cpc: '0.002',
-    duration: '',
-    tokenAddress: '',
-    tags: '',
-    targetLocations: '',
-  metadata: '',
-  mediaType: 'image'
+  const [formData, setFormData] = useState<CampaignFormData>(() => {
+    // Check if cloning from URL params
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      if (params.get('clone') === 'true') {
+        return {
+          name: params.get('name') || '',
+          description: params.get('description') || '',
+          bannerUrl: params.get('bannerUrl') || '',
+          targetUrl: params.get('targetUrl') || '',
+          budget: params.get('budget') || '',
+          cpc: params.get('cpc') || '0.002',
+          duration: '',
+          tokenAddress: params.get('tokenAddress') || '',
+          tags: params.get('tags') || '',
+          targetLocations: params.get('targetLocations') || '',
+          metadata: '',
+          mediaType: (params.get('mediaType') as 'image' | 'video') || 'image'
+        }
+      }
+    }
+    return {
+      name: '',
+      description: '',
+      bannerUrl: '',
+      targetUrl: '',
+      budget: '',
+      cpc: '0.002',
+      duration: '',
+      tokenAddress: '',
+      tags: '',
+      targetLocations: '',
+      metadata: '',
+      mediaType: 'image'
+    }
   });
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');

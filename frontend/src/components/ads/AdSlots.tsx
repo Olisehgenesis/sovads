@@ -14,6 +14,7 @@ const generateSlotId = (prefix: string) => `${prefix}-${Math.random().toString(3
 
 export function BannerAd({ consumerId, className, placeholder }: SharedAdProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const bannerRef = useRef<Banner | null>(null)
   const [slotId] = useState(() => generateSlotId('sovads-banner'))
   const [hasRendered, setHasRendered] = useState(false)
 
@@ -25,8 +26,21 @@ export function BannerAd({ consumerId, className, placeholder }: SharedAdProps) 
       return
     }
 
+    // Clear any existing SDK elements before rendering
+    const existingElements = container.querySelectorAll('[data-ad-id], .sovads-banner, .sovads-banner-dummy')
+    existingElements.forEach((el) => {
+      try {
+        if (el.parentNode === container) {
+          el.remove()
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    })
+
     container.id = slotId
     const banner = new Banner(client, slotId)
+    bannerRef.current = banner
 
     let isMounted = true
 
@@ -43,8 +57,48 @@ export function BannerAd({ consumerId, className, placeholder }: SharedAdProps) 
 
     return () => {
       isMounted = false
-      client.removeComponent(slotId)
-      container.replaceChildren()
+      
+      // Clean up banner instance
+      if (bannerRef.current) {
+        try {
+          (bannerRef.current as any).destroy?.()
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        bannerRef.current = null
+      }
+      
+      // Clean up client reference
+      try {
+        client.removeComponent(slotId)
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      
+      // Safely clear container - use a timeout to let React finish its cleanup first
+      if (container) {
+        // Use setTimeout with 0 delay to defer cleanup until after React's reconciliation
+        setTimeout(() => {
+          if (container && container.isConnected) {
+            try {
+              // Clear only SDK-added elements, not React children
+              const sdkElements = container.querySelectorAll('[data-ad-id], .sovads-banner, .sovads-banner-dummy')
+              sdkElements.forEach((el) => {
+                try {
+                  // Double-check parent before removing
+                  if (el.parentNode === container && container.contains(el)) {
+                    el.remove()
+                  }
+                } catch (e) {
+                  // Element may have already been removed by React
+                }
+              })
+            } catch (e) {
+              // Container may have been removed by React
+            }
+          }
+        }, 0)
+      }
     }
   }, [consumerId, slotId])
 
@@ -58,6 +112,11 @@ export function BannerAd({ consumerId, className, placeholder }: SharedAdProps) 
       ]
         .filter(Boolean)
         .join(' ')}
+      style={{ 
+        maxWidth: '100%', 
+        overflow: 'hidden',
+        width: '100%'
+      }}
     >
       {!hasRendered && (placeholder ?? <span className="text-sm text-foreground/60">Loading ad…</span>)}
     </div>
@@ -66,6 +125,7 @@ export function BannerAd({ consumerId, className, placeholder }: SharedAdProps) 
 
 export function SidebarAd({ consumerId, className, placeholder }: SharedAdProps) {
   const containerRef = useRef<HTMLDivElement | null>(null)
+  const sidebarRef = useRef<Sidebar | null>(null)
   const [slotId] = useState(() => generateSlotId('sovads-sidebar'))
   const [hasRendered, setHasRendered] = useState(false)
 
@@ -77,8 +137,22 @@ export function SidebarAd({ consumerId, className, placeholder }: SharedAdProps)
       return
     }
 
+    // Clear any existing SDK elements before rendering
+    const existingElements = container.querySelectorAll('[data-ad-id], .sovads-sidebar, .sovads-sidebar-dummy')
+    existingElements.forEach((el) => {
+      try {
+        if (el.parentNode === container) {
+          el.remove()
+        }
+      } catch (e) {
+        // Ignore errors
+      }
+    })
+
     container.id = slotId
     const sidebar = new Sidebar(client, slotId)
+    sidebarRef.current = sidebar
+
     let isMounted = true
 
     sidebar
@@ -94,8 +168,48 @@ export function SidebarAd({ consumerId, className, placeholder }: SharedAdProps)
 
     return () => {
       isMounted = false
-      client.removeComponent(slotId)
-      container.replaceChildren()
+      
+      // Clean up sidebar instance
+      if (sidebarRef.current) {
+        try {
+          (sidebarRef.current as any).destroy?.()
+        } catch (e) {
+          // Ignore cleanup errors
+        }
+        sidebarRef.current = null
+      }
+      
+      // Clean up client reference
+      try {
+        client.removeComponent(slotId)
+      } catch (e) {
+        // Ignore cleanup errors
+      }
+      
+      // Safely clear container - use a timeout to let React finish its cleanup first
+      if (container) {
+        // Use setTimeout with 0 delay to defer cleanup until after React's reconciliation
+        setTimeout(() => {
+          if (container && container.isConnected) {
+            try {
+              // Clear only SDK-added elements, not React children
+              const sdkElements = container.querySelectorAll('[data-ad-id], .sovads-sidebar, .sovads-sidebar-dummy')
+              sdkElements.forEach((el) => {
+                try {
+                  // Double-check parent before removing
+                  if (el.parentNode === container && container.contains(el)) {
+                    el.remove()
+                  }
+                } catch (e) {
+                  // Element may have already been removed by React
+                }
+              })
+            } catch (e) {
+              // Container may have been removed by React
+            }
+          }
+        }, 0)
+      }
     }
   }, [consumerId, slotId])
 

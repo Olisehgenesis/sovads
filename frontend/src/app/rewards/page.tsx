@@ -1,0 +1,245 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useAccount } from 'wagmi'
+import WalletButton from '@/components/WalletButton'
+
+interface ViewerPoints {
+  id?: string
+  wallet: string | null
+  fingerprint: string | null
+  totalPoints: number
+  claimedPoints: number
+  pendingPoints: number
+  lastInteraction: string | null
+}
+
+export default function RewardsPage() {
+  const { address, isConnected } = useAccount()
+  const [points, setPoints] = useState<ViewerPoints | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [claiming, setClaiming] = useState(false)
+  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [fingerprint, setFingerprint] = useState<string | null>(null)
+
+  // Generate fingerprint for anonymous users
+  useEffect(() => {
+    const generateFingerprint = async () => {
+      try {
+        const canvas = document.createElement('canvas')
+        const ctx = canvas.getContext('2d')
+        ctx?.fillText('SovAds fingerprint', 10, 10)
+        
+        const fp = [
+          navigator.userAgent,
+          navigator.language,
+          screen.width + 'x' + screen.height,
+          new Date().getTimezoneOffset(),
+          canvas.toDataURL()
+        ].join('|')
+        
+        const encoded = btoa(fp).substring(0, 16)
+        setFingerprint(encoded)
+      } catch (error) {
+        console.error('Error generating fingerprint:', error)
+      }
+    }
+    
+    if (!isConnected) {
+      generateFingerprint()
+    }
+  }, [isConnected])
+
+  // Load points
+  useEffect(() => {
+    const loadPoints = async () => {
+      setLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (address) {
+          params.append('wallet', address)
+        } else if (fingerprint) {
+          params.append('fingerprint', fingerprint)
+        }
+
+        if (!address && !fingerprint) {
+          setLoading(false)
+          return
+        }
+
+        const response = await fetch(`/api/viewers/points?${params}`)
+        if (response.ok) {
+          const data = await response.json()
+          setPoints(data)
+        }
+      } catch (error) {
+        console.error('Error loading points:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (address || fingerprint) {
+      loadPoints()
+      // Refresh every 30 seconds
+      const interval = setInterval(loadPoints, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [address, fingerprint])
+
+  const claimPoints = async () => {
+    if (!points || points.pendingPoints === 0) return
+
+    setClaiming(true)
+    setMessage(null)
+
+    try {
+      const response = await fetch('/api/viewers/claim', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          wallet: address || null,
+          fingerprint: fingerprint || null,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok) {
+        setMessage({ type: 'success', text: data.message || 'Points claimed successfully!' })
+        // Reload points
+        const params = new URLSearchParams()
+        if (address) params.append('wallet', address)
+        else if (fingerprint) params.append('fingerprint', fingerprint)
+        
+        const reloadResponse = await fetch(`/api/viewers/points?${params}`)
+        if (reloadResponse.ok) {
+          const reloadData = await reloadResponse.json()
+          setPoints(reloadData)
+        }
+      } else {
+        setMessage({ type: 'error', text: data.error || 'Failed to claim points' })
+      }
+    } catch (error) {
+      setMessage({ type: 'error', text: 'Error claiming points. Please try again.' })
+    } finally {
+      setClaiming(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-transparent text-foreground">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <h1 className="text-3xl font-bold text-foreground mb-8">SOV Points Rewards</h1>
+
+        {!isConnected && (
+          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold text-foreground mb-4">Connect Your Wallet</h2>
+            <p className="text-muted-foreground mb-6">
+              Connect your wallet to claim SOV tokens. You can still earn points anonymously, but you'll need to connect to claim them.
+            </p>
+            <WalletButton className="w-full" />
+          </div>
+        )}
+
+        {loading ? (
+          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+            <p className="text-muted-foreground">Loading your points...</p>
+          </div>
+        ) : points ? (
+          <div className="space-y-6">
+            {/* Points Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+                <div className="text-2xl font-bold text-foreground">{points.totalPoints.toLocaleString()}</div>
+                <div className="text-muted-foreground">Total Points Earned</div>
+              </div>
+              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+                <div className="text-2xl font-bold text-green-600">{points.pendingPoints.toLocaleString()}</div>
+                <div className="text-muted-foreground">Available to Claim</div>
+              </div>
+              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+                <div className="text-2xl font-bold text-blue-600">{points.claimedPoints.toLocaleString()}</div>
+                <div className="text-muted-foreground">Points Claimed</div>
+              </div>
+            </div>
+
+            {/* Claim Section */}
+            <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-foreground mb-4">Claim Your Points</h2>
+              
+              {points.pendingPoints > 0 ? (
+                <div className="space-y-4">
+                  <p className="text-muted-foreground">
+                    You have <span className="font-semibold text-foreground">{points.pendingPoints.toLocaleString()}</span> SOV points available to claim.
+                  </p>
+                  
+                  {!isConnected && (
+                    <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
+                      ⚠️ Connect your wallet to claim your points as SOV tokens.
+                    </div>
+                  )}
+
+                  {message && (
+                    <div className={`rounded-md p-3 text-sm ${
+                      message.type === 'success' 
+                        ? 'bg-green-500/20 border border-green-500/50 text-green-700 dark:text-green-400'
+                        : 'bg-red-500/20 border border-red-500/50 text-red-700 dark:text-red-400'
+                    }`}>
+                      {message.text}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={claimPoints}
+                    disabled={claiming || !isConnected || points.pendingPoints === 0}
+                    className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {claiming ? 'Claiming...' : `Claim ${points.pendingPoints.toLocaleString()} SOV Points`}
+                  </button>
+                </div>
+              ) : (
+                <p className="text-muted-foreground">
+                  No points available to claim. Interact with ads to earn SOV points!
+                </p>
+              )}
+            </div>
+
+            {/* How It Works */}
+            <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-foreground mb-4">How It Works</h2>
+              <div className="space-y-3 text-muted-foreground">
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">1.</span>
+                  <div>
+                    <p className="font-medium text-foreground">View Ads</p>
+                    <p>Earn 1 SOV point for each ad impression</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">2.</span>
+                  <div>
+                    <p className="font-medium text-foreground">Click Ads</p>
+                    <p>Earn 5 SOV points for each ad click</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-3">
+                  <span className="text-primary font-bold">3.</span>
+                  <div>
+                    <p className="font-medium text-foreground">Claim Anytime</p>
+                    <p>Connect your wallet and claim your SOV tokens whenever you want</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+            <p className="text-muted-foreground">Start interacting with ads to earn SOV points!</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+

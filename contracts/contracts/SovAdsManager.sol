@@ -51,6 +51,14 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
         uint256 subscriptionDate;
     }
     
+    struct Viewer {
+        address wallet;
+        uint256 totalPoints; // Total SOV points earned
+        uint256 claimedPoints; // Points already claimed
+        uint256 pendingPoints; // Points available to claim
+        uint256 lastInteraction; // Timestamp of last interaction
+    }
+    
     // ============ STATE VARIABLES ============
     
     mapping(uint256 => Campaign) public campaigns;
@@ -60,6 +68,14 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
     mapping(address => bool) public supportedTokens;
     mapping(address => bool) public bannedUsers;
     
+    // Viewer rewards system
+    mapping(address => Viewer) public viewers;
+    mapping(address => bool) public isViewer;
+    address public sovToken; // SOV token address for rewards
+    uint256 public pointsPerImpression = 1 * 10**18; // 1 SOV per impression
+    uint256 public pointsPerClick = 5 * 10**18; // 5 SOV per click
+    uint256 public minimumClaimPoints = 10 * 10**18; // Minimum 10 SOV to claim
+    
     // Arrays for iteration
     address[] public supportedTokensList;
     uint256[] public activeCampaigns;
@@ -68,6 +84,7 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
     uint256 public claimOrderCount;
     uint256 public feePercent = 5; // 5% protocol fee
     uint256 public protocolFees;
+    uint256 public minimumClaimAmount = 0.01 ether; // Minimum claim amount (adjust per token decimals)
     
     // ============ EVENTS ============
     
@@ -127,6 +144,20 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
     event SupportedTokenAdded(address indexed token);
     event SupportedTokenRemoved(address indexed token);
     
+    // Viewer rewards events
+    event PointsAwarded(
+        address indexed viewer,
+        uint256 indexed campaignId,
+        uint256 points,
+        string interactionType
+    );
+    
+    event PointsClaimed(
+        address indexed viewer,
+        uint256 amount,
+        uint256 timestamp
+    );
+    
     // ============ MODIFIERS ============
     
     modifier onlyPublisher() {
@@ -145,6 +176,13 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
         require(campaign.active, "Campaign is not active");
         require(!campaign.paused, "Campaign is paused");
         require(block.timestamp >= campaign.startTime, "Campaign has not started");
+        
+        // Auto-pause if campaign has ended
+        if (block.timestamp > campaign.endTime) {
+            campaign.paused = true;
+            campaign.active = false;
+            emit CampaignPaused(_campaignId);
+        }
         require(block.timestamp <= campaign.endTime, "Campaign has ended");
         _;
     }
@@ -256,8 +294,58 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
         campaignExists(_campaignId) 
         onlyCampaignCreator(_campaignId) 
     {
-        campaigns[_campaignId].paused = false;
+        Campaign storage campaign = campaigns[_campaignId];
+        require(block.timestamp <= campaign.endTime, "Campaign has ended");
+        campaign.paused = false;
         emit CampaignResumed(_campaignId);
+    }
+    
+    /**
+     * @dev Top up campaign budget
+     * @param _campaignId Campaign ID to top up
+     * @param _amount Additional amount to add
+     */
+    function topUpCampaign(uint256 _campaignId, uint256 _amount) 
+        external 
+        campaignExists(_campaignId) 
+        onlyCampaignCreator(_campaignId) 
+        whenNotPaused 
+        nonReentrant 
+    {
+        Campaign storage campaign = campaigns[_campaignId];
+        require(campaign.active, "Campaign is not active");
+        require(_amount > 0, "Amount must be greater than 0");
+        
+        // Transfer tokens from creator to contract
+        IERC20(campaign.token).transferFrom(msg.sender, address(this), _amount);
+        
+        campaign.amount += _amount;
+        
+        emit CampaignEdited(_campaignId, campaign.metadata, campaign.endTime);
+    }
+    
+    /**
+     * @dev Cancel campaign and refund remaining balance
+     * @param _campaignId Campaign ID to cancel
+     */
+    function cancelCampaign(uint256 _campaignId) 
+        external 
+        campaignExists(_campaignId) 
+        onlyCampaignCreator(_campaignId) 
+        nonReentrant 
+    {
+        Campaign storage campaign = campaigns[_campaignId];
+        require(campaign.active, "Campaign is not active");
+        
+        uint256 remainingBalance = campaign.amount - campaign.spent;
+        campaign.active = false;
+        campaign.paused = true;
+        
+        if (remainingBalance > 0) {
+            IERC20(campaign.token).transfer(campaign.creator, remainingBalance);
+        }
+        
+        emit CampaignPaused(_campaignId);
     }
     
     // ============ PUBLISHER FUNCTIONS ============
@@ -338,7 +426,7 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
         uint256 _requestedAmount
     ) external onlyPublisher campaignExists(_campaignId) campaignActive(_campaignId) {
         Campaign storage campaign = campaigns[_campaignId];
-        require(_requestedAmount > 0, "Amount must be greater than 0");
+        require(_requestedAmount >= minimumClaimAmount, "Amount below minimum claim threshold");
         require(
             campaign.spent + _requestedAmount <= campaign.amount,
             "Exceeds campaign budget"
@@ -538,6 +626,14 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
     }
     
     /**
+     * @dev Set minimum claim amount
+     * @param _minimumAmount New minimum claim amount
+     */
+    function setMinimumClaimAmount(uint256 _minimumAmount) external onlyOwner {
+        minimumClaimAmount = _minimumAmount;
+    }
+    
+    /**
      * @dev Pause the entire contract
      */
     function pause() external onlyOwner {
@@ -549,6 +645,114 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
      */
     function unpause() external onlyOwner {
         _unpause();
+    }
+    
+    // ============ VIEWER REWARDS FUNCTIONS ============
+    
+    /**
+     * @dev Set SOV token address (only owner)
+     * @param _sovToken SOV token contract address
+     */
+    function setSovToken(address _sovToken) external onlyOwner {
+        require(_sovToken != address(0), "Invalid token address");
+        sovToken = _sovToken;
+    }
+    
+    /**
+     * @dev Award points to viewer for ad interaction (only owner/oracle)
+     * @param _viewer Viewer wallet address
+     * @param _campaignId Campaign ID
+     * @param _points Points to award
+     * @param _interactionType Type of interaction (IMPRESSION, CLICK)
+     */
+    function awardViewerPoints(
+        address _viewer,
+        uint256 _campaignId,
+        uint256 _points,
+        string calldata _interactionType
+    ) external onlyOwner {
+        require(_viewer != address(0), "Invalid viewer address");
+        require(_campaignId > 0 && _campaignId <= campaignCount, "Invalid campaign");
+        require(_points > 0, "Points must be greater than 0");
+        require(sovToken != address(0), "SOV token not set");
+        
+        // Initialize viewer if doesn't exist
+        if (!isViewer[_viewer]) {
+            viewers[_viewer] = Viewer({
+                wallet: _viewer,
+                totalPoints: 0,
+                claimedPoints: 0,
+                pendingPoints: 0,
+                lastInteraction: 0
+            });
+            isViewer[_viewer] = true;
+        }
+        
+        // Update viewer stats
+        Viewer storage viewer = viewers[_viewer];
+        viewer.totalPoints += _points;
+        viewer.pendingPoints += _points;
+        viewer.lastInteraction = block.timestamp;
+        
+        emit PointsAwarded(_viewer, _campaignId, _points, _interactionType);
+    }
+    
+    /**
+     * @dev Claim pending SOV points
+     * @param _amount Amount of points to claim (0 = claim all)
+     */
+    function claimViewerPoints(uint256 _amount) external nonReentrant whenNotPaused {
+        require(isViewer[msg.sender], "Not a registered viewer");
+        require(sovToken != address(0), "SOV token not set");
+        
+        Viewer storage viewer = viewers[msg.sender];
+        require(viewer.pendingPoints > 0, "No points to claim");
+        
+        uint256 claimAmount = _amount == 0 ? viewer.pendingPoints : _amount;
+        require(claimAmount <= viewer.pendingPoints, "Insufficient pending points");
+        require(claimAmount >= minimumClaimPoints, "Below minimum claim amount");
+        
+        // Update viewer stats
+        viewer.pendingPoints -= claimAmount;
+        viewer.claimedPoints += claimAmount;
+        
+        // Transfer SOV tokens to viewer
+        IERC20(sovToken).transfer(msg.sender, claimAmount);
+        
+        emit PointsClaimed(msg.sender, claimAmount, block.timestamp);
+    }
+    
+    /**
+     * @dev Get viewer details
+     * @param _viewer Viewer address
+     * @return Viewer struct
+     */
+    function getViewer(address _viewer) external view returns (Viewer memory) {
+        return viewers[_viewer];
+    }
+    
+    /**
+     * @dev Set points per impression (only owner)
+     * @param _points Points to award per impression
+     */
+    function setPointsPerImpression(uint256 _points) external onlyOwner {
+        pointsPerImpression = _points;
+    }
+    
+    /**
+     * @dev Set points per click (only owner)
+     * @param _points Points to award per click
+     */
+    function setPointsPerClick(uint256 _points) external onlyOwner {
+        pointsPerClick = _points;
+    }
+    
+    /**
+     * @dev Set minimum claim points (only owner)
+     * @param _points Minimum points required to claim
+     */
+    function setMinimumClaimPoints(uint256 _points) external onlyOwner {
+        minimumClaimPoints = _points;
     }
     
     // ============ VIEW FUNCTIONS ============

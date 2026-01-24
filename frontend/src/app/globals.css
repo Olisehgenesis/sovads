@@ -145,3 +145,13 @@
 .btn-outline {
   @apply border border-gray-300 text-black hover:border-gray-400 rounded-full px-4 py-2 bg-transparent;
 }
+
+/* SovAds banner sizing */
+.sovads-banner-slot .sovads-banner,
+.sovads-banner-slot .sovads-banner img,
+.sovads-banner-slot .sovads-banner video {
+  max-width: 100% !important;
+  width: 100% !important;
+  height: auto !important;
+  box-sizing: border-box;
+}

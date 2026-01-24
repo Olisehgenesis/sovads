@@ -39,14 +39,32 @@ async function main() {
   await sovAdsManager.setFeePercent(5);
   console.log("✅ Set protocol fee to 5%");
 
+  // Check if SovAdsToken address is provided in env
+  const SOV_TOKEN_ADDRESS = process.env.SOV_TOKEN_ADDRESS;
+  if (SOV_TOKEN_ADDRESS) {
+    console.log("\n🔧 Adding SovAds Token (SOV) as supported token...");
+    try {
+      await sovAdsManager.addSupportedToken(SOV_TOKEN_ADDRESS);
+      console.log("✅ Added SOV token as supported token");
+    } catch (error) {
+      console.warn("⚠️  Failed to add SOV token (may already be added or invalid):", error);
+    }
+  }
+
   console.log("\n🎉 Deployment completed successfully!");
   console.log("📋 Contract Addresses:");
   console.log("   SovAdsManager:", sovAdsManager.address);
+  if (SOV_TOKEN_ADDRESS) {
+    console.log("   SovAdsToken:", SOV_TOKEN_ADDRESS);
+  }
   console.log("\n📋 Supported Tokens (Sepolia):");
   console.log("   cUSD:", CUSD_SEPOLIA);
   console.log("   USDC:", USDC_SEPOLIA);
   console.log("   USDT:", USDT_SEPOLIA);
   console.log("   CELO:", CELO_SEPOLIA);
+  if (SOV_TOKEN_ADDRESS) {
+    console.log("   SOV:", SOV_TOKEN_ADDRESS);
+  }
   
   console.log("\n🔗 Network:", await ethers.provider.getNetwork());
   

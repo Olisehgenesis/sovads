@@ -1,12 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { collections } from '@/lib/db'
 
+// Simple in-memory cache for ad requests (5 minute TTL)
+const adCache = new Map<string, { data: any; expires: number }>()
+const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
+
 // CORS headers helper
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
+
+// Clean up expired cache entries periodically
+setInterval(() => {
+  const now = Date.now()
+  for (const [key, value] of adCache.entries()) {
+    if (value.expires < now) {
+      adCache.delete(key)
+    }
+  }
+}, 60000) // Clean every minute
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -22,13 +36,85 @@ export async function GET(request: NextRequest) {
     const location = searchParams.get('location')?.toLowerCase()
 
     if (!siteId) {
-      return NextResponse.json({ error: 'Site ID is required' }, { status: 400 })
+      return NextResponse.json({ error: 'Site ID is required' }, { status: 400, headers: corsHeaders })
     }
 
-    // Check PublisherSite first (new structure)
-    const publisherSitesCollection = await collections.publisherSites()
-    const publishersCollection = await collections.publishers()
-    const campaignsCollection = await collections.campaigns()
+    // Check cache first
+    const cacheKey = `${siteId}:${location || 'all'}`
+    const cached = adCache.get(cacheKey)
+    if (cached && cached.expires > Date.now()) {
+      return NextResponse.json(cached.data, { headers: corsHeaders })
+    }
+
+    // Handle unregistered sites (temp_ prefix) FIRST - before MongoDB access
+    // This prevents crashes when MongoDB is unavailable
+    if (siteId.startsWith('temp_') || siteId.startsWith('site_')) {
+      // Return dummy ad for unregistered sites to prevent crashes
+      const dummyAd = {
+        id: 'dummy_ad_unregistered',
+        campaignId: 'dummy_campaign',
+        name: 'Register Your Site',
+        description: 'Register your site to start serving ads and earning revenue',
+        bannerUrl: 'https://sovseas.xyz/logo.png', // Placeholder - can be replaced with actual sovseas image
+        targetUrl: 'https://ads.sovseas.xyz/publisher',
+        cpc: '0',
+        tags: ['register', 'sovads'],
+        targetLocations: [],
+        metadata: {
+          message: 'Register your site to start serving ads.',
+          isDummy: true,
+        },
+        startDate: null,
+        endDate: null,
+        mediaType: 'image' as const,
+        isDummy: true,
+      }
+      
+      // Cache the dummy ad response
+      adCache.set(cacheKey, {
+        data: dummyAd,
+        expires: Date.now() + CACHE_TTL
+      })
+      
+      return NextResponse.json(dummyAd, { headers: corsHeaders })
+    }
+
+    // Try to access MongoDB - wrap in try-catch to handle connection errors
+    let publisherSitesCollection, publishersCollection, campaignsCollection
+    try {
+      publisherSitesCollection = await collections.publisherSites()
+      publishersCollection = await collections.publishers()
+      campaignsCollection = await collections.campaigns()
+    } catch (dbError) {
+      console.error('MongoDB connection error:', dbError)
+      // If MongoDB is unavailable, return dummy ad instead of crashing
+      const dummyAd = {
+        id: 'dummy_ad_db_error',
+        campaignId: 'dummy_campaign',
+        name: 'Service Temporarily Unavailable',
+        description: 'Ad service is temporarily unavailable. Please try again later.',
+        bannerUrl: 'https://sovseas.xyz/logo.png',
+        targetUrl: 'https://ads.sovseas.xyz',
+        cpc: '0',
+        tags: ['error', 'sovads'],
+        targetLocations: [],
+        metadata: {
+          message: 'Database connection error.',
+          isDummy: true,
+        },
+        startDate: null,
+        endDate: null,
+        mediaType: 'image' as const,
+        isDummy: true,
+      }
+      
+      adCache.set(cacheKey, {
+        data: dummyAd,
+        expires: Date.now() + (60 * 1000) // Cache for 1 minute on error
+      })
+      
+      return NextResponse.json(dummyAd, { headers: corsHeaders })
+    }
 
     const publisherSite = await publisherSitesCollection.findOne({ siteId })
 
@@ -45,21 +131,39 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // Allow temp site IDs for development/testing
+    // Check if publisher exists (already handled temp_ above, so this is for other cases)
     if (!publisher && !publisherSite) {
-      if (siteId.startsWith('site_') || siteId.startsWith('temp_')) {
-        if (process.env.NODE_ENV === 'development') {
-          // In development, allow unknown sites
-        } else {
-          return NextResponse.json({ error: 'Publisher not found or not verified' }, { status: 404 })
-        }
-      } else {
-        return NextResponse.json({ error: 'Publisher not found or not verified' }, { status: 404 })
-      }
+      return NextResponse.json({ error: 'Publisher not found or not verified' }, { status: 404, headers: corsHeaders })
     }
 
     if (publisher && !publisher.verified && process.env.NODE_ENV !== 'development') {
-      return NextResponse.json({ error: 'Publisher not verified' }, { status: 403 })
+      // Return dummy ad for unverified sites too
+      const dummyAd = {
+        id: 'dummy_ad_unverified',
+        campaignId: 'dummy_campaign',
+        name: 'Verify Your Site',
+        description: 'Your site needs to be verified to serve ads',
+        bannerUrl: 'https://sovseas.xyz/logo.png',
+        targetUrl: 'https://ads.sovseas.xyz/publisher',
+        cpc: '0',
+        tags: ['verify', 'sovads'],
+        targetLocations: [],
+        metadata: {
+          message: 'Verify your site to start serving ads.',
+          isDummy: true,
+        },
+        startDate: null,
+        endDate: null,
+        mediaType: 'image' as const,
+        isDummy: true,
+      }
+      
+      adCache.set(cacheKey, {
+        data: dummyAd,
+        expires: Date.now() + CACHE_TTL
+      })
+      
+      return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
     // Get active campaigns with budget remaining
@@ -81,7 +185,33 @@ export async function GET(request: NextRequest) {
       .slice(0, 10)
 
     if (campaigns.length === 0) {
-      return NextResponse.json({ error: 'No active campaigns available' }, { status: 404 })
+      // Return dummy ad when no campaigns available instead of error
+      const dummyAd = {
+        id: 'dummy_ad_no_campaigns',
+        campaignId: 'dummy_campaign',
+        name: 'No Ads Available',
+        description: 'No active campaigns at the moment',
+        bannerUrl: 'https://sovseas.xyz/logo.png',
+        targetUrl: 'https://ads.sovseas.xyz',
+        cpc: '0',
+        tags: ['no-campaigns', 'sovads'],
+        targetLocations: [],
+        metadata: {
+          message: 'No active campaigns available.',
+          isDummy: true,
+        },
+        startDate: null,
+        endDate: null,
+        mediaType: 'image' as const,
+        isDummy: true,
+      }
+      
+      adCache.set(cacheKey, {
+        data: dummyAd,
+        expires: Date.now() + CACHE_TTL
+      })
+      
+      return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
     // Select random campaign
@@ -104,9 +234,19 @@ export async function GET(request: NextRequest) {
       mediaType: randomCampaign.mediaType ?? 'image',
     }
 
+    // Cache the response
+    adCache.set(cacheKey, {
+      data: ad,
+      expires: Date.now() + CACHE_TTL
+    })
+
     return NextResponse.json(ad, { headers: corsHeaders })
   } catch (error) {
     console.error('Error fetching ad:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: corsHeaders })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    }, { status: 500, headers: corsHeaders })
   }
 }

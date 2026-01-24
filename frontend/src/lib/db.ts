@@ -13,6 +13,8 @@ import type {
   SdkInteraction,
   ApiRouteCall,
   CallbackLog,
+  ViewerPoints,
+  ViewerReward,
 } from './models'
 
 export const collections = {
@@ -28,8 +30,10 @@ export const collections = {
   sdkInteractions: () => getCollection<SdkInteraction>('sdk_interactions'),
   apiRouteCalls: () => getCollection<ApiRouteCall>('api_route_calls'),
   callbackLogs: () => getCollection<CallbackLog>('callback_logs'),
+  viewerPoints: () => getCollection<ViewerPoints>('viewer_points'),
+  viewerRewards: () => getCollection<ViewerReward>('viewer_rewards'),
 }
 
 export type Collections = typeof collections
 
-export type { Advertiser, Publisher, PublisherSite, Campaign, Event, AnalyticsHash, Asset, Payout, SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog }
+export type { Advertiser, Publisher, PublisherSite, Campaign, Event, AnalyticsHash, Asset, Payout, SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog, ViewerPoints, ViewerReward }

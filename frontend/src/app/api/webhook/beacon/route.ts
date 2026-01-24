@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { collections } from '@/lib/db'
 import { logCallback, getIpAddress } from '@/lib/debug-logger'
 import type { Event } from '@/lib/models'
@@ -195,6 +196,72 @@ export async function POST(request: NextRequest) {
         }
       )
     }
+
+    // Award viewer points for ad interaction (async, don't block response)
+    ;(async () => {
+      try {
+        const pointsPerImpression = 1 // 1 SOV point per impression
+        const pointsPerClick = 5 // 5 SOV points per click
+        const points = type === 'CLICK' ? pointsPerClick : pointsPerImpression
+
+        if (!fingerprint) return // Need fingerprint to track anonymous users
+
+        const viewerPointsCollection = await collections.viewerPoints()
+        const viewerRewardsCollection = await collections.viewerRewards()
+
+        // Find or create viewer
+        let viewer = await viewerPointsCollection.findOne({ 
+          fingerprint, 
+          wallet: null 
+        })
+
+        const now = new Date()
+        if (!viewer) {
+          // Create new viewer
+          const viewerId = randomUUID()
+          viewer = {
+            _id: viewerId,
+            wallet: null,
+            fingerprint: fingerprint,
+            totalPoints: points,
+            claimedPoints: 0,
+            pendingPoints: points,
+            lastInteraction: now,
+            createdAt: now,
+            updatedAt: now,
+          }
+          await viewerPointsCollection.insertOne(viewer)
+        } else {
+          // Update existing viewer
+          await viewerPointsCollection.updateOne(
+            { _id: viewer._id },
+            {
+              $inc: { totalPoints: points, pendingPoints: points },
+              $set: { lastInteraction: now, updatedAt: now },
+            }
+          )
+        }
+
+        // Create reward record
+        const reward = {
+          _id: randomUUID(),
+          viewerId: viewer._id,
+          wallet: undefined,
+          fingerprint: fingerprint,
+          type,
+          campaignId,
+          adId,
+          siteId,
+          points,
+          claimed: false,
+          timestamp: now,
+        }
+        await viewerRewardsCollection.insertOne(reward as any)
+      } catch (error) {
+        // Silently fail - points awarding shouldn't break the main flow
+        console.error('Error awarding viewer points:', error)
+      }
+    })()
 
     // Log render metrics for analytics (if available)
     if (renderTime !== undefined && process.env.NODE_ENV === 'development') {

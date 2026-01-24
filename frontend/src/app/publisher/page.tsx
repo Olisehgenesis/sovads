@@ -48,6 +48,16 @@ export default function PublisherDashboard() {
   const [activeTab, setActiveTab] = useState<'sdk' | 'script'>('sdk')
   const [showApiSecret, setShowApiSecret] = useState<Record<string, boolean>>({})
   const [newApiSecrets, setNewApiSecrets] = useState<Record<string, string>>({})
+  const [domainCheckStatus, setDomainCheckStatus] = useState<{
+    checking: boolean
+    registeredOnChain: boolean
+    registeredInDB: boolean
+    domain: string
+  } | null>(null)
+  
+  const isChecking = Boolean(domainCheckStatus?.checking)
+  const [isUrlValid, setIsUrlValid] = useState(false)
+  const [urlError, setUrlError] = useState<string | null>(null)
 
   useEffect(() => {
     if (isConnected && address) {
@@ -196,6 +206,93 @@ export default function PublisherDashboard() {
     }
   }
 
+  // URL validation function
+  const validateUrl = (url: string): { valid: boolean; domain: string | null; error: string | null } => {
+    if (!url || url.trim() === '') {
+      return { valid: false, domain: null, error: 'URL is required' }
+    }
+
+    const trimmedUrl = url.trim()
+    
+    // Extract domain from URL (handles http://, https://, www., etc.)
+    let domain = trimmedUrl
+    
+    try {
+      // If it doesn't start with http:// or https://, add https:// for parsing
+      const urlToParse = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') 
+        ? trimmedUrl 
+        : `https://${trimmedUrl}`
+      
+      const urlObj = new URL(urlToParse)
+      domain = urlObj.hostname
+      
+      // Remove www. prefix if present
+      domain = domain.replace(/^www\./, '')
+      
+      // Validate domain format (basic check)
+      const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
+      if (!domainRegex.test(domain)) {
+        return { valid: false, domain: null, error: 'Invalid domain format' }
+      }
+      
+      return { valid: true, domain, error: null }
+    } catch (error) {
+      // If URL parsing fails, try simple domain validation
+      const simpleDomainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
+      if (simpleDomainRegex.test(trimmedUrl)) {
+        return { valid: true, domain: trimmedUrl.replace(/^www\./, ''), error: null }
+      }
+      
+      return { valid: false, domain: null, error: 'Invalid URL format' }
+    }
+  }
+
+  const checkDomainRegistration = async (domain: string): Promise<{ registeredOnChain: boolean; registeredInDB: boolean }> => {
+    if (!domain || !address) {
+      return { registeredOnChain: false, registeredInDB: false }
+    }
+    
+    setDomainCheckStatus({ checking: true, registeredOnChain: false, registeredInDB: false, domain })
+    
+    try {
+      // Check on-chain registration
+      let onChainRegistered = false
+      try {
+        const onChainSites = await getPublisherSites(address)
+        onChainRegistered = onChainSites?.includes(domain) || false
+      } catch (error) {
+        console.error('Error checking on-chain registration:', error)
+      }
+      
+      // Check DB registration
+      let dbRegistered = false
+      try {
+        const response = await fetch(`/api/publishers/sites?wallet=${address}`)
+        if (response.ok) {
+          const data = await response.json()
+          const sites = data.sites || []
+          dbRegistered = sites.some((site: PublisherSite) => site.domain === domain)
+        }
+      } catch (error) {
+        console.error('Error checking DB registration:', error)
+      }
+      
+      const result = {
+        checking: false,
+        registeredOnChain: onChainRegistered,
+        registeredInDB: dbRegistered,
+        domain
+      }
+      
+      setDomainCheckStatus(result)
+      return { registeredOnChain: onChainRegistered, registeredInDB: dbRegistered }
+    } catch (error) {
+      console.error('Error checking domain registration:', error)
+      setDomainCheckStatus(null)
+      return { registeredOnChain: false, registeredInDB: false }
+    }
+  }
+
   const registerPublisher = async () => {
     if (!wallet || !newDomain) return
     if (!address) {
@@ -203,63 +300,179 @@ export default function PublisherDashboard() {
       return
     }
 
+    // Validate URL first
+    const validation = validateUrl(newDomain)
+    if (!validation.valid || !validation.domain) {
+      setRegistrationError(validation.error || 'Invalid URL format')
+      return
+    }
+
     setRegistrationError(null)
     setRegistrationSuccess(null)
-    setIsRegisteringOnChain(true)
 
     try {
-      const domainToRegister = newDomain.trim()
+      const domainToRegister = validation.domain // Use extracted domain
       
-      // Step 1: Register on-chain first
-      if (!isRegisteredOnChain) {
-        console.log('Registering publisher on-chain...')
-        await subscribePublisher([domainToRegister])
-        console.log('Publisher registered on-chain successfully')
-        setIsRegisteredOnChain(true)
-        await loadOnChainSites(address)
+      // Check current registration status
+      let isOnChain = false
+      let isInDB = false
+      
+      if (domainCheckStatus?.domain === domainToRegister && !domainCheckStatus.checking) {
+        isOnChain = domainCheckStatus.registeredOnChain
+        isInDB = domainCheckStatus.registeredInDB
       } else {
-        // Add site on-chain if publisher already registered
-        await addSite(domainToRegister)
-        await loadOnChainSites(address)
+        const checkResult = await checkDomainRegistration(domainToRegister)
+        isOnChain = checkResult.registeredOnChain
+        isInDB = checkResult.registeredInDB
+      }
+      
+      // Register on-chain if not already registered
+      let onChainSuccess = false
+      if (!isOnChain) {
+        setIsRegisteringOnChain(true)
+        try {
+          if (!isRegisteredOnChain) {
+            console.log('Registering publisher on-chain...')
+            await subscribePublisher([domainToRegister])
+            console.log('Publisher registered on-chain successfully')
+            setIsRegisteredOnChain(true)
+            onChainSuccess = true
+            await loadOnChainSites(address)
+          } else {
+            // Add site on-chain if publisher already registered
+            console.log('Adding site on-chain...')
+            await addSite(domainToRegister)
+            onChainSuccess = true
+            await loadOnChainSites(address)
+          }
+        } catch (onChainError) {
+          console.error('On-chain registration error:', onChainError)
+          const errorMsg = onChainError instanceof Error ? onChainError.message : 'Unknown error'
+          
+          // If on-chain fails but we still need to register in DB, continue
+          if (!isInDB) {
+            setRegistrationError(`On-chain registration failed: ${errorMsg}. Will still try to register in database.`)
+          } else {
+            throw new Error(`On-chain registration failed: ${errorMsg}`)
+          }
+        } finally {
+          setIsRegisteringOnChain(false)
+        }
+      } else {
+        onChainSuccess = true // Already registered on-chain
       }
 
-      // Step 2: Save to database
-      const response = await fetch('/api/publishers/sites', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ wallet: address, domain: domainToRegister })
-      })
+      // Register in DB if not already registered
+      let dbSuccess = false
+      if (!isInDB) {
+        try {
+          const response = await fetch('/api/publishers/sites', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ wallet: address, domain: domainToRegister })
+          })
 
-      if (response.ok) {
-        const data = await response.json()
-        // Store API secret if returned (new sites only)
-        if (data.site?.apiSecret) {
-          setNewApiSecrets((prev: Record<string, string>) => ({ ...prev, [data.site.id]: data.site.apiSecret }))
-          setShowApiSecret((prev: Record<string, boolean>) => ({ ...prev, [data.site.id]: true }))
+          if (response.ok) {
+            const data = await response.json()
+            dbSuccess = true
+            
+            // Store API secret if returned (new sites only)
+            if (data.site?.apiSecret) {
+              setNewApiSecrets((prev: Record<string, string>) => ({ ...prev, [data.site.id]: data.site.apiSecret }))
+              setShowApiSecret((prev: Record<string, boolean>) => ({ ...prev, [data.site.id]: true }))
+            }
+            
+            // Reload data to show updated status
+            await loadPublisherData(address)
+            await loadOnChainSites(address)
+            
+            let successMsg = ''
+            if (isOnChain && !isInDB) {
+              successMsg = `✓ Successfully added ${domainToRegister} to database! Site is now registered on both platforms.`
+            } else if (!isOnChain && isInDB) {
+              successMsg = `✓ Successfully registered ${domainToRegister} on-chain! Site is now registered on both platforms.`
+            } else {
+              successMsg = data.site?.apiSecret 
+                ? `✓ Successfully registered ${domainToRegister} on both platforms! API credentials generated.`
+                : `✓ Successfully registered ${domainToRegister} on both platforms!`
+            }
+            
+            setRegistrationSuccess(successMsg)
+            setTimeout(() => setRegistrationSuccess(null), 5000)
+          } else {
+            const errorData = await response.json()
+            if (response.status === 409) {
+              throw new Error('This site is already registered in the database')
+            } else if (response.status === 500) {
+              throw new Error(`Database error: ${errorData.error || errorData.details || 'Failed to save to database. Please check your connection and try again.'}`)
+            } else {
+              throw new Error(errorData.error || `Failed to save to database (Status: ${response.status})`)
+            }
+          }
+        } catch (dbError) {
+          console.error('Database registration error:', dbError)
+          const errorMsg = dbError instanceof Error ? dbError.message : 'Unknown error'
+          
+          // If on-chain succeeded but DB failed, show specific error
+          if (onChainSuccess) {
+            setRegistrationError(`⚠️ Site registered on-chain but database registration failed: ${errorMsg}. The site is on-chain but not in database. Please try again or contact support.`)
+          } else {
+            throw new Error(`Database registration failed: ${errorMsg}`)
+          }
         }
-        await loadPublisherData(address)
-        // Clear input and show success
+      } else {
+        dbSuccess = true // Already registered in DB
+      }
+      
+      // Final status check and success message
+      if (isOnChain && isInDB) {
+        if (onChainSuccess && dbSuccess) {
+          // Both were already registered, no action taken
+          setRegistrationError('This site is already registered on both platforms. No action needed.')
+        } else if (!onChainSuccess || !dbSuccess) {
+          // One platform registration failed
+          const failedPlatforms = []
+          if (!onChainSuccess) failedPlatforms.push('on-chain')
+          if (!dbSuccess) failedPlatforms.push('database')
+          setRegistrationError(`⚠️ Registration partially completed. Failed on: ${failedPlatforms.join(' and ')}. Please try again.`)
+        }
+      } else if (onChainSuccess && dbSuccess) {
+        // Both registrations succeeded
         setNewDomain('')
-        const successMsg = data.site?.apiSecret 
-          ? `Successfully registered ${domainToRegister}! API credentials generated.`
-          : `Successfully registered ${domainToRegister}!`
-        setRegistrationSuccess(successMsg)
-        // Clear success message after 5 seconds
-        setTimeout(() => setRegistrationSuccess(null), 5000)
-      } else {
-        const errorData = await response.json()
-        if (response.status === 409) {
-          // Site already exists
-          setRegistrationError('This site is already registered')
-        } else {
-          throw new Error(errorData.error || 'Failed to save to database')
+        // Re-check registration status to confirm
+        if (domainToRegister) {
+          setTimeout(() => {
+            checkDomainRegistration(domainToRegister)
+          }, 1000)
         }
+      } else if (!onChainSuccess && !dbSuccess) {
+        setRegistrationError('❌ Registration failed on both platforms. Please check your connection and try again.')
       }
+      
     } catch (error) {
       console.error('Error registering publisher:', error)
-      setRegistrationError(error instanceof Error ? error.message : 'Registration failed')
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
+      
+      // Provide more helpful, user-friendly error messages
+      if (errorMsg.includes('user rejected') || errorMsg.includes('User rejected')) {
+        setRegistrationError('❌ Transaction was rejected. Please approve the transaction in your wallet to complete registration.')
+      } else if (errorMsg.includes('insufficient funds') || errorMsg.includes('gas')) {
+        setRegistrationError('❌ Insufficient funds. Please ensure you have enough tokens for gas fees in your wallet.')
+      } else if (errorMsg.includes('network') || errorMsg.includes('connection') || errorMsg.includes('fetch')) {
+        setRegistrationError('❌ Network error. Please check your internet connection and try again.')
+      } else if (errorMsg.includes('database') || errorMsg.includes('MongoDB') || errorMsg.includes('Database')) {
+        setRegistrationError('❌ Database connection error. The service may be temporarily unavailable. Please try again in a moment.')
+      } else if (errorMsg.includes('contract') || errorMsg.includes('on-chain') || errorMsg.includes('Contract')) {
+        setRegistrationError(`❌ On-chain registration failed: ${errorMsg}. Please check your wallet connection and network, then try again.`)
+      } else if (errorMsg.includes('already registered') || errorMsg.includes('already exists')) {
+        setRegistrationError(`ℹ️ ${errorMsg}. The site may already be registered.`)
+      } else if (errorMsg.includes('timeout') || errorMsg.includes('Timeout')) {
+        setRegistrationError('❌ Request timed out. Please check your connection and try again.')
+      } else {
+        setRegistrationError(`❌ Registration failed: ${errorMsg}. Please try again or contact support if the issue persists.`)
+      }
     } finally {
       setIsRegisteringOnChain(false)
     }
@@ -390,16 +603,106 @@ export default function PublisherDashboard() {
                 <label className="block text-sm font-medium text-foreground mb-2">
                   Domain
                 </label>
-                <input
-                  type="text"
-                  value={newDomain}
-                  onChange={(e) => setNewDomain(e.target.value)}
-                  className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-                  placeholder="example.com"
-                />
-                <p className="text-sm text-muted-foreground mt-1">
-                  You can add more websites after registration
-                </p>
+                <div>
+                  <input
+                    type="text"
+                    value={newDomain}
+                    onChange={(e) => {
+                      const url = e.target.value
+                      setNewDomain(url)
+                      setDomainCheckStatus(null)
+                      setUrlError(null)
+                      
+                      // Validate URL in real-time
+                      if (url.trim()) {
+                        const validation = validateUrl(url)
+                        setIsUrlValid(validation.valid)
+                        setUrlError(validation.error)
+                        
+                        // If valid, extract domain and check registration
+                        if (validation.valid && validation.domain && address) {
+                          // Debounce the check
+                          setTimeout(() => {
+                            if (newDomain === url) { // Make sure user hasn't changed it
+                              checkDomainRegistration(validation.domain!)
+                            }
+                          }, 500)
+                        } else {
+                          setIsUrlValid(false)
+                        }
+                      } else {
+                        setIsUrlValid(false)
+                      }
+                    }}
+                    onBlur={() => {
+                      if (newDomain.trim()) {
+                        const validation = validateUrl(newDomain)
+                        if (validation.valid && validation.domain && address) {
+                          checkDomainRegistration(validation.domain)
+                        }
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    placeholder="example.com or https://example.com"
+                  />
+                  {urlError && (
+                    <p className="text-sm text-red-600 mt-1">{urlError}</p>
+                  )}
+                  {!urlError && newDomain.trim() && !isUrlValid && (
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Enter a valid URL or domain
+                    </p>
+                  )}
+                  {isUrlValid && !urlError && (
+                    <p className="text-sm text-green-600 mt-1">
+                      ✓ Valid URL
+                    </p>
+                  )}
+                </div>
+                
+                {/* Domain Registration Status */}
+                {domainCheckStatus && !domainCheckStatus.checking && isUrlValid && (
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={`font-medium ${domainCheckStatus.registeredOnChain ? 'text-green-600' : 'text-gray-500'}`}>
+                        {domainCheckStatus.registeredOnChain ? '✓' : '○'} On-Chain:
+                      </span>
+                      <span className={domainCheckStatus.registeredOnChain ? 'text-green-600' : 'text-gray-500'}>
+                        {domainCheckStatus.registeredOnChain ? 'Registered' : 'Not Registered'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={`font-medium ${domainCheckStatus.registeredInDB ? 'text-green-600' : 'text-gray-500'}`}>
+                        {domainCheckStatus.registeredInDB ? '✓' : '○'} Database:
+                      </span>
+                      <span className={domainCheckStatus.registeredInDB ? 'text-green-600' : 'text-gray-500'}>
+                        {domainCheckStatus.registeredInDB ? 'Registered' : 'Not Registered'}
+                      </span>
+                    </div>
+                    
+                    {/* Action Prompts */}
+                    {domainCheckStatus.registeredOnChain && !domainCheckStatus.registeredInDB && (
+                      <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
+                        ⚠️ Registered on-chain but not in database. Click "Register Publisher" to add to database.
+                      </div>
+                    )}
+                    {!domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB && (
+                      <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
+                        ⚠️ Registered in database but not on-chain. Click "Register Publisher" to register on-chain.
+                      </div>
+                    )}
+                    {!domainCheckStatus.registeredOnChain && !domainCheckStatus.registeredInDB && (
+                      <div className="bg-blue-500/20 border border-blue-500/50 rounded-md p-3 text-blue-700 dark:text-blue-400 text-sm">
+                        ℹ️ Not registered. Click "Register Publisher" to register on both platforms.
+                      </div>
+                    )}
+                    {domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB && (
+                      <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm">
+                        ✓ Already registered on both platforms. Button disabled.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
               {registrationError && (
                 <div className="bg-destructive/20 border border-destructive/50 rounded-md p-3 text-destructive text-sm">
@@ -413,10 +716,27 @@ export default function PublisherDashboard() {
               )}
               <button
                 onClick={registerPublisher}
-                disabled={isRegisteringOnChain || contractLoading}
+                disabled={
+                  isRegisteringOnChain || 
+                  contractLoading || 
+                  isChecking ||
+                  !isUrlValid ||
+                  !newDomain.trim() ||
+                  Boolean(domainCheckStatus && domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB)
+                }
                 className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isRegisteringOnChain ? 'Registering on-chain...' : 'Register Publisher'}
+                {isRegisteringOnChain 
+                  ? 'Registering...' 
+                  : isChecking
+                  ? 'Checking...'
+                  : !isUrlValid
+                  ? 'Enter Valid URL'
+                  : domainCheckStatus && domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB
+                  ? 'Already Registered'
+                  : domainCheckStatus && (!domainCheckStatus.registeredOnChain || !domainCheckStatus.registeredInDB)
+                  ? 'Complete Registration'
+                  : 'Register Publisher'}
               </button>
               {isRegisteredOnChain && (
                 <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm">

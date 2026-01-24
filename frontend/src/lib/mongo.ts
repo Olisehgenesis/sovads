@@ -18,17 +18,37 @@ const dbName = process.env.MONGODB_DB || 'sovads'
 
 async function initializeClient(): Promise<MongoClient> {
   if (global.__sovads_mongo_client) {
-    return global.__sovads_mongo_client
+    // Check if connection is still alive
+    try {
+      await global.__sovads_mongo_client.db().admin().ping()
+      return global.__sovads_mongo_client
+    } catch (error) {
+      // Connection is dead, create a new one
+      if (process.env.NODE_ENV !== 'production') {
+        global.__sovads_mongo_client = undefined
+      }
+    }
   }
 
-  const client = new MongoClient(mongoUri)
-  await client.connect()
+  const client = new MongoClient(mongoUri, {
+    serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
+    connectTimeoutMS: 10000, // Connection timeout
+  })
+  
+  try {
+    await client.connect()
+    // Verify connection
+    await client.db().admin().ping()
+    
+    if (process.env.NODE_ENV !== 'production') {
+      global.__sovads_mongo_client = client
+    }
 
-  if (process.env.NODE_ENV !== 'production') {
-    global.__sovads_mongo_client = client
+    return client
+  } catch (error) {
+    console.error('Failed to connect to MongoDB:', error)
+    throw new Error(`MongoDB connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`)
   }
-
-  return client
 }
 
 export async function getMongoClient(): Promise<MongoClient> {

@@ -6,6 +6,9 @@ export interface SovAdsConfig {
   apiUrl?: string // Default: http://localhost:3000 for development
   debug?: boolean
   consumerId?: string // For targeting specific advertisers
+  refreshInterval?: number // Ad refresh interval in seconds (default: 0 = no refresh)
+  lazyLoad?: boolean // Enable lazy loading (default: true)
+  rotationEnabled?: boolean // Enable ad rotation (default: true)
 }
 
 export interface AdComponent {
@@ -53,6 +56,9 @@ class SovAds {
         ? 'http://localhost:3000' 
         : 'https://ads.sovseas.xyz',
       debug: false,
+      refreshInterval: 0, // No auto-refresh by default
+      lazyLoad: true,
+      rotationEnabled: true,
       ...config
     }
     
@@ -679,15 +685,19 @@ export class Banner {
   private renderStartTime: number = 0
   private hasTrackedImpression: boolean = false
   private isRendering: boolean = false
+  private refreshTimer: number | null = null
+  private lastAdId: string | null = null
+  private retryCount: number = 0
+  private maxRetries: number = 3
 
   constructor(sovads: SovAds, containerId: string) {
     this.sovads = sovads
     this.containerId = containerId
   }
 
-  async render(consumerId?: string) {
+  async render(consumerId?: string, forceRefresh: boolean = false): Promise<void> {
     // Prevent concurrent renders
-    if (this.isRendering) {
+    if (this.isRendering && !forceRefresh) {
       if (this.sovads.getConfig().debug) {
         console.warn(`Banner render already in progress for ${this.containerId}`)
       }
@@ -703,8 +713,31 @@ export class Banner {
         return
       }
 
+      // Lazy loading: wait for container to be in viewport
+      if (this.sovads.getConfig().lazyLoad && !forceRefresh) {
+        const isInViewport = await this.checkViewport(container)
+        if (!isInViewport) {
+          // Set up intersection observer for lazy loading
+          this.setupLazyLoadObserver(container, consumerId)
+          this.isRendering = false
+          return
+        }
+      }
+
       this.renderStartTime = Date.now()
       this.currentAd = await this.sovads.loadAd(consumerId)
+      
+      // Skip if same ad (rotation disabled or same ad returned)
+      if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
+        if (this.sovads.getConfig().debug) {
+          console.log('Same ad returned, skipping render')
+        }
+        this.isRendering = false
+        return
+      }
+      
+      this.lastAdId = this.currentAd?.id || null
+      this.retryCount = 0 // Reset retry count on success
       
       if (!this.currentAd) {
         container.innerHTML = '<div class="sovads-no-ad">No ads available</div>'
@@ -775,6 +808,9 @@ export class Banner {
       overflow: hidden;
       cursor: pointer;
       transition: transform 0.2s ease;
+      max-width: 100%;
+      width: 100%;
+      box-sizing: border-box;
     `
 
       const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
@@ -829,12 +865,13 @@ export class Banner {
         const img = document.createElement('img')
         img.src = this.currentAd.bannerUrl
         img.alt = this.currentAd.description
-        img.style.cssText = 'width: 100%; height: auto; display: block;'
+        img.style.cssText = 'width: 100%; height: auto; display: block; max-width: 100%; object-fit: contain;'
         img.addEventListener('load', handleRenderSuccess, { once: true })
         img.addEventListener('error', handleRenderError, { once: true })
         mediaElement = img
       }
       mediaElement.style.cursor = 'pointer'
+      mediaElement.style.maxWidth = '100%'
 
       // Add click handler
       adElement.addEventListener('click', () => {
@@ -866,8 +903,104 @@ export class Banner {
 
       adElement.appendChild(mediaElement)
       container.appendChild(adElement)
+      
+      // Set up auto-refresh if enabled
+      this.setupAutoRefresh(consumerId)
+    } catch (error) {
+      // Retry logic on error
+      if (this.retryCount < this.maxRetries) {
+        this.retryCount++
+        if (this.sovads.getConfig().debug) {
+          console.warn(`Banner render failed, retrying (${this.retryCount}/${this.maxRetries})...`)
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * this.retryCount)) // Exponential backoff
+        this.isRendering = false
+        return this.render(consumerId, true)
+      } else {
+        const container = document.getElementById(this.containerId)
+        if (container) {
+          container.innerHTML = '<div class="sovads-error" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Ad temporarily unavailable</div>'
+        }
+        if (this.sovads.getConfig().debug) {
+          console.error('Banner render failed after retries:', error)
+        }
+      }
     } finally {
       this.isRendering = false
+    }
+  }
+  
+  private async checkViewport(element: HTMLElement): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (typeof IntersectionObserver === 'undefined') {
+        resolve(true) // Fallback: load immediately if IntersectionObserver not supported
+        return
+      }
+      
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              observer.disconnect()
+              resolve(true)
+            }
+          })
+        },
+        { rootMargin: '50px' } // Start loading 50px before entering viewport
+      )
+      
+      observer.observe(element)
+      
+      // Timeout after 5 seconds - load anyway
+      setTimeout(() => {
+        observer.disconnect()
+        resolve(true)
+      }, 5000)
+    })
+  }
+  
+  private setupLazyLoadObserver(container: HTMLElement, consumerId?: string) {
+    if (typeof IntersectionObserver === 'undefined') {
+      // Fallback: load immediately
+      this.render(consumerId)
+      return
+    }
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !this.isRendering) {
+            observer.disconnect()
+            this.render(consumerId)
+          }
+        })
+      },
+      { rootMargin: '50px' }
+    )
+    
+    observer.observe(container)
+  }
+  
+  private setupAutoRefresh(consumerId?: string) {
+    // Clear existing timer
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer)
+    }
+    
+    const refreshInterval = this.sovads.getConfig().refreshInterval || 0
+    if (refreshInterval > 0) {
+      this.refreshTimer = window.setInterval(() => {
+        if (!this.isRendering) {
+          this.render(consumerId, true)
+        }
+      }, refreshInterval * 1000)
+    }
+  }
+  
+  public destroy() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer)
+      this.refreshTimer = null
     }
   }
 }
@@ -878,12 +1011,14 @@ export class Popup {
   private currentAd: AdComponent | null = null
   private popupElement: HTMLElement | null = null
   private isShowing: boolean = false
+  private retryCount: number = 0
+  private maxRetries: number = 3
 
   constructor(sovads: SovAds) {
     this.sovads = sovads
   }
 
-  async show(consumerId?: string, delay: number = 3000) {
+  async show(consumerId?: string, delay: number = 3000): Promise<void> {
     // Prevent concurrent shows
     if (this.isShowing) {
       if (this.sovads.getConfig().debug) {
@@ -893,19 +1028,38 @@ export class Popup {
     }
 
     this.isShowing = true
-    this.currentAd = await this.sovads.loadAd(consumerId)
-    
-    if (!this.currentAd) {
-      console.log('No popup ad available')
-      this.isShowing = false
-      return
-    }
+    try {
+      this.currentAd = await this.sovads.loadAd(consumerId)
+      
+      if (!this.currentAd) {
+        if (this.retryCount < this.maxRetries) {
+          this.retryCount++
+          await new Promise(resolve => setTimeout(resolve, 1000 * this.retryCount))
+          this.isShowing = false
+          return this.show(consumerId, delay)
+        }
+        if (this.sovads.getConfig().debug) {
+          console.log('No popup ad available after retries')
+        }
+        this.isShowing = false
+        this.retryCount = 0
+        return
+      }
+      
+      this.retryCount = 0 // Reset on success
 
-    // Show popup after delay
-    setTimeout(() => {
-      this.renderPopup()
+      // Show popup after delay
+      setTimeout(() => {
+        this.renderPopup()
+        this.isShowing = false
+      }, delay)
+    } catch (error) {
+      if (this.sovads.getConfig().debug) {
+        console.error('Error loading popup ad:', error)
+      }
       this.isShowing = false
-    }, delay)
+      this.retryCount = 0
+    }
   }
 
   private renderPopup() {
@@ -959,6 +1113,28 @@ export class Popup {
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
     `
 
+    // SovAds logo badge in small left corner
+    const logoBadge = document.createElement('div')
+    logoBadge.style.cssText = `
+      position: absolute;
+      top: 8px;
+      left: 12px;
+      width: 24px;
+      height: 24px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      font-weight: bold;
+      color: white;
+      z-index: 1;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    `
+    logoBadge.textContent = 'SA'
+    logoBadge.title = 'SovAds'
+
     // Close button
     const closeBtn = document.createElement('button')
     closeBtn.innerHTML = '×'
@@ -971,11 +1147,26 @@ export class Popup {
       font-size: 24px;
       cursor: pointer;
       color: #666;
+      z-index: 2;
     `
 
     closeBtn.addEventListener('click', () => {
       this.hide()
     })
+
+    // Add "Ad" message text below logo
+    const adLabel = document.createElement('div')
+    adLabel.style.cssText = `
+      position: absolute;
+      top: 36px;
+      left: 12px;
+      font-size: 9px;
+      color: #999;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    `
+    adLabel.textContent = 'Ad'
 
     // Handle dummy ads
     if (this.currentAd.isDummy) {
@@ -1010,6 +1201,8 @@ export class Popup {
       dummyContent.appendChild(message)
       dummyContent.appendChild(link)
 
+      this.popupElement.appendChild(logoBadge)
+      this.popupElement.appendChild(adLabel)
       this.popupElement.appendChild(closeBtn)
       this.popupElement.appendChild(dummyContent)
       overlay.appendChild(this.popupElement)
@@ -1091,6 +1284,8 @@ export class Popup {
       this.hide()
     })
 
+    this.popupElement.appendChild(logoBadge)
+    this.popupElement.appendChild(adLabel)
     this.popupElement.appendChild(closeBtn)
     this.popupElement.appendChild(mediaElement)
     overlay.appendChild(this.popupElement)
@@ -1104,16 +1299,23 @@ export class Popup {
 
   hide() {
     const overlay = document.querySelector('.sovads-popup-overlay')
-    if (overlay && overlay.isConnected) {
+    if (overlay) {
       try {
-        overlay.remove()
+        // Check if element is still connected to DOM before removing
+        if (overlay.isConnected) {
+          // Use remove() method which is safer and doesn't require parentNode
+          overlay.remove()
+        }
       } catch (error) {
         // Element may have already been removed by React or another process
+        // Silently fail - this is expected in some cases
         if (this.sovads.getConfig().debug) {
           console.warn('Could not remove popup overlay:', error)
         }
       }
     }
+    this.popupElement = null
+    this.currentAd = null
   }
 }
 
@@ -1125,15 +1327,19 @@ export class Sidebar {
   private renderStartTime: number = 0
   private hasTrackedImpression: boolean = false
   private isRendering: boolean = false
+  private refreshTimer: number | null = null
+  private lastAdId: string | null = null
+  private retryCount: number = 0
+  private maxRetries: number = 3
 
   constructor(sovads: SovAds, containerId: string) {
     this.sovads = sovads
     this.containerId = containerId
   }
 
-  async render(consumerId?: string) {
+  async render(consumerId?: string, forceRefresh: boolean = false): Promise<void> {
     // Prevent concurrent renders
-    if (this.isRendering) {
+    if (this.isRendering && !forceRefresh) {
       if (this.sovads.getConfig().debug) {
         console.warn(`Sidebar render already in progress for ${this.containerId}`)
       }
@@ -1149,8 +1355,30 @@ export class Sidebar {
         return
       }
 
+      // Lazy loading: wait for container to be in viewport
+      if (this.sovads.getConfig().lazyLoad && !forceRefresh) {
+        const isInViewport = await this.checkViewport(container)
+        if (!isInViewport) {
+          this.setupLazyLoadObserver(container, consumerId)
+          this.isRendering = false
+          return
+        }
+      }
+
       this.renderStartTime = Date.now()
       this.currentAd = await this.sovads.loadAd(consumerId)
+      
+      // Skip if same ad (rotation disabled or same ad returned)
+      if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
+        if (this.sovads.getConfig().debug) {
+          console.log('Same ad returned, skipping render')
+        }
+        this.isRendering = false
+        return
+      }
+      
+      this.lastAdId = this.currentAd?.id || null
+      this.retryCount = 0
       
       if (!this.currentAd) {
         container.innerHTML = '<div class="sovads-no-ad">No ads available</div>'
@@ -1317,8 +1545,101 @@ export class Sidebar {
       mediaElement.style.cursor = 'pointer'
       adElement.appendChild(mediaElement)
       container.appendChild(adElement)
+      
+      // Set up auto-refresh if enabled
+      this.setupAutoRefresh(consumerId)
+    } catch (error) {
+      // Retry logic on error
+      if (this.retryCount < this.maxRetries) {
+        this.retryCount++
+        if (this.sovads.getConfig().debug) {
+          console.warn(`Sidebar render failed, retrying (${this.retryCount}/${this.maxRetries})...`)
+        }
+        await new Promise(resolve => setTimeout(resolve, 1000 * this.retryCount))
+        this.isRendering = false
+        return this.render(consumerId, true)
+      } else {
+        const container = document.getElementById(this.containerId)
+        if (container) {
+          container.innerHTML = '<div class="sovads-error" style="padding: 10px; text-align: center; color: #666; font-size: 12px;">Ad temporarily unavailable</div>'
+        }
+        if (this.sovads.getConfig().debug) {
+          console.error('Sidebar render failed after retries:', error)
+        }
+      }
     } finally {
       this.isRendering = false
+    }
+  }
+  
+  private async checkViewport(element: HTMLElement): Promise<boolean> {
+    return new Promise((resolve) => {
+      if (typeof IntersectionObserver === 'undefined') {
+        resolve(true)
+        return
+      }
+      
+      const observer = new IntersectionObserver(
+        (entries) => {
+          entries.forEach((entry) => {
+            if (entry.isIntersecting) {
+              observer.disconnect()
+              resolve(true)
+            }
+          })
+        },
+        { rootMargin: '50px' }
+      )
+      
+      observer.observe(element)
+      
+      setTimeout(() => {
+        observer.disconnect()
+        resolve(true)
+      }, 5000)
+    })
+  }
+  
+  private setupLazyLoadObserver(container: HTMLElement, consumerId?: string) {
+    if (typeof IntersectionObserver === 'undefined') {
+      this.render(consumerId)
+      return
+    }
+    
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting && !this.isRendering) {
+            observer.disconnect()
+            this.render(consumerId)
+          }
+        })
+      },
+      { rootMargin: '50px' }
+    )
+    
+    observer.observe(container)
+  }
+  
+  private setupAutoRefresh(consumerId?: string) {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer)
+    }
+    
+    const refreshInterval = this.sovads.getConfig().refreshInterval || 0
+    if (refreshInterval > 0) {
+      this.refreshTimer = window.setInterval(() => {
+        if (!this.isRendering) {
+          this.render(consumerId, true)
+        }
+      }, refreshInterval * 1000)
+    }
+  }
+  
+  public destroy() {
+    if (this.refreshTimer) {
+      clearInterval(this.refreshTimer)
+      this.refreshTimer = null
     }
   }
 }

@@ -79,6 +79,24 @@ export default function AdvertiserDashboard() {
     }
   }
 
+  const cloneCampaign = (campaign: Campaign) => {
+    // Navigate to create campaign page with pre-filled data
+    const params = new URLSearchParams({
+      clone: 'true',
+      name: `${campaign.name} (Copy)`,
+      description: campaign.description || '',
+      bannerUrl: campaign.bannerUrl,
+      targetUrl: campaign.targetUrl,
+      budget: campaign.budget.toString(),
+      cpc: campaign.cpc.toString(),
+      tokenAddress: campaign.tokenAddress || '',
+      tags: campaign.tags?.join(',') || '',
+      targetLocations: campaign.targetLocations?.join(',') || '',
+      mediaType: campaign.mediaType || 'image',
+    })
+    window.location.href = `/create-campaign?${params.toString()}`
+  }
+
   // Creation is handled on dedicated page now
 
   return (
@@ -176,6 +194,17 @@ export default function AdvertiserDashboard() {
                           {campaign.budget > 0 ? ((campaign.spent / campaign.budget) * 100).toFixed(1) : '0.0'}%
                         </div>
                         <div className="text-sm text-foreground/60">Budget Used</div>
+                      </div>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            cloneCampaign(campaign)
+                          }}
+                          className="text-xs px-2 py-1 bg-secondary border border-border rounded hover:bg-secondary/80"
+                        >
+                          Clone
+                        </button>
                       </div>
                     </div>
                   </div>

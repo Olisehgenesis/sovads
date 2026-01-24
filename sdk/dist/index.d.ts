@@ -3,6 +3,9 @@ export interface SovAdsConfig {
     apiUrl?: string;
     debug?: boolean;
     consumerId?: string;
+    refreshInterval?: number;
+    lazyLoad?: boolean;
+    rotationEnabled?: boolean;
 }
 export interface AdComponent {
     id: string;
@@ -93,14 +96,24 @@ export declare class Banner {
     private renderStartTime;
     private hasTrackedImpression;
     private isRendering;
+    private refreshTimer;
+    private lastAdId;
+    private retryCount;
+    private maxRetries;
     constructor(sovads: SovAds, containerId: string);
-    render(consumerId?: string): Promise<void>;
+    render(consumerId?: string, forceRefresh?: boolean): Promise<void>;
+    private checkViewport;
+    private setupLazyLoadObserver;
+    private setupAutoRefresh;
+    destroy(): void;
 }
 export declare class Popup {
     private sovads;
     private currentAd;
     private popupElement;
     private isShowing;
+    private retryCount;
+    private maxRetries;
     constructor(sovads: SovAds);
     show(consumerId?: string, delay?: number): Promise<void>;
     private renderPopup;
@@ -113,8 +126,16 @@ export declare class Sidebar {
     private renderStartTime;
     private hasTrackedImpression;
     private isRendering;
+    private refreshTimer;
+    private lastAdId;
+    private retryCount;
+    private maxRetries;
     constructor(sovads: SovAds, containerId: string);
-    render(consumerId?: string): Promise<void>;
+    render(consumerId?: string, forceRefresh?: boolean): Promise<void>;
+    private checkViewport;
+    private setupLazyLoadObserver;
+    private setupAutoRefresh;
+    destroy(): void;
 }
 export { SovAds };
 export default SovAds;

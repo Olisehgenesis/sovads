@@ -13,8 +13,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
     }
 
-    const publishersCollection = await collections.publishers()
-    const publisherSitesCollection = await collections.publisherSites()
+    let publishersCollection, publisherSitesCollection
+    try {
+      publishersCollection = await collections.publishers()
+      publisherSitesCollection = await collections.publisherSites()
+    } catch (dbError) {
+      console.error('MongoDB connection error:', dbError)
+      return NextResponse.json({ 
+        error: 'Database connection failed',
+        details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
+      }, { status: 500 })
+    }
 
     const publisher = await publishersCollection.findOne({ wallet })
 
@@ -39,7 +48,11 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ sites: normalizedSites })
   } catch (error) {
     console.error('Error fetching publisher sites:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    }, { status: 500 })
   }
 }
 
@@ -53,8 +66,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet and domain are required' }, { status: 400 })
     }
 
-    const publishersCollection = await collections.publishers()
-    const publisherSitesCollection = await collections.publisherSites()
+    let publishersCollection, publisherSitesCollection
+    try {
+      publishersCollection = await collections.publishers()
+      publisherSitesCollection = await collections.publisherSites()
+    } catch (dbError) {
+      console.error('MongoDB connection error:', dbError)
+      return NextResponse.json({ 
+        error: 'Database connection failed',
+        details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
+      }, { status: 500 })
+    }
 
     const existingPublisher = await publishersCollection.findOne({ wallet })
 
@@ -156,7 +178,11 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error adding site:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+    return NextResponse.json({ 
+      error: 'Internal server error',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    }, { status: 500 })
   }
 }
 

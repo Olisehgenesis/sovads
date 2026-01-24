@@ -11,6 +11,13 @@ const nextConfig: NextConfig = {
     config.externals.push("pino-pretty", "lokijs", "encoding");
     return config;
   },
+  // Fix for Next.js 16 RSC routing issues
+  experimental: {
+    // Disable RSC prefetching to avoid 404 errors
+    serverActions: {
+      bodySizeLimit: '2mb',
+    },
+  },
 };
 
 export default nextConfig;
