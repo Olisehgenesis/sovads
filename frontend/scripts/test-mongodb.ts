@@ -6,7 +6,15 @@
 
 import { MongoClient } from 'mongodb'
 
-const testUri = process.argv[2] || process.env.MONGODB_URI || 'mongodb+srv://adminuser:g0XinFH9CukeEkrX@ads.nomaisj.mongodb.net/?appName=ads'
+// Get URI from command line argument or environment variable - DO NOT hardcode credentials
+const testUri = process.argv[2] || process.env.MONGODB_URI
+
+if (!testUri) {
+  console.error('❌ Error: MongoDB connection string is required')
+  console.error('💡 Usage: tsx scripts/test-mongodb.ts [connection-string]')
+  console.error('💡 Or set MONGODB_URI environment variable')
+  process.exit(1)
+}
 
 async function testConnection() {
   console.log('🔍 Testing MongoDB Connection...\n')

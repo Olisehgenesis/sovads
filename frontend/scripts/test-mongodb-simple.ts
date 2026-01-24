@@ -5,8 +5,14 @@
 
 import { MongoClient } from 'mongodb'
 
-// Your MongoDB URI
-const uri = 'mongodb+srv://adminuser:g0XinFH9CukeEkrX@ads.nomaisj.mongodb.net/?appName=ads'
+// Get URI from environment variable - DO NOT hardcode credentials
+const uri = process.env.MONGODB_URI
+
+if (!uri) {
+  console.error('❌ Error: MONGODB_URI environment variable is not set')
+  console.error('💡 Set it in your .env file or pass it as an environment variable')
+  process.exit(1)
+}
 
 console.log('Testing MongoDB connection...')
 console.log('URI:', uri.replace(/:[^:@]+@/, ':****@'))

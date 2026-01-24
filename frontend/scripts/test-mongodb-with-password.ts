@@ -6,9 +6,20 @@
 
 import { MongoClient, ServerApiVersion } from 'mongodb'
 
-// Get password from command line argument or use the old one as fallback
-const password = process.argv[2] || 'g0XinFH9CukeEkrX'
-const uri = `mongodb+srv://sovads:${password}@cluster0.ozxjq7p.mongodb.net/?appName=Cluster0`
+// Get password from command line argument or environment variable
+const password = process.argv[2] || process.env.MONGODB_PASSWORD
+
+if (!password) {
+  console.error('❌ Error: MongoDB password is required')
+  console.error('💡 Usage: tsx scripts/test-mongodb-with-password.ts [password]')
+  console.error('💡 Or set MONGODB_PASSWORD environment variable')
+  process.exit(1)
+}
+
+// Get username and cluster from environment or use defaults
+const username = process.env.MONGODB_USERNAME || 'sovads'
+const cluster = process.env.MONGODB_CLUSTER || 'cluster0.ozxjq7p.mongodb.net'
+const uri = `mongodb+srv://${username}:${password}@${cluster}/?appName=Cluster0`
 
 async function run() {
   const client = new MongoClient(uri, {

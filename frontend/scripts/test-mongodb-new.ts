@@ -5,8 +5,14 @@
 
 import { MongoClient, ServerApiVersion } from 'mongodb'
 
-// Using password from previous connection
-const uri = "mongodb+srv://sovads:g0XinFH9CukeEkrX@cluster0.ozxjq7p.mongodb.net/?appName=Cluster0"
+// Get URI from environment variable - DO NOT hardcode credentials
+const uri = process.env.MONGODB_URI
+
+if (!uri) {
+  console.error('❌ Error: MONGODB_URI environment variable is not set')
+  console.error('💡 Set it in your .env file or pass it as an environment variable')
+  process.exit(1)
+}
 
 async function run() {
   const client = new MongoClient(uri, {
