@@ -14,12 +14,15 @@ if (!uri) {
   process.exit(1)
 }
 
+// TypeScript type narrowing: uri is guaranteed to be a string after the check above
+const mongoUri: string = uri
+
 console.log('Testing MongoDB connection...')
-console.log('URI:', uri.replace(/:[^:@]+@/, ':****@'))
+console.log('URI:', mongoUri.replace(/:[^:@]+@/, ':****@'))
 console.log('')
 
 async function test() {
-  const client = new MongoClient(uri, {
+  const client = new MongoClient(mongoUri, {
     serverSelectionTimeoutMS: 10000,
   })
 

@@ -16,10 +16,13 @@ if (!password) {
   process.exit(1)
 }
 
+// TypeScript type narrowing: password is guaranteed to be a string after the check above
+const mongoPassword: string = password
+
 // Get username and cluster from environment or use defaults
 const username = process.env.MONGODB_USERNAME || 'sovads'
 const cluster = process.env.MONGODB_CLUSTER || 'cluster0.ozxjq7p.mongodb.net'
-const uri = `mongodb+srv://${username}:${password}@${cluster}/?appName=Cluster0`
+const uri = `mongodb+srv://${username}:${mongoPassword}@${cluster}/?appName=Cluster0`
 
 async function run() {
   const client = new MongoClient(uri, {
@@ -35,8 +38,8 @@ async function run() {
   try {
     console.log('🔍 Testing MongoDB Connection...')
     console.log(`URI: ${uri.replace(/:[^:@]+@/, ':****@')}`)
-    console.log(`Username: sovads`)
-    console.log(`Password: ${'*'.repeat(password.length)}`)
+    console.log(`Username: ${username}`)
+    console.log(`Password: ${'*'.repeat(mongoPassword.length)}`)
     console.log('')
 
     console.log('⏳ Connecting to MongoDB...')
