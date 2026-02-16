@@ -2,10 +2,12 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect } from 'react'
-import { useAccount } from 'wagmi'
+import { useAccount, useWriteContract } from 'wagmi'
+import { parseUnits } from 'viem'
 import WalletButton from '@/components/WalletButton'
 import { BannerAd, SidebarAd } from '@/components/ads/AdSlots'
 import { useAds } from '@/hooks/useAds'
+import { TREASURY_ADDRESS, SUPPORTED_EXCHANGE_TOKENS, ERC20_TRANSFER_ABI, GS_RATES } from '@/lib/treasury-tokens'
 
 interface PublisherStats {
   impressions: number
@@ -54,7 +56,19 @@ export default function PublisherDashboard() {
     registeredInDB: boolean
     domain: string
   } | null>(null)
-  
+  const [publisherId, setPublisherId] = useState<string | null>(null)
+  const [isWithdrawing, setIsWithdrawing] = useState(false)
+  const [withdrawError, setWithdrawError] = useState<string | null>(null)
+  const [withdrawSuccess, setWithdrawSuccess] = useState<string | null>(null)
+  const [availableBalance, setAvailableBalance] = useState(0)
+  const [topupAmount, setTopupAmount] = useState('')
+  const [topupToken, setTopupToken] = useState<string>('cUSD')
+  const [exchangeHistory, setExchangeHistory] = useState<Array<{ fromToken: string; fromAmount: number; gsReceived: number; txHash?: string; createdAt: string }>>([])
+  const [isToppingUp, setIsToppingUp] = useState(false)
+  const [topupError, setTopupError] = useState<string | null>(null)
+  const [topupSuccess, setTopupSuccess] = useState<string | null>(null)
+
+  const { writeContractAsync: writeTransfer } = useWriteContract()
   const isChecking = Boolean(domainCheckStatus?.checking)
   const [isUrlValid, setIsUrlValid] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
@@ -99,7 +113,10 @@ export default function PublisherDashboard() {
       if (publisherResponse.ok) {
         const publisherData = await publisherResponse.json()
         setIsRegistered(true)
+        setPublisherId(publisherData.id)
         loadStats(publisherData.id)
+        loadBalance(walletAddress)
+        loadExchangeHistory(walletAddress)
       }
 
       if (sitesResponse.ok) {
@@ -109,14 +126,14 @@ export default function PublisherDashboard() {
           apiSecret: site.apiSecret ?? undefined,
         }))
         setSites(dbSites)
-        
+
         // Store new API secrets temporarily for display
         dbSites.forEach((site: PublisherSite) => {
           if (site.apiSecret && !newApiSecrets[site.id]) {
             setNewApiSecrets(prev => ({ ...prev, [site.id]: site.apiSecret! }))
           }
         })
-        
+
         // Sync on-chain sites to database if they don't exist
         const sitesToSync = onChainSitesList || onChainSites
         if (sitesToSync.length > 0) {
@@ -142,7 +159,7 @@ export default function PublisherDashboard() {
               }
             }
           }
-          
+
           // Reload sites if any were added
           if (needsReload) {
             const updatedResponse = await fetch(`/api/publishers/sites?wallet=${walletAddress}`)
@@ -157,7 +174,7 @@ export default function PublisherDashboard() {
             }
           }
         }
-        
+
         if (dbSites.length > 0 && !selectedSite) {
           setSelectedSite(dbSites[0])
         }
@@ -206,6 +223,30 @@ export default function PublisherDashboard() {
     }
   }
 
+  const loadBalance = async (walletAddress: string) => {
+    try {
+      const res = await fetch(`/api/publishers/balance?wallet=${walletAddress}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAvailableBalance(data.available ?? 0)
+      }
+    } catch {
+      setAvailableBalance(0)
+    }
+  }
+
+  const loadExchangeHistory = async (walletAddress: string) => {
+    try {
+      const res = await fetch(`/api/publishers/exchange?wallet=${walletAddress}`)
+      if (res.ok) {
+        const data = await res.json()
+        setExchangeHistory(data.exchanges ?? [])
+      }
+    } catch {
+      setExchangeHistory([])
+    }
+  }
+
   // URL validation function
   const validateUrl = (url: string): { valid: boolean; domain: string | null; error: string | null } => {
     if (!url || url.trim() === '') {
@@ -213,28 +254,28 @@ export default function PublisherDashboard() {
     }
 
     const trimmedUrl = url.trim()
-    
+
     // Extract domain from URL (handles http://, https://, www., etc.)
     let domain = trimmedUrl
-    
+
     try {
       // If it doesn't start with http:// or https://, add https:// for parsing
-      const urlToParse = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://') 
-        ? trimmedUrl 
+      const urlToParse = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')
+        ? trimmedUrl
         : `https://${trimmedUrl}`
-      
+
       const urlObj = new URL(urlToParse)
       domain = urlObj.hostname
-      
+
       // Remove www. prefix if present
       domain = domain.replace(/^www\./, '')
-      
+
       // Validate domain format (basic check)
       const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
       if (!domainRegex.test(domain)) {
         return { valid: false, domain: null, error: 'Invalid domain format' }
       }
-      
+
       return { valid: true, domain, error: null }
     } catch (error) {
       // If URL parsing fails, try simple domain validation
@@ -242,7 +283,7 @@ export default function PublisherDashboard() {
       if (simpleDomainRegex.test(trimmedUrl)) {
         return { valid: true, domain: trimmedUrl.replace(/^www\./, ''), error: null }
       }
-      
+
       return { valid: false, domain: null, error: 'Invalid URL format' }
     }
   }
@@ -251,9 +292,9 @@ export default function PublisherDashboard() {
     if (!domain || !address) {
       return { registeredOnChain: false, registeredInDB: false }
     }
-    
+
     setDomainCheckStatus({ checking: true, registeredOnChain: false, registeredInDB: false, domain })
-    
+
     try {
       // Check on-chain registration
       let onChainRegistered = false
@@ -263,7 +304,7 @@ export default function PublisherDashboard() {
       } catch (error) {
         console.error('Error checking on-chain registration:', error)
       }
-      
+
       // Check DB registration
       let dbRegistered = false
       try {
@@ -276,14 +317,14 @@ export default function PublisherDashboard() {
       } catch (error) {
         console.error('Error checking DB registration:', error)
       }
-      
+
       const result = {
         checking: false,
         registeredOnChain: onChainRegistered,
         registeredInDB: dbRegistered,
         domain
       }
-      
+
       setDomainCheckStatus(result)
       return { registeredOnChain: onChainRegistered, registeredInDB: dbRegistered }
     } catch (error) {
@@ -312,11 +353,11 @@ export default function PublisherDashboard() {
 
     try {
       const domainToRegister = validation.domain // Use extracted domain
-      
+
       // Check current registration status
       let isOnChain = false
       let isInDB = false
-      
+
       if (domainCheckStatus?.domain === domainToRegister && !domainCheckStatus.checking) {
         isOnChain = domainCheckStatus.registeredOnChain
         isInDB = domainCheckStatus.registeredInDB
@@ -325,7 +366,7 @@ export default function PublisherDashboard() {
         isOnChain = checkResult.registeredOnChain
         isInDB = checkResult.registeredInDB
       }
-      
+
       // Register on-chain if not already registered
       let onChainSuccess = false
       if (!isOnChain) {
@@ -348,7 +389,7 @@ export default function PublisherDashboard() {
         } catch (onChainError) {
           console.error('On-chain registration error:', onChainError)
           const errorMsg = onChainError instanceof Error ? onChainError.message : 'Unknown error'
-          
+
           // If on-chain fails but we still need to register in DB, continue
           if (!isInDB) {
             setRegistrationError(`On-chain registration failed: ${errorMsg}. Will still try to register in database.`)
@@ -377,28 +418,28 @@ export default function PublisherDashboard() {
           if (response.ok) {
             const data = await response.json()
             dbSuccess = true
-            
+
             // Store API secret if returned (new sites only)
             if (data.site?.apiSecret) {
               setNewApiSecrets((prev: Record<string, string>) => ({ ...prev, [data.site.id]: data.site.apiSecret }))
               setShowApiSecret((prev: Record<string, boolean>) => ({ ...prev, [data.site.id]: true }))
             }
-            
+
             // Reload data to show updated status
             await loadPublisherData(address)
             await loadOnChainSites(address)
-            
+
             let successMsg = ''
             if (isOnChain && !isInDB) {
               successMsg = `✓ Successfully added ${domainToRegister} to database! Site is now registered on both platforms.`
             } else if (!isOnChain && isInDB) {
               successMsg = `✓ Successfully registered ${domainToRegister} on-chain! Site is now registered on both platforms.`
             } else {
-              successMsg = data.site?.apiSecret 
+              successMsg = data.site?.apiSecret
                 ? `✓ Successfully registered ${domainToRegister} on both platforms! API credentials generated.`
                 : `✓ Successfully registered ${domainToRegister} on both platforms!`
             }
-            
+
             setRegistrationSuccess(successMsg)
             setTimeout(() => setRegistrationSuccess(null), 5000)
           } else {
@@ -414,7 +455,7 @@ export default function PublisherDashboard() {
         } catch (dbError) {
           console.error('Database registration error:', dbError)
           const errorMsg = dbError instanceof Error ? dbError.message : 'Unknown error'
-          
+
           // If on-chain succeeded but DB failed, show specific error
           if (onChainSuccess) {
             setRegistrationError(`⚠️ Site registered on-chain but database registration failed: ${errorMsg}. The site is on-chain but not in database. Please try again or contact support.`)
@@ -425,7 +466,7 @@ export default function PublisherDashboard() {
       } else {
         dbSuccess = true // Already registered in DB
       }
-      
+
       // Final status check and success message
       if (isOnChain && isInDB) {
         if (onChainSuccess && dbSuccess) {
@@ -450,11 +491,11 @@ export default function PublisherDashboard() {
       } else if (!onChainSuccess && !dbSuccess) {
         setRegistrationError('❌ Registration failed on both platforms. Please check your connection and try again.')
       }
-      
+
     } catch (error) {
       console.error('Error registering publisher:', error)
       const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-      
+
       // Provide more helpful, user-friendly error messages
       if (errorMsg.includes('user rejected') || errorMsg.includes('User rejected')) {
         setRegistrationError('❌ Transaction was rejected. Please approve the transaction in your wallet to complete registration.')
@@ -486,7 +527,7 @@ export default function PublisherDashboard() {
 
     try {
       const domainToAdd = newDomain.trim()
-      
+
       // Add on-chain if publisher is registered
       if (isRegisteredOnChain) {
         await addSite(domainToAdd)
@@ -583,24 +624,24 @@ export default function PublisherDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-foreground mb-8">Publisher Dashboard</h1>
+    <div className="min-h-screen bg-transparent">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <h1 className="text-base font-bold text-[var(--text-primary)] mb-6 uppercase tracking-wider">Publisher Dashboard</h1>
 
         {!isConnected ? (
-          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-4">Connect Your Wallet</h2>
-            <p className="text-muted-foreground mb-6">
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Connect Your Wallet</h2>
+            <p className="text-[var(--text-secondary)] mb-6">
               Connect your wallet to register as a publisher and start earning from ads
             </p>
             <WalletButton className="w-full" />
           </div>
         ) : !isRegistered ? (
-          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-            <h2 className="text-xl font-semibold text-foreground mb-4">Register Your First Website</h2>
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Register Your First Website</h2>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-foreground mb-2">
+                <label className="block text-[10px] font-medium text-[var(--text-primary)] mb-1 uppercase tracking-tight">
                   Domain
                 </label>
                 <div>
@@ -612,13 +653,13 @@ export default function PublisherDashboard() {
                       setNewDomain(url)
                       setDomainCheckStatus(null)
                       setUrlError(null)
-                      
+
                       // Validate URL in real-time
                       if (url.trim()) {
                         const validation = validateUrl(url)
                         setIsUrlValid(validation.valid)
                         setUrlError(validation.error)
-                        
+
                         // If valid, extract domain and check registration
                         if (validation.valid && validation.domain && address) {
                           // Debounce the check
@@ -642,14 +683,14 @@ export default function PublisherDashboard() {
                         }
                       }
                     }}
-                    className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                    className="w-full px-2 py-1.5 bg-input border border-border rounded-md text-[var(--text-primary)] text-[11px] focus:outline-none focus:ring-1 focus:ring-ring"
                     placeholder="example.com or https://example.com"
                   />
                   {urlError && (
                     <p className="text-sm text-red-600 mt-1">{urlError}</p>
                   )}
                   {!urlError && newDomain.trim() && !isUrlValid && (
-                    <p className="text-sm text-muted-foreground mt-1">
+                    <p className="text-sm text-[var(--text-secondary)] mt-1">
                       Enter a valid URL or domain
                     </p>
                   )}
@@ -659,7 +700,7 @@ export default function PublisherDashboard() {
                     </p>
                   )}
                 </div>
-                
+
                 {/* Domain Registration Status */}
                 {domainCheckStatus && !domainCheckStatus.checking && isUrlValid && (
                   <div className="mt-3 space-y-2">
@@ -679,7 +720,7 @@ export default function PublisherDashboard() {
                         {domainCheckStatus.registeredInDB ? 'Registered' : 'Not Registered'}
                       </span>
                     </div>
-                    
+
                     {/* Action Prompts */}
                     {domainCheckStatus.registeredOnChain && !domainCheckStatus.registeredInDB && (
                       <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
@@ -717,8 +758,8 @@ export default function PublisherDashboard() {
               <button
                 onClick={registerPublisher}
                 disabled={
-                  isRegisteringOnChain || 
-                  contractLoading || 
+                  isRegisteringOnChain ||
+                  contractLoading ||
                   isChecking ||
                   !isUrlValid ||
                   !newDomain.trim() ||
@@ -726,17 +767,17 @@ export default function PublisherDashboard() {
                 }
                 className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isRegisteringOnChain 
-                  ? 'Registering...' 
+                {isRegisteringOnChain
+                  ? 'Registering...'
                   : isChecking
-                  ? 'Checking...'
-                  : !isUrlValid
-                  ? 'Enter Valid URL'
-                  : domainCheckStatus && domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB
-                  ? 'Already Registered'
-                  : domainCheckStatus && (!domainCheckStatus.registeredOnChain || !domainCheckStatus.registeredInDB)
-                  ? 'Complete Registration'
-                  : 'Register Publisher'}
+                    ? 'Checking...'
+                    : !isUrlValid
+                      ? 'Enter Valid URL'
+                      : domainCheckStatus && domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB
+                        ? 'Already Registered'
+                        : domainCheckStatus && (!domainCheckStatus.registeredOnChain || !domainCheckStatus.registeredInDB)
+                          ? 'Complete Registration'
+                          : 'Register Publisher'}
               </button>
               {isRegisteredOnChain && (
                 <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm">
@@ -748,44 +789,44 @@ export default function PublisherDashboard() {
         ) : (
           <div className="space-y-8">
             {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <div className="text-2xl font-bold text-foreground">{stats.impressions.toLocaleString()}</div>
-                <div className="text-muted-foreground">Impressions</div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="glass-card rounded-lg p-4">
+                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.impressions.toLocaleString()}</div>
+                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Impressions</div>
               </div>
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <div className="text-2xl font-bold text-foreground">{stats.clicks.toLocaleString()}</div>
-                <div className="text-muted-foreground">Clicks</div>
+              <div className="glass-card rounded-lg p-4">
+                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.clicks.toLocaleString()}</div>
+                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Clicks</div>
               </div>
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <div className="text-2xl font-bold text-foreground">{stats.ctr.toFixed(2)}%</div>
-                <div className="text-muted-foreground">CTR</div>
+              <div className="glass-card rounded-lg p-4">
+                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.ctr.toFixed(2)}%</div>
+                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">CTR</div>
               </div>
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <div className="text-2xl font-bold text-foreground">{stats.totalRevenue.toFixed(6)}</div>
-                <div className="text-muted-foreground">Total Revenue</div>
+              <div className="glass-card rounded-lg p-4">
+                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.totalRevenue.toFixed(6)}</div>
+                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Total Revenue (GS)</div>
               </div>
             </div>
 
             {/* Live Ad Preview */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-foreground mb-4">Banner Placement Preview</h2>
-                <BannerAd className="min-h-[180px] rounded-md border border-dashed border-border" />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6">
+              <div className="glass-card rounded-lg p-4">
+                <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Banner Placement Preview</h2>
+                <BannerAd className="min-h-[120px] rounded-md border border-dashed border-border" />
               </div>
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <h2 className="text-lg font-semibold text-foreground mb-4">Sidebar Placement Preview</h2>
-                <SidebarAd className="min-h-[260px] rounded-md border border-dashed border-border" />
+              <div className="glass-card rounded-lg p-4">
+                <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Sidebar Placement Preview</h2>
+                <SidebarAd className="min-h-[180px] rounded-md border border-dashed border-border" />
               </div>
             </div>
 
             {/* Websites Management */}
-            <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Your Websites</h2>
+            <div className="glass-card rounded-lg p-4 mb-6">
+              <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Your Websites</h2>
               <div className="space-y-4">
                 <div>
                   <div className="flex items-center justify-between mb-2">
-                    <label className="block text-sm font-medium text-foreground">
+                    <label className="block text-[10px] font-medium text-[var(--text-primary)] uppercase tracking-tight">
                       On-chain Registration Status
                     </label>
                     <button
@@ -795,27 +836,26 @@ export default function PublisherDashboard() {
                           await loadOnChainSites(address)
                         }
                       }}
-                      className="text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded hover:bg-muted/50"
+                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded hover:bg-muted/50"
                       title="Refresh status"
                     >
                       ↻ Refresh
                     </button>
                   </div>
-                  <div className={`inline-block px-3 py-1 rounded-md text-sm font-medium ${
-                    isRegisteredOnChain 
-                      ? 'bg-green-500/20 text-green-700 dark:text-green-400 border border-green-500/50' 
-                      : 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 border border-yellow-500/50'
-                  }`}>
-                    {isRegisteredOnChain ? '✓ Registered on-chain' : '⚠ Not registered on-chain'}
+                  <div className={`inline-block px-2 py-0.5 rounded-md text-[10px] uppercase font-medium ${isRegisteredOnChain
+                    ? 'bg-green-500/20 text-[var(--accent-primary-solid)] border border-[var(--accent-primary-solid)]/30'
+                    : 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30'
+                    }`}>
+                    {isRegisteredOnChain ? '✓ Registered' : '⚠ Not Registered'}
                   </div>
                   {onChainSites.length > 0 && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Found {onChainSites.length} site(s) registered on-chain: {onChainSites.join(', ')}
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 uppercase">
+                      Found {onChainSites.length} site(s) registered: {onChainSites.join(', ')}
                     </p>
                   )}
                   {!isRegisteredOnChain && onChainSites.length === 0 && (
-                    <p className="text-sm text-muted-foreground mt-2">
-                      Click "Register on-chain" below to register your publisher address on the smart contract.
+                    <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 uppercase">
+                      Register your publisher address on the smart contract to start earning.
                     </p>
                   )}
                 </div>
@@ -823,11 +863,11 @@ export default function PublisherDashboard() {
                 {/* Sites List */}
                 {sites.length > 0 && (
                   <div className="space-y-2">
-                    <label className="block text-sm font-medium text-foreground mb-2">
+                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                       Registered Websites ({sites.length})
                     </label>
                     <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-[var(--text-secondary)]">
                         Click any site to view or copy its unique identifiers.
                       </span>
                       <button
@@ -844,7 +884,7 @@ export default function PublisherDashboard() {
                           <div className="flex items-start justify-between">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
-                                <span className="font-medium text-foreground">{site.domain}</span>
+                                <span className="font-medium text-[var(--text-primary)]">{site.domain}</span>
                                 {onChainSites.includes(site.domain) && (
                                   <span className="px-2 py-0.5 bg-green-500/20 text-green-700 dark:text-green-400 text-xs rounded border border-green-500/50">
                                     On-chain
@@ -858,25 +898,25 @@ export default function PublisherDashboard() {
                               </div>
                               <div className="space-y-2">
                                 <div className="flex items-center gap-2">
-                                  <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded">
+                                  <code className="text-xs text-[var(--text-secondary)] bg-muted px-2 py-1 rounded">
                                     {site.siteId}
                                   </code>
                                   <button
                                     onClick={() => copyToClipboard(site.siteId)}
-                                    className="text-xs text-muted-foreground hover:text-foreground"
+                                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                                   >
                                     Copy
                                   </button>
                                 </div>
                                 {site.apiKey && (
                                   <div className="flex items-center gap-2">
-                                    <span className="text-xs text-muted-foreground">API Key:</span>
-                                    <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded flex-1 truncate">
+                                    <span className="text-xs text-[var(--text-secondary)]">API Key:</span>
+                                    <code className="text-xs text-[var(--text-secondary)] bg-muted px-2 py-1 rounded flex-1 truncate">
                                       {site.apiKey}
                                     </code>
                                     <button
                                       onClick={() => copyToClipboard(site.apiKey!)}
-                                      className="text-xs text-muted-foreground hover:text-foreground"
+                                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                                     >
                                       Copy
                                     </button>
@@ -885,19 +925,19 @@ export default function PublisherDashboard() {
                                 {(site.apiSecret || newApiSecrets[site.id]) && (
                                   <div className="space-y-1">
                                     <div className="flex items-center gap-2">
-                                      <span className="text-xs text-muted-foreground">API Secret:</span>
-                                      <code className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded flex-1 truncate">
+                                      <span className="text-xs text-[var(--text-secondary)]">API Secret:</span>
+                                      <code className="text-xs text-[var(--text-secondary)] bg-muted px-2 py-1 rounded flex-1 truncate">
                                         {showApiSecret[site.id] ? (site.apiSecret || newApiSecrets[site.id]) : '••••••••'}
                                       </code>
                                       <button
                                         onClick={() => setShowApiSecret(prev => ({ ...prev, [site.id]: !prev[site.id] }))}
-                                        className="text-xs text-muted-foreground hover:text-foreground"
+                                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                                       >
                                         {showApiSecret[site.id] ? 'Hide' : 'Show'}
                                       </button>
                                       <button
                                         onClick={() => copyToClipboard(site.apiSecret || newApiSecrets[site.id] || '')}
-                                        className="text-xs text-muted-foreground hover:text-foreground"
+                                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
                                       >
                                         Copy
                                       </button>
@@ -925,7 +965,7 @@ export default function PublisherDashboard() {
 
                 {/* Add New Site */}
                 <div className="border-t border-border pt-4">
-                  <label className="block text-sm font-medium text-foreground mb-2">
+                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                     Add New Website
                   </label>
                   <div className="flex gap-2">
@@ -938,7 +978,7 @@ export default function PublisherDashboard() {
                         if (registrationError) setRegistrationError(null)
                         if (registrationSuccess) setRegistrationSuccess(null)
                       }}
-                      className="flex-1 px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="flex-1 px-3 py-2 bg-input border border-border rounded-md text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-ring"
                       placeholder="example.com"
                       onKeyPress={(e) => {
                         if (e.key === 'Enter' && !isAddingSite && !isRegisteringOnChain && newDomain.trim()) {
@@ -975,7 +1015,7 @@ export default function PublisherDashboard() {
                     </div>
                   )}
                   {sites.length === 0 && !isRegisteredOnChain && !registrationError && !registrationSuccess && (
-                    <p className="text-sm text-muted-foreground mt-2">
+                    <p className="text-sm text-[var(--text-secondary)] mt-2">
                       Adding your first site will register you as a publisher on-chain.
                     </p>
                   )}
@@ -1009,14 +1049,14 @@ export default function PublisherDashboard() {
 
             {/* Integration Code for Selected Site */}
             {selectedSite && (
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <h2 className="text-xl font-semibold text-foreground mb-4">
+              <div className="glass-card rounded-lg p-4 mb-6">
+                <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">
                   Integration Code
                 </h2>
 
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm font-medium text-foreground mb-2">
+                    <label className="block text-[10px] font-medium text-[var(--text-primary)] mb-1 uppercase tracking-tight">
                       Select Website
                     </label>
                     <select
@@ -1025,23 +1065,22 @@ export default function PublisherDashboard() {
                         const site = sites.find(s => s.id === e.target.value)
                         if (site) setSelectedSite(site)
                       }}
-                      className="w-full px-3 py-2 bg-input border border-border rounded-md text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                      className="w-full px-3 py-2 bg-input border border-border rounded-md text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-ring"
                     >
                       {sites.map(site => (
                         <option key={site.id} value={site.id}>{site.domain}</option>
                       ))}
                     </select>
                   </div>
-                  
+
                   {/* Tabs */}
                   <div className="flex border-b border-border">
                     <button
                       onClick={() => setActiveTab('sdk')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
-                        activeTab === 'sdk'
-                          ? 'text-foreground border-b-2 border-primary'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${activeTab === 'sdk'
+                        ? 'text-[var(--text-primary)] border-b-2 border-primary'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
                     >
                       <div className="flex items-center justify-center gap-2">
                         <span>SDK</span>
@@ -1052,214 +1091,354 @@ export default function PublisherDashboard() {
                     </button>
                     <button
                       onClick={() => setActiveTab('script')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${
-                        activeTab === 'script'
-                          ? 'text-foreground border-b-2 border-primary'
-                          : 'text-muted-foreground hover:text-foreground'
-                      }`}
+                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${activeTab === 'script'
+                        ? 'text-[var(--text-primary)] border-b-2 border-primary'
+                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                        }`}
                     >
                       Script Tag
                     </button>
                   </div>
-                  
+
                   {/* SDK Method (Recommended) */}
                   {activeTab === 'sdk' && (
-                  <div>
-                    <div className="rounded-2xl overflow-hidden shadow-sm border border-border">
-                      {/* Code Header */}
-                      <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900">
-                        <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
-                        <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
-                        <span className="h-2.5 w-2.5 rounded-full bg-green-500"></span>
-                        <span className="ml-2 text-xs text-neutral-400">sdk-integration.js</span>
+                    <div>
+                      <div className="rounded-2xl overflow-hidden shadow-sm border border-border">
+                        {/* Code Header */}
+                        <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900">
+                          <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
+                          <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
+                          <span className="h-2.5 w-2.5 rounded-full bg-green-500"></span>
+                          <span className="ml-2 text-xs text-neutral-400">sdk-integration.js</span>
+                        </div>
+                        {/* Code Content */}
+                        <pre className="bg-neutral-950 text-neutral-100 text-sm leading-6 p-4 overflow-x-auto">
+                          <code>
+                            <span className="text-neutral-400">{'// '}</span>
+                            <span className="text-white">Integration code for {selectedSite.domain}</span>
+                            {'\n'}
+                            <span className="text-neutral-400">{'// '}</span>
+                            <span className="text-white">Install: npm install @sovads/sdk</span>
+                            {'\n\n'}
+                            <span className="text-primary">import</span>
+                            <span className="text-white"> {'{'} SovAds, Banner {'}'} </span>
+                            <span className="text-primary">from</span>
+                            <span className="text-green-400"> '@sovads/sdk'</span>
+                            <span className="text-neutral-400">{';'}</span>
+                            {'\n\n'}
+                            <span className="text-primary">const</span>
+                            <span className="text-white"> adsClient = </span>
+                            <span className="text-primary">new</span>
+                            <span className="text-white"> SovAds({'{'}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">siteId</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'{selectedSite.siteId}'</span>
+                            <span className="text-neutral-400">{','}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">apiKey</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'{selectedSite.apiKey || 'YOUR_API_KEY'}'</span>
+                            <span className="text-neutral-400">{','}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">apiSecret</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'{selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'}'</span>
+                            {'\n'}
+                            <span className="text-white">{'});'}</span>
+                            <span className="text-neutral-400">{';'}</span>
+                            {'\n\n'}
+                            <span className="text-primary">const</span>
+                            <span className="text-white"> banner = </span>
+                            <span className="text-primary">new</span>
+                            <span className="text-white"> Banner(adsClient, </span>
+                            <span className="text-green-400">'banner'</span>
+                            <span className="text-white">);</span>
+                            {'\n'}
+                            <span className="text-primary">await</span>
+                            <span className="text-white"> banner.render(); </span>
+                            <span className="text-neutral-400">{'// renders after site ready'}</span>
+                          </code>
+                        </pre>
                       </div>
-                      {/* Code Content */}
-                      <pre className="bg-neutral-950 text-neutral-100 text-sm leading-6 p-4 overflow-x-auto">
-                        <code>
-                          <span className="text-neutral-400">{'// '}</span>
-                          <span className="text-white">Integration code for {selectedSite.domain}</span>
-                          {'\n'}
-                          <span className="text-neutral-400">{'// '}</span>
-                          <span className="text-white">Install: npm install @sovads/sdk</span>
-                          {'\n\n'}
-                          <span className="text-primary">import</span>
-                          <span className="text-white"> {'{'} SovAds, Banner {'}'} </span>
-                          <span className="text-primary">from</span>
-                          <span className="text-green-400"> '@sovads/sdk'</span>
-                          <span className="text-neutral-400">{';'}</span>
-                          {'\n\n'}
-                          <span className="text-primary">const</span>
-                          <span className="text-white"> adsClient = </span>
-                          <span className="text-primary">new</span>
-                          <span className="text-white"> SovAds({'{'}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">siteId</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'{selectedSite.siteId}'</span>
-                          <span className="text-neutral-400">{','}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">apiKey</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'{selectedSite.apiKey || 'YOUR_API_KEY'}'</span>
-                          <span className="text-neutral-400">{','}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">apiSecret</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'{selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'}'</span>
-                          {'\n'}
-                          <span className="text-white">{'});'}</span>
-                          <span className="text-neutral-400">{';'}</span>
-                          {'\n\n'}
-                          <span className="text-primary">const</span>
-                          <span className="text-white"> banner = </span>
-                          <span className="text-primary">new</span>
-                          <span className="text-white"> Banner(adsClient, </span>
-                          <span className="text-green-400">'banner'</span>
-                          <span className="text-white">);</span>
-                          {'\n'}
-                          <span className="text-primary">await</span>
-                          <span className="text-white"> banner.render(); </span>
-                          <span className="text-neutral-400">{'// renders after site ready'}</span>
-                        </code>
-                      </pre>
+                      <button
+                        onClick={() => {
+                          const apiKey = selectedSite.apiKey || 'YOUR_API_KEY'
+                          const apiSecret = selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'
+                          const code = `// Integration code for ${selectedSite.domain}\n// Install: npm install @sovads/sdk\n\nimport { SovAds, Banner } from '@sovads/sdk';\n\nconst adsClient = new SovAds({\n    siteId: '${selectedSite.siteId}',\n    apiKey: '${apiKey}',\n    apiSecret: '${apiSecret}', // Keep this secure!\n});\n\nconst banner = new Banner(adsClient, 'banner');\nawait banner.render(); // renders after site ready`
+                          copyToClipboard(code)
+                        }}
+                        className="mt-2 w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90"
+                      >
+                        Copy SDK Code
+                      </button>
+                      {(!selectedSite.apiKey || (!selectedSite.apiSecret && !newApiSecrets[selectedSite.id])) && (
+                        <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
+                          ⚠️ API credentials not available. Please regenerate them.
+                        </p>
+                      )}
                     </div>
-                    <button
-                      onClick={() => {
-                        const apiKey = selectedSite.apiKey || 'YOUR_API_KEY'
-                        const apiSecret = selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'
-                        const code = `// Integration code for ${selectedSite.domain}\n// Install: npm install @sovads/sdk\n\nimport { SovAds, Banner } from '@sovads/sdk';\n\nconst adsClient = new SovAds({\n    siteId: '${selectedSite.siteId}',\n    apiKey: '${apiKey}',\n    apiSecret: '${apiSecret}', // Keep this secure!\n});\n\nconst banner = new Banner(adsClient, 'banner');\nawait banner.render(); // renders after site ready`
-                        copyToClipboard(code)
-                      }}
-                      className="mt-2 w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90"
-                    >
-                      Copy SDK Code
-                    </button>
-                    {(!selectedSite.apiKey || (!selectedSite.apiSecret && !newApiSecrets[selectedSite.id])) && (
-                      <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
-                        ⚠️ API credentials not available. Please regenerate them.
-                      </p>
-                    )}
-                  </div>
                   )}
 
                   {/* Script Method */}
                   {activeTab === 'script' && (
-                  <div>
-                    <div className="rounded-2xl overflow-hidden shadow-sm border border-border">
-                      {/* Code Header */}
-                      <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900">
-                        <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
-                        <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
-                        <span className="h-2.5 w-2.5 rounded-full bg-green-500"></span>
-                        <span className="ml-2 text-xs text-neutral-400">script-integration.html</span>
+                    <div>
+                      <div className="rounded-2xl overflow-hidden shadow-sm border border-border">
+                        {/* Code Header */}
+                        <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900">
+                          <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
+                          <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
+                          <span className="h-2.5 w-2.5 rounded-full bg-green-500"></span>
+                          <span className="ml-2 text-xs text-neutral-400">script-integration.html</span>
+                        </div>
+                        {/* Code Content */}
+                        <pre className="bg-neutral-950 text-neutral-100 text-sm leading-6 p-4 overflow-x-auto">
+                          <code>
+                            <span className="text-neutral-400">{'<!-- '}</span>
+                            <span className="text-white">Integration code for {selectedSite.domain}</span>
+                            <span className="text-neutral-400">{' -->'}</span>
+                            {'\n'}
+                            <span className="text-neutral-400">{'<!-- '}</span>
+                            <span className="text-white">Add this to your website's {'<head>'}</span>
+                            <span className="text-neutral-400">{' -->'}</span>
+                            {'\n'}
+                            <span className="text-neutral-400">{'<script '}</span>
+                            <span className="text-primary">src</span>
+                            <span className="text-white">=</span>
+                            <span className="text-green-400">"https://api.sovads.com/sdk.js"</span>
+                            <span className="text-neutral-400">{'></script>'}</span>
+                            {'\n\n'}
+                            <span className="text-neutral-400">{'<!-- '}</span>
+                            <span className="text-white">Add this where you want ads to appear</span>
+                            <span className="text-neutral-400">{' -->'}</span>
+                            {'\n'}
+                            <span className="text-neutral-400">{'<div '}</span>
+                            <span className="text-primary">id</span>
+                            <span className="text-white">=</span>
+                            <span className="text-green-400">"sovads-banner"</span>
+                            <span className="text-neutral-400">{'></div>'}</span>
+                            {'\n\n'}
+                            <span className="text-neutral-400">{'<script>'}</span>
+                            {'\n'}
+                            <span className="text-neutral-400">{'// '}</span>
+                            <span className="text-white">Initialize SovAds SDK</span>
+                            {'\n'}
+                            <span className="text-primary">const</span>
+                            <span className="text-white"> sovads = </span>
+                            <span className="text-primary">new</span>
+                            <span className="text-white"> SovAds({'{'}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">siteId</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'{selectedSite.siteId}'</span>
+                            <span className="text-neutral-400">{','}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">apiKey</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'{selectedSite.apiKey || 'YOUR_API_KEY'}'</span>
+                            <span className="text-neutral-400">{','}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">apiSecret</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'{selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'}'</span>
+                            <span className="text-neutral-400">{','}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">containerId</span>
+                            <span className="text-white">: </span>
+                            <span className="text-green-400">'sovads-banner'</span>
+                            <span className="text-neutral-400">{','}</span>
+                            {'\n'}
+                            <span className="text-white">    </span>
+                            <span className="text-primary">debug</span>
+                            <span className="text-white">: </span>
+                            <span className="text-accent">true</span>
+                            {'\n'}
+                            <span className="text-white">{'});'}</span>
+                            {'\n'}
+                            <span className="text-neutral-400">{'</script>'}</span>
+                          </code>
+                        </pre>
                       </div>
-                      {/* Code Content */}
-                      <pre className="bg-neutral-950 text-neutral-100 text-sm leading-6 p-4 overflow-x-auto">
-                        <code>
-                          <span className="text-neutral-400">{'<!-- '}</span>
-                          <span className="text-white">Integration code for {selectedSite.domain}</span>
-                          <span className="text-neutral-400">{' -->'}</span>
-                          {'\n'}
-                          <span className="text-neutral-400">{'<!-- '}</span>
-                          <span className="text-white">Add this to your website's {'<head>'}</span>
-                          <span className="text-neutral-400">{' -->'}</span>
-                          {'\n'}
-                          <span className="text-neutral-400">{'<script '}</span>
-                          <span className="text-primary">src</span>
-                          <span className="text-white">=</span>
-                          <span className="text-green-400">"https://api.sovads.com/sdk.js"</span>
-                          <span className="text-neutral-400">{'></script>'}</span>
-                          {'\n\n'}
-                          <span className="text-neutral-400">{'<!-- '}</span>
-                          <span className="text-white">Add this where you want ads to appear</span>
-                          <span className="text-neutral-400">{' -->'}</span>
-                          {'\n'}
-                          <span className="text-neutral-400">{'<div '}</span>
-                          <span className="text-primary">id</span>
-                          <span className="text-white">=</span>
-                          <span className="text-green-400">"sovads-banner"</span>
-                          <span className="text-neutral-400">{'></div>'}</span>
-                          {'\n\n'}
-                          <span className="text-neutral-400">{'<script>'}</span>
-                          {'\n'}
-                          <span className="text-neutral-400">{'// '}</span>
-                          <span className="text-white">Initialize SovAds SDK</span>
-                          {'\n'}
-                          <span className="text-primary">const</span>
-                          <span className="text-white"> sovads = </span>
-                          <span className="text-primary">new</span>
-                          <span className="text-white"> SovAds({'{'}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">siteId</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'{selectedSite.siteId}'</span>
-                          <span className="text-neutral-400">{','}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">apiKey</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'{selectedSite.apiKey || 'YOUR_API_KEY'}'</span>
-                          <span className="text-neutral-400">{','}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">apiSecret</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'{selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'}'</span>
-                          <span className="text-neutral-400">{','}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">containerId</span>
-                          <span className="text-white">: </span>
-                          <span className="text-green-400">'sovads-banner'</span>
-                          <span className="text-neutral-400">{','}</span>
-                          {'\n'}
-                          <span className="text-white">    </span>
-                          <span className="text-primary">debug</span>
-                          <span className="text-white">: </span>
-                          <span className="text-accent">true</span>
-                          {'\n'}
-                          <span className="text-white">{'});'}</span>
-                          {'\n'}
-                          <span className="text-neutral-400">{'</script>'}</span>
-                        </code>
-                      </pre>
+                      <button
+                        onClick={() => {
+                          const apiKey = selectedSite.apiKey || 'YOUR_API_KEY'
+                          const apiSecret = selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'
+                          const code = `<!-- Integration code for ${selectedSite.domain} -->\n<!-- Add this to your website's <head> -->\n<script src="https://api.sovads.com/sdk.js"></script>\n\n<!-- Add this where you want ads to appear -->\n<div id="sovads-banner"></div>\n\n<script>\n// Initialize SovAds SDK (encrypted)\nconst sovads = new SovAds({\n    siteId: '${selectedSite.siteId}',\n    apiKey: '${apiKey}',\n    apiSecret: '${apiSecret}', // Keep this secure!\n    containerId: 'sovads-banner',\n    debug: true\n});\n</script>`
+                          copyToClipboard(code)
+                        }}
+                        className="mt-2 w-full bg-muted text-[var(--text-primary)] px-4 py-2 rounded-md font-medium hover:bg-muted/80 border border-border"
+                      >
+                        Copy Script Code
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        const apiKey = selectedSite.apiKey || 'YOUR_API_KEY'
-                        const apiSecret = selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'
-                        const code = `<!-- Integration code for ${selectedSite.domain} -->\n<!-- Add this to your website's <head> -->\n<script src="https://api.sovads.com/sdk.js"></script>\n\n<!-- Add this where you want ads to appear -->\n<div id="sovads-banner"></div>\n\n<script>\n// Initialize SovAds SDK (encrypted)\nconst sovads = new SovAds({\n    siteId: '${selectedSite.siteId}',\n    apiKey: '${apiKey}',\n    apiSecret: '${apiSecret}', // Keep this secure!\n    containerId: 'sovads-banner',\n    debug: true\n});\n</script>`
-                        copyToClipboard(code)
-                      }}
-                      className="mt-2 w-full bg-muted text-foreground px-4 py-2 rounded-md font-medium hover:bg-muted/80 border border-border"
-                    >
-                      Copy Script Code
-                    </button>
-                  </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* Withdraw Section */}
-            <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Withdraw Earnings</h2>
+            {/* Exchange Section - cUSD, USDC, USDT → G$ */}
+            <div className="glass-card rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">Exchange for G$</h2>
               <div className="space-y-4">
-                <div className="text-foreground">
-                  Available Balance: <span className="text-foreground font-semibold">{stats.totalRevenue.toFixed(6)}</span>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Exchange cUSD, USDC, or USDT for G$. 1 USDC ($1) = 10,000 G$. Send to treasury on <strong>Celo mainnet</strong>.
+                </p>
+                <div className="text-xs text-[var(--text-secondary)] bg-muted/50 rounded p-2">
+                  <strong>Rates:</strong> 1 G$ = ${GS_RATES.GS_TO_USD} | 1 G$ = {GS_RATES.GS_TO_CELO} CELO | 1 USDC = {GS_RATES.USDC_TO_GS.toLocaleString()} G$
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-[var(--text-secondary)]">Treasury:</span>
+                  <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[200px]" title={TREASURY_ADDRESS}>
+                    {TREASURY_ADDRESS.slice(0, 10)}...{TREASURY_ADDRESS.slice(-8)}
+                  </code>
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => navigator.clipboard.writeText(TREASURY_ADDRESS)}
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <select
+                    value={topupToken}
+                    onChange={(e) => setTopupToken(e.target.value)}
+                    className="bg-muted border border-border rounded px-3 py-2 text-sm"
+                  >
+                    {SUPPORTED_EXCHANGE_TOKENS.map((t) => (
+                      <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    placeholder="Amount"
+                    value={topupAmount}
+                    onChange={(e) => setTopupAmount(e.target.value)}
+                    className="bg-muted border border-border rounded px-3 py-2 text-sm w-28"
+                    min="0"
+                    step="0.01"
+                  />
+                  <button
+                    className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
+                    disabled={isToppingUp || !topupAmount || parseFloat(topupAmount) <= 0}
+                    onClick={async () => {
+                      if (!address) return
+                      const amt = parseFloat(topupAmount)
+                      if (amt <= 0) return
+                      const tokenInfo = SUPPORTED_EXCHANGE_TOKENS.find((t) => t.symbol === topupToken)
+                      if (!tokenInfo) return
+                      setIsToppingUp(true)
+                      setTopupError(null)
+                      setTopupSuccess(null)
+                      try {
+                        const rawAmount = parseUnits(amt.toFixed(tokenInfo.decimals), tokenInfo.decimals)
+                        const txHash = await writeTransfer({
+                          address: tokenInfo.address,
+                          abi: ERC20_TRANSFER_ABI,
+                          functionName: 'transfer',
+                          args: [TREASURY_ADDRESS, rawAmount]
+                        })
+                        const res = await fetch('/api/publishers/exchange', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ wallet: address, amount: amt, token: topupToken, txHash })
+                        })
+                        const data = await res.json()
+                        if (!res.ok) throw new Error(data.error || 'Failed to record exchange')
+                        setTopupSuccess(`${amt} ${topupToken} → ${data.gsReceived} G$`)
+                        setTopupAmount('')
+                        loadBalance(address)
+                        loadExchangeHistory(address)
+                      } catch (e) {
+                        setTopupError(e instanceof Error ? e.message : 'Exchange failed')
+                      } finally {
+                        setIsToppingUp(false)
+                      }
+                    }}
+                  >
+                    {isToppingUp ? 'Exchanging...' : 'Exchange for G$'}
+                  </button>
+                </div>
+                {topupError && <p className="text-sm text-destructive">{topupError}</p>}
+                {topupSuccess && <p className="text-sm text-green-600">{topupSuccess}</p>}
+                {exchangeHistory.length > 0 && (
+                  <div className="mt-4">
+                    <h3 className="text-sm font-medium text-[var(--text-primary)] mb-2">Exchange history</h3>
+                    <div className="overflow-x-auto rounded border border-border">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="bg-muted/50">
+                            <th className="text-left p-2">From</th>
+                            <th className="text-left p-2">Amount</th>
+                            <th className="text-left p-2">G$ received</th>
+                            <th className="text-left p-2">Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {exchangeHistory.map((ex, i) => (
+                            <tr key={i} className="border-t border-border">
+                              <td className="p-2">{ex.fromToken}</td>
+                              <td className="p-2">{ex.fromAmount.toFixed(2)}</td>
+                              <td className="p-2">{ex.gsReceived.toFixed(2)} G$</td>
+                              <td className="p-2 text-[var(--text-secondary)]">
+                                {new Date(ex.createdAt).toLocaleDateString()}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Withdraw Section - 1 SovPoint = 1 G$ */}
+            <div className="glass-card rounded-lg p-4 mb-6">
+              <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Withdraw (G$)</h2>
+              <div className="space-y-4">
+                <div className="text-[var(--text-primary)]">
+                  Available: <span className="text-[var(--text-primary)] font-semibold">{availableBalance.toFixed(2)}</span> G$ (earnings + topups)
                 </div>
                 <button
-                  className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium hover:bg-primary/90"
-                  onClick={() => alert('Withdrawal functionality will be implemented with smart contracts')}
+                  className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
+                  disabled={isWithdrawing || availableBalance <= 0}
+                  onClick={async () => {
+                    if (!address || availableBalance <= 0) return
+                    setIsWithdrawing(true)
+                    setWithdrawError(null)
+                    setWithdrawSuccess(null)
+                    try {
+                      const res = await fetch('/api/publishers/withdraw', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ wallet: address, amount: availableBalance })
+                      })
+                      const data = await res.json()
+                      if (!res.ok) throw new Error(data.error || 'Withdrawal failed')
+                      setWithdrawSuccess(`Sent ${data.amount} G$ — Tx: ${data.txHash?.slice(0, 10)}...`)
+                      loadBalance(address)
+                      if (publisherId) loadStats(publisherId)
+                    } catch (e) {
+                      setWithdrawError(e instanceof Error ? e.message : 'Withdrawal failed')
+                    } finally {
+                      setIsWithdrawing(false)
+                    }
+                  }}
                 >
-                  Withdraw to Wallet
+                  {isWithdrawing ? 'Processing...' : 'Withdraw All'}
                 </button>
-                <p className="text-sm text-muted-foreground">
-                  Withdrawals are processed on-chain using smart contracts. Gas fees are covered by SovAds.
+                {withdrawError && <p className="text-sm text-destructive">{withdrawError}</p>}
+                {withdrawSuccess && <p className="text-sm text-green-600">{withdrawSuccess}</p>}
+                <p className="text-sm text-[var(--text-secondary)]">
+                  Withdrawals are sent as G$ on Celo mainnet. Call admin topup to fund SovadGs.
                 </p>
               </div>
             </div>

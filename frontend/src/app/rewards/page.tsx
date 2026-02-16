@@ -128,14 +128,14 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground">
+    <div className="min-h-screen bg-transparent">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <h1 className="text-3xl font-bold text-foreground mb-8">SOV Points Rewards</h1>
+        <h1 className="text-3xl font-bold text-[var(--text-primary)] mb-8">SOV Points Rewards</h1>
 
         {!isConnected && (
-          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6 mb-6">
-            <h2 className="text-xl font-semibold text-foreground mb-4">Connect Your Wallet</h2>
-            <p className="text-muted-foreground mb-6">
+          <div className="glass-card rounded-lg p-6 mb-6">
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">Connect Your Wallet</h2>
+            <p className="text-[var(--text-secondary)] mb-6">
               Connect your wallet to claim SOV tokens. You can still earn points anonymously, but you'll need to connect to claim them.
             </p>
             <WalletButton className="w-full" />
@@ -143,35 +143,35 @@ export default function RewardsPage() {
         )}
 
         {loading ? (
-          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-            <p className="text-muted-foreground">Loading your points...</p>
+          <div className="glass-card rounded-lg p-6">
+            <p className="text-[var(--text-secondary)]">Loading your points...</p>
           </div>
         ) : points ? (
           <div className="space-y-6">
             {/* Points Overview */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-                <div className="text-2xl font-bold text-foreground">{points.totalPoints.toLocaleString()}</div>
-                <div className="text-muted-foreground">Total Points Earned</div>
+              <div className="glass-card rounded-lg p-6">
+                <div className="text-2xl font-bold text-[var(--text-primary)]">{points.totalPoints.toLocaleString()}</div>
+                <div className="text-[var(--text-secondary)]">Total Points Earned</div>
               </div>
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+              <div className="glass-card rounded-lg p-6">
                 <div className="text-2xl font-bold text-green-600">{points.pendingPoints.toLocaleString()}</div>
-                <div className="text-muted-foreground">Available to Claim</div>
+                <div className="text-[var(--text-secondary)]">Available to Claim</div>
               </div>
-              <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
+              <div className="glass-card rounded-lg p-6">
                 <div className="text-2xl font-bold text-blue-600">{points.claimedPoints.toLocaleString()}</div>
-                <div className="text-muted-foreground">Points Claimed</div>
+                <div className="text-[var(--text-secondary)]">Points Claimed</div>
               </div>
             </div>
 
             {/* Claim Section */}
-            <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">Claim Your Points</h2>
+            <div className="glass-card rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">Claim Your Points</h2>
               
               {points.pendingPoints > 0 ? (
                 <div className="space-y-4">
-                  <p className="text-muted-foreground">
-                    You have <span className="font-semibold text-foreground">{points.pendingPoints.toLocaleString()}</span> SOV points available to claim.
+                  <p className="text-[var(--text-secondary)]">
+                    You have <span className="font-semibold text-[var(--text-primary)]">{points.pendingPoints.toLocaleString()}</span> SOV points available to claim.
                   </p>
                   
                   {!isConnected && (
@@ -199,34 +199,34 @@ export default function RewardsPage() {
                   </button>
                 </div>
               ) : (
-                <p className="text-muted-foreground">
+                <p className="text-[var(--text-secondary)]">
                   No points available to claim. Interact with ads to earn SOV points!
                 </p>
               )}
             </div>
 
             {/* How It Works */}
-            <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-foreground mb-4">How It Works</h2>
-              <div className="space-y-3 text-muted-foreground">
+            <div className="glass-card rounded-lg p-6">
+              <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">How It Works</h2>
+              <div className="space-y-3 text-[var(--text-secondary)]">
                 <div className="flex items-start gap-3">
                   <span className="text-primary font-bold">1.</span>
                   <div>
-                    <p className="font-medium text-foreground">View Ads</p>
+                    <p className="font-medium text-[var(--text-primary)]">View Ads</p>
                     <p>Earn 1 SOV point for each ad impression</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <span className="text-primary font-bold">2.</span>
                   <div>
-                    <p className="font-medium text-foreground">Click Ads</p>
+                    <p className="font-medium text-[var(--text-primary)]">Click Ads</p>
                     <p>Earn 5 SOV points for each ad click</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-3">
                   <span className="text-primary font-bold">3.</span>
                   <div>
-                    <p className="font-medium text-foreground">Claim Anytime</p>
+                    <p className="font-medium text-[var(--text-primary)]">Claim Anytime</p>
                     <p>Connect your wallet and claim your SOV tokens whenever you want</p>
                   </div>
                 </div>
@@ -234,8 +234,8 @@ export default function RewardsPage() {
             </div>
           </div>
         ) : (
-          <div className="bg-card/80 backdrop-blur-sm border border-border rounded-lg p-6">
-            <p className="text-muted-foreground">Start interacting with ads to earn SOV points!</p>
+          <div className="glass-card rounded-lg p-6">
+            <p className="text-[var(--text-secondary)]">Start interacting with ads to earn SOV points!</p>
           </div>
         )}
       </div>

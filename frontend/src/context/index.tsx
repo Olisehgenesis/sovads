@@ -1,9 +1,8 @@
 'use client'
 
-import { wagmiAdapter, projectId } from '@/config'
+import { wagmiAdapter, projectId, defaultNetwork, networks } from '@/config'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { createAppKit } from '@reown/appkit/react'
-import { celoSepolia } from '@reown/appkit/networks'
 import React, { type ReactNode } from 'react'
 import { cookieToInitialState, WagmiProvider, type Config } from 'wagmi'
 
@@ -22,12 +21,12 @@ const metadata = {
   icons: [process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL}/icon.png` : 'https://ads.sovseas.xyz/icon.png']
 }
 
-// Create the modal
+// Create the modal - Celo mainnet default (SovadGs, G$, treasury)
 const modal = createAppKit({
   adapters: [wagmiAdapter],
   projectId,
-  networks: [celoSepolia],
-  defaultNetwork: celoSepolia, // Default to Celo Sepolia for SovAds
+  networks,
+  defaultNetwork,
   metadata: metadata,
   features: {
     analytics: true // Optional - defaults to your Cloud configuration

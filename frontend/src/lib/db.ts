@@ -9,6 +9,9 @@ import type {
   AnalyticsHash,
   Asset,
   Payout,
+  Topup,
+  Exchange,
+  Withdrawal,
   SdkRequest,
   SdkInteraction,
   ApiRouteCall,
@@ -26,6 +29,9 @@ export const collections = {
   analyticsHashes: () => getCollection<AnalyticsHash>('analytics_hashes'),
   assets: () => getCollection<Asset>('assets'),
   payouts: () => getCollection<Payout>('payouts'),
+  topups: () => getCollection<Topup>('topups'),
+  exchanges: () => getCollection<Exchange>('exchanges'),
+  withdrawals: () => getCollection<Withdrawal>('withdrawals'),
   sdkRequests: () => getCollection<SdkRequest>('sdk_requests'),
   sdkInteractions: () => getCollection<SdkInteraction>('sdk_interactions'),
   apiRouteCalls: () => getCollection<ApiRouteCall>('api_route_calls'),
@@ -36,4 +42,4 @@ export const collections = {
 
 export type Collections = typeof collections
 
-export type { Advertiser, Publisher, PublisherSite, Campaign, Event, AnalyticsHash, Asset, Payout, SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog, ViewerPoints, ViewerReward }
+export type { Advertiser, Publisher, PublisherSite, Campaign, Event, AnalyticsHash, Asset, Payout, Topup, Exchange, Withdrawal, SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog, ViewerPoints, ViewerReward }

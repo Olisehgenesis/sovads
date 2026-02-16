@@ -18,6 +18,48 @@ export interface Publisher {
   domain: string
   verified: boolean
   totalEarned: number
+  totalTopup?: number
+  totalWithdrawn?: number
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Topup {
+  _id: string
+  publisherId: string
+  wallet: string
+  amount: number
+  token: string
+  tokenAddress?: string
+  gsReceived?: number
+  txHash?: string
+  status: 'pending' | 'approved' | 'rejected'
+  createdAt: Date
+  updatedAt: Date
+}
+
+/** Token → G$ exchange record (cUSD, USDC, USDT, etc. → G$) */
+export interface Exchange {
+  _id: string
+  publisherId: string
+  wallet: string
+  fromToken: string
+  fromAmount: number
+  gsReceived: number
+  tokenAddress?: string
+  txHash?: string
+  status: 'pending' | 'completed' | 'failed'
+  createdAt: Date
+  updatedAt: Date
+}
+
+export interface Withdrawal {
+  _id: string
+  publisherId: string
+  wallet: string
+  amount: number
+  txHash?: string
+  status: 'pending' | 'completed' | 'failed'
   createdAt: Date
   updatedAt: Date
 }

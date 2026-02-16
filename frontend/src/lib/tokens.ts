@@ -1,7 +1,8 @@
 /**
- * Token configuration for Celo Sepolia Testnet
- * Maps token addresses to their display information
+ * Token configuration - Celo mainnet & Sepolia
  */
+
+import { isMainnet } from './chain-config';
 
 export interface TokenInfo {
   symbol: string;
@@ -36,6 +37,13 @@ export const CELO_SEPOLIA_TOKENS: Record<string, TokenInfo> = {
     decimals: 6,
     address: '0xd077A400968890Eacc75cdc901F0356c943e4fDb'
   },
+  // Good Dollar (G$) - Celo mainnet
+  '0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a': {
+    symbol: 'G$',
+    name: 'Good Dollar',
+    decimals: 2,
+    address: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
+  },
   // CELO (ERC20)
   '0x471ece3750da237f93b8e339c536989b8978a438': {
     symbol: 'CELO',
@@ -49,22 +57,57 @@ export const CELO_SEPOLIA_TOKENS: Record<string, TokenInfo> = {
     name: 'Celo Dollar (Alt)',
     decimals: 18,
     address: '0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b'
-  },
+  }
 };
 
-// SovAds Token (SOV) - Add dynamically if address is provided
-const SOV_TOKEN_ADDRESS = typeof window !== 'undefined' 
+/** Celo mainnet tokens (SovadGs, G$, treasury) */
+export const CELO_MAINNET_TOKENS: Record<string, TokenInfo> = {
+  '0x765de816845861e75a25fca122bb6898b8b1282a': {
+    symbol: 'cUSD',
+    name: 'Celo Dollar',
+    decimals: 18,
+    address: '0x765DE816845861e75A25fCA122bb6898B8B1282a'
+  },
+  '0xceba9300f2b948710d2653dd7b07f33a8b32118c': {
+    symbol: 'USDC',
+    name: 'USD Coin',
+    decimals: 6,
+    address: '0xcebA9300f2b948710d2653dD7B07f33A8B32118C'
+  },
+  '0x48065fbbe25f71c9282ddf5e1cd6d6a887483d5e': {
+    symbol: 'USDT',
+    name: 'Tether USD',
+    decimals: 6,
+    address: '0x48065fbBE25f71C9282ddf5e1cD6D6A887483D5e'
+  },
+  '0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a': {
+    symbol: 'G$',
+    name: 'Good Dollar',
+    decimals: 2,
+    address: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
+  },
+  '0x471ece3750da237f93b8e339c536989b8978a438': {
+    symbol: 'CELO',
+    name: 'Celo Native Token',
+    decimals: 18,
+    address: '0x471EcE3750Da237f93B8E339c536989b8978a438'
+  }
+};
+
+/** Active chain tokens */
+const baseTokens = isMainnet ? { ...CELO_MAINNET_TOKENS } : { ...CELO_SEPOLIA_TOKENS };
+const SOV_TOKEN_ADDRESS = typeof window !== 'undefined'
   ? (process.env.NEXT_PUBLIC_SOV_TOKEN_ADDRESS || '')
   : (process.env.NEXT_PUBLIC_SOV_TOKEN_ADDRESS || '');
-
 if (SOV_TOKEN_ADDRESS && SOV_TOKEN_ADDRESS !== '0x0000000000000000000000000000000000000000') {
-  CELO_SEPOLIA_TOKENS[SOV_TOKEN_ADDRESS.toLowerCase()] = {
+  baseTokens[SOV_TOKEN_ADDRESS.toLowerCase()] = {
     symbol: 'SOV',
     name: 'SovAds Token',
     decimals: 18,
     address: SOV_TOKEN_ADDRESS
   };
 }
+export const CELO_TOKENS: Record<string, TokenInfo> = baseTokens;
 
 /**
  * Get token information by address
@@ -73,7 +116,7 @@ if (SOV_TOKEN_ADDRESS && SOV_TOKEN_ADDRESS !== '0x000000000000000000000000000000
  */
 export function getTokenInfo(address: string | null | undefined): TokenInfo | undefined {
   if (!address) return undefined;
-  return CELO_SEPOLIA_TOKENS[address.toLowerCase()];
+  return CELO_TOKENS[address.toLowerCase()];
 }
 
 /**
@@ -115,7 +158,7 @@ export function getTokenLabel(address: string | null | undefined): string {
  * @returns Array of token addresses
  */
 export function getAllTokenAddresses(): string[] {
-  return Object.values(CELO_SEPOLIA_TOKENS).map(token => token.address);
+  return Object.values(CELO_TOKENS).map(token => token.address);
 }
 
 /**

@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import { useAccount, useDisconnect } from 'wagmi'
 
@@ -20,12 +20,12 @@ export default function WalletButton({ className = '', onConnect, onDisconnect }
   if (isConnected && address) {
     return (
       <div className={`flex items-center space-x-2 ${className}`}>
-        <span className="text-sm text-gray-300">
+        <span className="text-[11px] text-[var(--text-secondary)]">
           {address.slice(0, 6)}...{address.slice(-4)}
         </span>
         <button
           onClick={handleDisconnect}
-          className="px-3 py-1 bg-gray-700 text-white text-sm rounded hover:bg-gray-600"
+          className="px-2 py-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-[11px] rounded-md hover:bg-[var(--glass-bg-hover)] hover:border-[var(--glass-border-hover)] transition-colors"
         >
           Disconnect
         </button>
@@ -33,7 +33,5 @@ export default function WalletButton({ className = '', onConnect, onDisconnect }
     )
   }
 
-  return (
-    <appkit-button />
-  )
+  return <appkit-button />
 }

@@ -43,7 +43,7 @@ export default function AdvertiserDashboard() {
     ctr: 0,
     totalSpent: 0
   })
-  
+
 
   useEffect(() => {
     if (isConnected && address) {
@@ -100,44 +100,43 @@ export default function AdvertiserDashboard() {
   // Creation is handled on dedicated page now
 
   return (
-    <div className="min-h-screen bg-transparent text-foreground">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
-        <div className="flex justify-between items-center mb-8">
-          <h1 className="text-3xl font-bold">Advertiser Dashboard</h1>
+    <div className="min-h-screen bg-transparent">
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-base font-bold uppercase tracking-wider">Advertiser Dashboard</h1>
           {isConnected ? (
-            <Link href="/create-campaign" className="btn btn-primary px-6 py-2">
+            <Link href="/create-campaign" className="btn btn-primary px-4 py-1.5">
               Create Campaign
             </Link>
           ) : null}
         </div>
 
-        <div className="bg-card border border-border rounded-xl p-6 mb-8">
-          <h2 className="text-xl font-semibold mb-4">Preview Live Banner Placement</h2>
-          <BannerAd className="min-h-[180px] rounded-lg border border-dashed border-border" />
+        <div className="glass-card rounded-xl p-4 mb-6">
+          <h2 className="text-xs font-semibold mb-3 uppercase tracking-wider">Preview Live Banner Placement</h2>
+          <BannerAd className="min-h-[120px] rounded-lg border border-dashed border-[var(--glass-border)]" />
         </div>
 
         {!isConnected ? (
-          <div className="bg-card border border-border rounded-xl p-8 text-center">
-            <h2 className="text-xl font-semibold mb-4">Connect Your Wallet</h2>
-            <p className="text-foreground/70 mb-6">Connect your wallet to create and manage advertising campaigns</p>
+          <div className="glass-card rounded-xl p-6 text-center">
+            <h2 className="text-sm font-semibold mb-3 uppercase tracking-wider">Connect Your Wallet</h2>
+            <p className="text-[var(--text-secondary)] text-[11px] mb-4">Connect your wallet to create and manage advertising campaigns</p>
             <WalletButton />
           </div>
         ) : (
           <div className="space-y-8">
             {/* Campaigns List */}
-            <div className="bg-card border border-border rounded-xl p-6">
-              <h2 className="text-xl font-semibold mb-4">Your Campaigns</h2>
-              <div className="space-y-4">
+            <div className="glass-card rounded-xl p-4">
+              <h2 className="text-xs font-semibold mb-3 uppercase tracking-wider">Your Campaigns</h2>
+              <div className="space-y-3">
                 {campaigns.length === 0 ? (
-                  <div className="text-foreground/60">No campaigns yet. Create your first campaign.</div>
+                  <div className="text-[var(--text-tertiary)] text-[11px]">No campaigns yet. Create your first campaign.</div>
                 ) : campaigns.map((campaign) => (
                   <div
                     key={campaign.id}
-                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${
-                      selectedCampaign?.id === campaign.id
+                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${selectedCampaign?.id === campaign.id
                         ? 'border-primary bg-secondary'
-                        : 'border-border hover:border-foreground/30'
-                    }`}
+                        : 'border-[var(--glass-border)] hover:border-[var(--glass-border-hover)]'
+                      }`}
                     onClick={() => {
                       setSelectedCampaign(campaign)
                       loadCampaignStats(campaign.id)
@@ -145,9 +144,9 @@ export default function AdvertiserDashboard() {
                   >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="text-lg font-medium">{campaign.name}</h3>
-                        <p className="text-foreground/70">{campaign.description}</p>
-                        <div className="flex space-x-4 mt-2 text-sm text-foreground/60">
+                        <h3 className="text-sm font-medium">{campaign.name}</h3>
+                        <p className="text-[var(--text-secondary)] text-[11px]">{campaign.description}</p>
+                        <div className="flex space-x-3 mt-1.5 text-[10px] text-[var(--text-tertiary)] uppercase tracking-tight">
                           {(() => {
                             const tokenSymbol = getTokenSymbol(campaign.tokenAddress)
                             return (
@@ -155,14 +154,14 @@ export default function AdvertiserDashboard() {
                                 <span>Budget: {campaign.budget} {tokenSymbol}</span>
                                 <span>Spent: {campaign.spent} {tokenSymbol}</span>
                                 <span>CPC: {campaign.cpc} {tokenSymbol}</span>
-                                <span className={campaign.active ? 'text-green-600' : 'text-red-600'}>
+                                <span className={campaign.active ? 'text-[var(--accent-primary-solid)]' : 'text-red-500'}>
                                   {campaign.active ? 'Active' : 'Inactive'}
                                 </span>
                               </>
                             )
                           })()}
                         </div>
-                        <div className="mt-2 text-xs text-foreground/60">
+                        <div className="mt-1.5 text-[10px] text-[var(--text-tertiary)] uppercase">
                           Media: {campaign.mediaType === 'video' ? 'Video' : 'Image / GIF'}
                         </div>
                         {(campaign.tags?.length || campaign.targetLocations?.length) && (
@@ -170,17 +169,17 @@ export default function AdvertiserDashboard() {
                             {campaign.tags && campaign.tags.length > 0 && (
                               <div className="flex flex-wrap gap-2 text-xs">
                                 {campaign.tags.map((tag) => (
-                                  <span key={tag} className="px-2 py-1 bg-secondary/60 border border-border rounded-full">
+                                  <span key={tag} className="px-2 py-1 bg-secondary/60 border border-[var(--glass-border)] rounded-full">
                                     #{tag}
                                   </span>
                                 ))}
                               </div>
                             )}
                             {campaign.targetLocations && campaign.targetLocations.length > 0 && (
-                              <div className="flex flex-wrap gap-2 text-xs text-foreground/70">
-                                <span className="font-medium text-foreground/80">Target:</span>
+                              <div className="flex flex-wrap gap-2 text-xs text-[var(--text-secondary)]">
+                                <span className="font-medium text-[var(--text-primary)]">Target:</span>
                                 {campaign.targetLocations.map((loc) => (
-                                  <span key={loc} className="px-2 py-1 bg-muted border border-border rounded-full">
+                                  <span key={loc} className="px-2 py-1 bg-muted border border-[var(--glass-border)] rounded-full">
                                     {loc}
                                   </span>
                                 ))}
@@ -190,10 +189,10 @@ export default function AdvertiserDashboard() {
                         )}
                       </div>
                       <div className="text-right">
-                        <div className="text-lg font-semibold">
+                        <div className="text-base font-semibold">
                           {campaign.budget > 0 ? ((campaign.spent / campaign.budget) * 100).toFixed(1) : '0.0'}%
                         </div>
-                        <div className="text-sm text-foreground/60">Budget Used</div>
+                        <div className="text-[10px] text-[var(--text-tertiary)] uppercase">Budget Used</div>
                       </div>
                       <div className="mt-2 flex gap-2">
                         <button
@@ -201,7 +200,7 @@ export default function AdvertiserDashboard() {
                             e.stopPropagation()
                             cloneCampaign(campaign)
                           }}
-                          className="text-xs px-2 py-1 bg-secondary border border-border rounded hover:bg-secondary/80"
+                          className="text-xs px-2 py-1 glass-card rounded hover:bg-secondary/80"
                         >
                           Clone
                         </button>
@@ -214,15 +213,15 @@ export default function AdvertiserDashboard() {
 
             {/* Campaign Stats */}
             {selectedCampaign && (
-              <div className="bg-card border border-border rounded-xl p-6">
-                <h2 className="text-xl font-semibold mb-4">
+              <div className="glass-card rounded-xl p-4">
+                <h2 className="text-xs font-semibold mb-3 uppercase tracking-wider">
                   Campaign Stats: {selectedCampaign.name}
                 </h2>
                 <div className="mb-6">
                   {selectedCampaign.mediaType === 'video' ? (
                     <video
                       src={selectedCampaign.bannerUrl}
-                      className="w-full rounded-lg border border-border"
+                      className="w-full rounded-lg border border-[var(--glass-border)]"
                       controls
                       playsInline
                       muted
@@ -231,26 +230,26 @@ export default function AdvertiserDashboard() {
                     <img
                       src={selectedCampaign.bannerUrl}
                       alt={selectedCampaign.description}
-                      className="w-full max-h-64 object-contain rounded-lg border border-border"
+                      className="w-full max-h-64 object-contain rounded-lg border border-[var(--glass-border)]"
                     />
                   )}
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-                  <div className="bg-secondary border border-border rounded-lg p-4">
-                    <div className="text-2xl font-bold">{campaignStats.impressions.toLocaleString()}</div>
-                    <div className="text-foreground/60">Impressions</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="glass-card rounded-lg p-3">
+                    <div className="text-lg font-bold">{campaignStats.impressions.toLocaleString()}</div>
+                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">Impressions</div>
                   </div>
-                  <div className="bg-secondary border border-border rounded-lg p-4">
-                    <div className="text-2xl font-bold">{campaignStats.clicks.toLocaleString()}</div>
-                    <div className="text-foreground/60">Clicks</div>
+                  <div className="glass-card rounded-lg p-3">
+                    <div className="text-lg font-bold">{campaignStats.clicks.toLocaleString()}</div>
+                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">Clicks</div>
                   </div>
-                  <div className="bg-secondary border border-border rounded-lg p-4">
-                    <div className="text-2xl font-bold">{campaignStats.ctr.toFixed(2)}%</div>
-                    <div className="text-foreground/60">CTR</div>
+                  <div className="glass-card rounded-lg p-3">
+                    <div className="text-lg font-bold">{campaignStats.ctr.toFixed(2)}%</div>
+                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">CTR</div>
                   </div>
-                  <div className="bg-secondary border border-border rounded-lg p-4">
-                    <div className="text-2xl font-bold">{campaignStats.totalSpent.toFixed(6)}</div>
-                    <div className="text-foreground/60">
+                  <div className="glass-card rounded-lg p-3">
+                    <div className="text-lg font-bold">{campaignStats.totalSpent.toFixed(6)}</div>
+                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">
                       Total Spent {selectedCampaign?.tokenAddress ? `(${getTokenSymbol(selectedCampaign.tokenAddress)})` : ''}
                     </div>
                   </div>

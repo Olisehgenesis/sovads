@@ -1,7 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseEther, formatEther } from 'viem';
-import { sovAdsManagerAbi, address } from '../contract/abi';
+import { sovAdsManagerAbi } from '../contract/abi';
+import { chainId, SOVADS_MANAGER_ADDRESS } from '@/lib/chain-config';
 import type { Abi } from 'viem';
 
 // Minimal ERC20 ABI for allowance/approve
@@ -103,7 +104,8 @@ export interface UseAdsReturn {
 
 export const useAds = (): UseAdsReturn => {
   const { address: userAddress } = useAccount();
-  const publicClient = usePublicClient({ chainId: 11142220 });
+  const address = SOVADS_MANAGER_ADDRESS;
+  const publicClient = usePublicClient({ chainId });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -112,35 +114,35 @@ export const useAds = (): UseAdsReturn => {
     address: address as `0x${string}`,
     abi: sovAdsManagerAbi,
     functionName: 'campaignCount',
-    chainId: 11142220,
+    chainId,
   });
 
   const { data: claimOrderCount } = useReadContract({
     address: address as `0x${string}`,
     abi: sovAdsManagerAbi,
     functionName: 'claimOrderCount',
-    chainId: 11142220,
+    chainId,
   });
 
   const { data: feePercent } = useReadContract({
     address: address as `0x${string}`,
     abi: sovAdsManagerAbi,
     functionName: 'feePercent',
-    chainId: 11142220,
+    chainId,
   });
 
   const { data: protocolFees } = useReadContract({
     address: address as `0x${string}`,
     abi: sovAdsManagerAbi,
     functionName: 'protocolFees',
-    chainId: 11142220,
+    chainId,
   });
 
   const { data: paused } = useReadContract({
     address: address as `0x${string}`,
     abi: sovAdsManagerAbi,
     functionName: 'paused',
-    chainId: 11142220,
+    chainId,
   });
 
   // Write contract hooks
@@ -197,7 +199,7 @@ export const useAds = (): UseAdsReturn => {
       address: tokenAddress as `0x${string}`,
       abi: erc20Abi,
       functionName: 'approve',
-      chainId: 11142220,
+      chainId,
       args: [spender as `0x${string}`, requiredAmountWei],
     });
 
@@ -365,7 +367,7 @@ export const useAds = (): UseAdsReturn => {
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi,
         functionName: 'createCampaign',
-        chainId: 11142220,
+        chainId,
         args: [
           token as `0x${string}`,
           amountWei,
@@ -397,7 +399,7 @@ export const useAds = (): UseAdsReturn => {
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi,
         functionName: 'createClaimOrder',
-        chainId: 11142220,
+        chainId,
         args: [
           BigInt(campaignId),
           parseEther(requestedAmount)
@@ -421,7 +423,7 @@ export const useAds = (): UseAdsReturn => {
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi,
         functionName: 'subscribePublisher',
-        chainId: 11142220,
+        chainId,
         args: [sites],
       });
       
@@ -442,7 +444,7 @@ export const useAds = (): UseAdsReturn => {
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi,
         functionName: 'addSite',
-        chainId: 11142220,
+        chainId,
         args: [site],
       });
       
@@ -463,7 +465,7 @@ export const useAds = (): UseAdsReturn => {
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi,
         functionName: 'removeSite',
-        chainId: 11142220,
+        chainId,
         args: [BigInt(siteIndex)],
       });
       
