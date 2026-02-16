@@ -7,6 +7,7 @@ import WalletButton from '@/components/WalletButton'
 import { getTokenSymbol } from '@/lib/tokens'
 import { BannerAd } from '@/components/ads/AdSlots'
 import { useAds } from '@/hooks/useAds'
+import TopUpModal from '@/components/TopUpModal'
 
 interface Campaign {
   id: string
@@ -58,6 +59,7 @@ export default function AdvertiserDashboard() {
   // Management state
   const [fundingAmount, setFundingAmount] = useState('')
   const [fundingCampaignId, setFundingCampaignId] = useState<string | null>(null)
+  const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false)
 
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null)
   const [editMetadata, setEditMetadata] = useState('')
@@ -289,7 +291,8 @@ export default function AdvertiserDashboard() {
                                 onClick={(e) => {
                                   e.stopPropagation()
                                   clearModes()
-                                  if (fundingCampaignId !== campaign.id) setFundingCampaignId(campaign.id)
+                                  setFundingCampaignId(campaign.id)
+                                  setIsTopUpModalOpen(true)
                                 }}
                                 className="btn btn-primary py-1 h-8 px-4"
                               >
@@ -333,27 +336,9 @@ export default function AdvertiserDashboard() {
                         </div>
 
                         {/* Mode Panels */}
-                        {(fundingCampaignId === campaign.id || editingCampaignId === campaign.id || extendingCampaignId === campaign.id) && (
+                        {(editingCampaignId === campaign.id || extendingCampaignId === campaign.id) && (
                           <div className="mt-4 p-4 bg-secondary border border-primary/20 rounded-lg animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
-                            {fundingCampaignId === campaign.id && (
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="number"
-                                  value={fundingAmount}
-                                  onChange={(e) => setFundingAmount(e.target.value)}
-                                  placeholder={`Amount in ${getTokenSymbol(campaign.tokenAddress)}`}
-                                  className="flex-1 bg-input border border-border rounded-md px-3 py-2 text-xs"
-                                  autoFocus
-                                />
-                                <button
-                                  onClick={() => handleFundCampaign(campaign)}
-                                  disabled={isProcessing || !fundingAmount}
-                                  className="btn btn-primary px-6"
-                                >
-                                  {isProcessing ? 'Processing...' : 'Add Funds'}
-                                </button>
-                              </div>
-                            )}
+                            {/** Inline fund panel removed in favor of modal */}
 
                             {editingCampaignId === campaign.id && (
                               <div className="space-y-3">
@@ -455,6 +440,20 @@ export default function AdvertiserDashboard() {
             )}
           </div>
         )}
+        {/* Top-up modal */}
+        <TopUpModal
+          open={isTopUpModalOpen}
+          campaign={campaigns.find((c) => c.id === fundingCampaignId) ?? null}
+          onClose={() => {
+            setIsTopUpModalOpen(false)
+            setFundingCampaignId(null)
+          }}
+          onSuccess={() => {
+            setIsTopUpModalOpen(false)
+            setFundingCampaignId(null)
+            if (address) loadCampaigns(address)
+          }}
+        />
       </div>
     </div>
   )

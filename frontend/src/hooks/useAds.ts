@@ -346,8 +346,8 @@ export const useAds = (): UseAdsReturn => {
     campaignId: number,
     amount: string,
     tokenAddress: string
-  ): Promise<void> => {
-    await handleContractCall(async () => {
+  ): Promise<string | undefined> => {
+    const result = await handleContractCall(async () => {
       if (!writeContract) throw new Error('Contract write function not available');
       if (!userAddress) throw new Error('Wallet not connected');
 
@@ -367,6 +367,8 @@ export const useAds = (): UseAdsReturn => {
       if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
       return hash as string;
     }, 'top up campaign');
+
+    return result as string | undefined;
   }, [writeContract, publicClient, handleContractCall, address, userAddress, ensureAllowance]);
 
   const createClaim = useCallback(async (
