@@ -175,20 +175,9 @@ export default function AdvertiserDashboard() {
   }
 
   const cloneCampaign = (campaign: Campaign) => {
-    const params = new URLSearchParams({
-      clone: 'true',
-      name: `${campaign.name} (Copy)`,
-      description: campaign.description || '',
-      bannerUrl: campaign.bannerUrl,
-      targetUrl: campaign.targetUrl,
-      budget: campaign.budget.toString(),
-      cpc: campaign.cpc.toString(),
-      tokenAddress: campaign.tokenAddress || '',
-      tags: campaign.tags?.join(',') || '',
-      targetLocations: campaign.targetLocations?.join(',') || '',
-      mediaType: campaign.mediaType || 'image',
-    })
-    window.location.href = `/create-campaign?${params.toString()}`
+    // Open campaign admin/details page for this campaign
+    // the campaign.id is the DB id used by the admin route
+    window.location.href = `/admin/campaigns/${campaign.id}`
   }
 
   const clearModes = () => {
@@ -283,7 +272,7 @@ export default function AdvertiserDashboard() {
                             }}
                             className="btn btn-outline py-1 h-8 px-3"
                           >
-                            Clone
+                            View Details
                           </button>
                           {(campaign.onChainId || campaign.onChainId === 0) && (
                             <>
