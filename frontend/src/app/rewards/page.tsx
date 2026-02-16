@@ -181,8 +181,8 @@ export default function RewardsPage() {
 
                 {message && (
                   <div className={`rounded-md p-3 text-sm ${message.type === 'success'
-                      ? 'bg-green-500/20 border border-green-500/50 text-green-700 dark:text-green-400'
-                      : 'bg-red-500/20 border border-red-500/50 text-red-700 dark:text-red-400'
+                    ? 'bg-green-500/20 border border-green-500/50 text-green-700 dark:text-green-400'
+                    : 'bg-red-500/20 border border-red-500/50 text-red-700 dark:text-red-400'
                     }`}>
                     {message.text}
                   </div>
@@ -237,7 +237,6 @@ export default function RewardsPage() {
         </div>
       )}
     </div>
-    </div >
   )
 }
 
