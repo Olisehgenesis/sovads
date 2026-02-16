@@ -86,7 +86,7 @@ select,
 a,
 label[for],
 .cursor-pointer {
-	cursor: pointer;
+  cursor: pointer;
 }
 
 /* Glass card utility */
@@ -96,6 +96,7 @@ label[for],
   border-radius: var(--radius);
   transition: background 0.15s, border-color 0.15s;
 }
+
 .glass-card:hover {
   background: var(--glass-bg-hover);
   border-color: var(--glass-border-hover);
@@ -106,16 +107,25 @@ label[for],
   @apply inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
   font-size: 11px;
 }
+
 .btn-primary {
-  background: var(--accent-primary-solid);
+  background: var(--background);
+  /* Dark background as requested */
   color: white;
-  @apply rounded-md px-3 py-1.5 hover:opacity-90;
+  border: 3px double var(--accent-primary-solid);
+  @apply rounded-md px-4 py-1.5 hover:bg-[var(--glass-bg-hover)] transition-all;
+  font-weight: 600;
+  letter-spacing: 0.025em;
+  text-transform: uppercase;
 }
+
 .btn-outline {
-  background: transparent;
-  border: 1px solid var(--glass-border);
+  background: var(--background);
+  border: 3px double var(--glass-border-hover);
   color: var(--text-primary);
-  @apply rounded-md px-3 py-1.5 hover:bg-[var(--glass-bg-hover)] hover:border-[var(--glass-border-hover)];
+  @apply rounded-md px-4 py-1.5 hover:bg-[var(--glass-bg-hover)] transition-all;
+  text-transform: uppercase;
+  font-weight: 600;
 }
 
 /* Input styling */
@@ -132,11 +142,13 @@ select {
   transition: border-color 0.15s;
   border-radius: var(--radius);
 }
+
 input:focus,
 textarea:focus,
 select:focus {
   border-color: rgba(255, 255, 255, 0.5);
 }
+
 input::placeholder,
 textarea::placeholder {
   color: var(--text-tertiary);
@@ -145,6 +157,7 @@ textarea::placeholder {
 a {
   color: var(--accent-primary-solid);
 }
+
 a:hover {
   color: rgba(59, 130, 246, 0.8);
 }

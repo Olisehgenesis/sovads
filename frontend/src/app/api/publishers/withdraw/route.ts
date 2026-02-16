@@ -80,7 +80,8 @@ export async function POST(request: NextRequest) {
 
     const txHash = await payoutG$(wallet, amount)
 
-    await collections.withdrawals().insertOne({
+    const withdrawalsCol = await collections.withdrawals()
+    await withdrawalsCol.insertOne({
       _id: randomUUID(),
       publisherId: publisher._id,
       wallet,

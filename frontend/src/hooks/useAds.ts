@@ -1,8 +1,9 @@
 import { useState, useCallback } from 'react';
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
-import { parseEther, formatEther } from 'viem';
+import { useAccount, useReadContract, useWriteContract, usePublicClient } from 'wagmi';
+import { parseUnits, formatEther, decodeEventLog } from 'viem';
 import { sovAdsManagerAbi } from '../contract/abi';
 import { chainId, SOVADS_MANAGER_ADDRESS } from '@/lib/chain-config';
+import { getAllTokenAddresses, getTokenInfo } from '@/lib/tokens';
 import type { Abi } from 'viem';
 
 // Minimal ERC20 ABI for allowance/approve
@@ -30,73 +31,74 @@ const erc20Abi: Abi = [
 ];
 
 // TypeScript interfaces for contract data structures
+export interface CampaignVault {
+  token: string;
+  totalFunded: bigint;
+  locked: bigint;
+  claimed: bigint;
+}
+
 export interface Campaign {
   id: bigint;
   creator: string;
-  token: string;
-  amount: bigint;
   startTime: bigint;
   endTime: bigint;
   metadata: string;
   active: boolean;
-  spent: bigint;
   paused: boolean;
+  vault: CampaignVault;
 }
 
-export interface ClaimOrder {
+export interface Claim {
   id: bigint;
-  publisher: string;
   campaignId: bigint;
-  requestedAmount: bigint;
-  approvedAmount: bigint;
+  claimant: string;
+  amount: bigint;
   processed: boolean;
   rejected: boolean;
-  reason: string;
   createdAt: bigint;
   processedAt: bigint;
 }
 
 export interface Publisher {
   wallet: string;
-  sites: string[];
   banned: boolean;
-  totalEarned: bigint;
-  totalClaimed: bigint;
-  verified: boolean;
   subscriptionDate: bigint;
-}       
+}
 
 export interface UseAdsReturn {
   // Contract state
   campaignCount: bigint | undefined;
-  claimOrderCount: bigint | undefined;
+  claimCount: bigint | undefined;
   feePercent: bigint | undefined;
-  protocolFees: bigint | undefined;
   paused: boolean | undefined;
-  
+
   // Campaign functions
   getCampaign: (campaignId: number) => Promise<Campaign | undefined>;
-  getActiveCampaignsCount: () => Promise<bigint | undefined>;
-  
+  getCampaignVault: (campaignId: number) => Promise<CampaignVault | undefined>;
+
   // Publisher functions
   getPublisher: (publisherAddress: string) => Promise<Publisher | undefined>;
-  getPublisherSites: (publisherAddress: string) => Promise<string[] | undefined>;
   isPublisher: (address: string) => Promise<boolean | undefined>;
-  
-  // Claim order functions
-  getClaimOrder: (orderId: number) => Promise<ClaimOrder | undefined>;
-  
+  isViewer: (address: string) => Promise<boolean | undefined>;
+
+  // Claim functions
+  getClaim: (claimId: number) => Promise<Claim | undefined>;
+
   // Write functions
-  createCampaign: (token: string, amount: string, duration: number, metadata: string) => Promise<`0x${string}`>;
-  createClaimOrder: (campaignId: number, requestedAmount: string) => Promise<void>;
+  createCampaign: (token: string, amount: string, duration: number, metadata: string) => Promise<{ hash: `0x${string}`; id: number }>;
+  topUpCampaign: (campaignId: number, amount: string, tokenAddress: string) => Promise<string | undefined>;
+  createClaim: (campaignId: number, amount: string) => Promise<void>;
   subscribePublisher: (sites: string[]) => Promise<void>;
   addSite: (site: string) => Promise<void>;
-  removeSite: (siteIndex: number) => Promise<void>;
-  
+  recordInteraction: (campaignId: number, user: string, count: number, type: string) => Promise<void>;
+  toggleCampaignPause: (campaignId: number) => Promise<void>;
+  updateCampaignMetadata: (campaignId: number, metadata: string) => Promise<void>;
+  extendCampaignDuration: (campaignId: number, additionalSeconds: number) => Promise<void>;
+
   // Utility functions
   getSupportedTokens: () => Promise<string[] | undefined>;
-  isUserBanned: (userAddress: string) => Promise<boolean | undefined>;
-  
+
   // Loading and error states
   isLoading: boolean;
   error: string | null;
@@ -112,50 +114,34 @@ export const useAds = (): UseAdsReturn => {
   // Contract read hooks for basic state
   const { data: campaignCount } = useReadContract({
     address: address as `0x${string}`,
-    abi: sovAdsManagerAbi,
+    abi: sovAdsManagerAbi as any,
     functionName: 'campaignCount',
     chainId,
   });
 
-  const { data: claimOrderCount } = useReadContract({
+  const { data: claimCount } = useReadContract({
     address: address as `0x${string}`,
-    abi: sovAdsManagerAbi,
-    functionName: 'claimOrderCount',
+    abi: sovAdsManagerAbi as any,
+    functionName: 'claimCount',
     chainId,
   });
 
   const { data: feePercent } = useReadContract({
     address: address as `0x${string}`,
-    abi: sovAdsManagerAbi,
+    abi: sovAdsManagerAbi as any,
     functionName: 'feePercent',
-    chainId,
-  });
-
-  const { data: protocolFees } = useReadContract({
-    address: address as `0x${string}`,
-    abi: sovAdsManagerAbi,
-    functionName: 'protocolFees',
     chainId,
   });
 
   const { data: paused } = useReadContract({
     address: address as `0x${string}`,
-    abi: sovAdsManagerAbi,
+    abi: sovAdsManagerAbi as any,
     functionName: 'paused',
     chainId,
   });
 
-  // Write contract hooks
-  const { writeContractAsync: writeCreateCampaign } = useWriteContract();
-
-  const { writeContractAsync: writeCreateClaimOrder } = useWriteContract();
-
-  const { writeContractAsync: writeSubscribePublisher } = useWriteContract();
-
-  const { writeContractAsync: writeAddSite } = useWriteContract();
-
-  const { writeContractAsync: writeRemoveSite } = useWriteContract();
-  const { writeContractAsync: writeErc20 } = useWriteContract();
+  // Write contract hook
+  const { writeContractAsync: writeContract } = useWriteContract();
 
   // Helper function to handle contract calls
   const handleContractCall = useCallback(async <T>(
@@ -195,7 +181,7 @@ export const useAds = (): UseAdsReturn => {
 
     if (currentAllowance >= requiredAmountWei) return;
 
-    const approveTx = await writeErc20({
+    const approveTx = await writeContract({
       address: tokenAddress as `0x${string}`,
       abi: erc20Abi,
       functionName: 'approve',
@@ -204,142 +190,105 @@ export const useAds = (): UseAdsReturn => {
     });
 
     await publicClient.waitForTransactionReceipt({ hash: approveTx });
-  }, [publicClient, writeErc20]);
+  }, [publicClient, writeContract]);
 
   // Read functions
   const getCampaign = useCallback(async (campaignId: number): Promise<Campaign | undefined> => {
     return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
+      if (!publicClient) throw new Error('Public client not available');
+
       const result = await publicClient.readContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'getCampaign',
+        abi: sovAdsManagerAbi as any,
+        functionName: 'campaigns',
         args: [BigInt(campaignId)],
       });
-      
-      return result as Campaign;
-    }, 'get campaign');
-  }, [publicClient, handleContractCall]);
 
-  const getActiveCampaignsCount = useCallback(async (): Promise<bigint | undefined> => {
+      return result as unknown as Campaign;
+    }, 'get campaign');
+  }, [publicClient, handleContractCall, address]);
+
+  const getCampaignVault = useCallback(async (campaignId: number): Promise<CampaignVault | undefined> => {
     return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
+      if (!publicClient) throw new Error('Public client not available');
+
       const result = await publicClient.readContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'getActiveCampaignsCount',
+        abi: sovAdsManagerAbi as any,
+        functionName: 'getCampaignVault',
+        args: [BigInt(campaignId)],
       });
-      
-      return result as bigint;
-    }, 'get active campaigns count');
-  }, [publicClient, handleContractCall]);
+
+      return result as unknown as CampaignVault;
+    }, 'get campaign vault');
+  }, [publicClient, handleContractCall, address]);
 
   const getPublisher = useCallback(async (publisherAddress: string): Promise<Publisher | undefined> => {
     return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
-      const result = await publicClient.readContract({
-        address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'getPublisher',
-        args: [publisherAddress as `0x${string}`],
-      });
-      
-      return result as Publisher;
-    }, 'get publisher');
-  }, [publicClient, handleContractCall]);
+      if (!publicClient) throw new Error('Public client not available');
 
-  const getPublisherSites = useCallback(async (publisherAddress: string): Promise<string[] | undefined> => {
-    return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
       const result = await publicClient.readContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'getPublisherSites',
+        abi: sovAdsManagerAbi as any,
+        functionName: 'publishers',
         args: [publisherAddress as `0x${string}`],
       });
-      
-      return result as string[];
-    }, 'get publisher sites');
-  }, [publicClient, handleContractCall]);
+
+      return result as unknown as Publisher;
+    }, 'get publisher');
+  }, [publicClient, handleContractCall, address]);
 
   const isPublisher = useCallback(async (publisherAddress: string): Promise<boolean | undefined> => {
     return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
+      if (!publicClient) throw new Error('Public client not available');
+
       const result = await publicClient.readContract({
-        address: address as `0x${string}`, // Contract address
-        abi: sovAdsManagerAbi,
+        address: address as `0x${string}`,
+        abi: sovAdsManagerAbi as any,
         functionName: 'isPublisher',
-        args: [publisherAddress as `0x${string}`], // Publisher address to check
+        args: [publisherAddress as `0x${string}`],
       });
-      
+
       return result as boolean;
     }, 'check if publisher');
-  }, [publicClient, handleContractCall]);
+  }, [publicClient, handleContractCall, address]);
 
-  const getClaimOrder = useCallback(async (orderId: number): Promise<ClaimOrder | undefined> => {
+  const isViewer = useCallback(async (viewerAddress: string): Promise<boolean | undefined> => {
     return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
+      if (!publicClient) throw new Error('Public client not available');
+
       const result = await publicClient.readContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'getClaimOrder',
-        args: [BigInt(orderId)],
+        abi: sovAdsManagerAbi as any,
+        functionName: 'isViewer',
+        args: [viewerAddress as `0x${string}`],
       });
-      
-      return result as ClaimOrder;
-    }, 'get claim order');
-  }, [publicClient, handleContractCall]);
 
+      return result as boolean;
+    }, 'check if viewer');
+  }, [publicClient, handleContractCall, address]);
+
+  const getClaim = useCallback(async (claimId: number): Promise<Claim | undefined> => {
+    return handleContractCall(async () => {
+      if (!publicClient) throw new Error('Public client not available');
+
+      const result = await publicClient.readContract({
+        address: address as `0x${string}`,
+        abi: sovAdsManagerAbi as any,
+        functionName: 'claims',
+        args: [BigInt(claimId)],
+      });
+
+      return result as unknown as Claim;
+    }, 'get claim');
+  }, [publicClient, handleContractCall, address]);
+
+  // Utility functions
   const getSupportedTokens = useCallback(async (): Promise<string[] | undefined> => {
     return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
-      const result = await publicClient.readContract({
-        address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'getSupportedTokens',
-      });
-      
-      return result as string[];
+      return getAllTokenAddresses();
     }, 'get supported tokens');
-  }, [publicClient, handleContractCall]);
-
-  const isUserBanned = useCallback(async (userAddress: string): Promise<boolean | undefined> => {
-    return handleContractCall(async () => {
-      if (!publicClient) {
-        throw new Error('Public client not available');
-      }
-      
-      const result = await publicClient.readContract({
-        address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'isUserBanned',
-        args: [userAddress as `0x${string}`],
-      });
-      
-      return result as boolean;
-    }, 'check if user banned');
-  }, [publicClient, handleContractCall]);
+  }, [handleContractCall]);
 
   // Write functions
   const createCampaign = useCallback(async (
@@ -347,167 +296,214 @@ export const useAds = (): UseAdsReturn => {
     amount: string,
     duration: number,
     metadata: string
-  ): Promise<`0x${string}`> => {
+  ): Promise<{ hash: `0x${string}`; id: number }> => {
     const result = await handleContractCall(async () => {
-      if (!writeCreateCampaign) {
-        throw new Error('Contract write function not available');
-      }
-      
-      // Check and request allowance for budget
+      if (!writeContract) throw new Error('Contract write function not available');
       if (!userAddress) throw new Error('Wallet not connected');
-      const amountWei = parseEther(amount);
-      await ensureAllowance(
-        token,
-        userAddress,
-        address as `0x${string}`,
-        amountWei
-      );
 
-      const hash = await writeCreateCampaign({
+      const tokenInfo = getTokenInfo(token);
+      const decimals = tokenInfo?.decimals ?? 18;
+      const amountWei = parseUnits(amount, decimals);
+      await ensureAllowance(token, userAddress, address as `0x${string}`, amountWei);
+
+      const hash = await writeContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
+        abi: sovAdsManagerAbi as any,
         functionName: 'createCampaign',
         chainId,
-        args: [
-          token as `0x${string}`,
-          amountWei,
-          BigInt(duration),
-          metadata
-        ],
+        args: [token as `0x${string}`, amountWei, BigInt(duration), metadata],
       });
-      
-      // Wait for transaction confirmation
+
+      let onChainId = 0;
       if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
+        const receipt = await publicClient.waitForTransactionReceipt({ hash });
+
+        // Find CampaignCreated event in logs
+        for (const log of receipt.logs) {
+          try {
+            const decoded = decodeEventLog({
+              abi: sovAdsManagerAbi,
+              data: log.data,
+              topics: log.topics,
+            });
+            if (decoded.eventName === 'CampaignCreated') {
+              onChainId = Number((decoded.args as any).id);
+              break;
+            }
+          } catch (e) {
+            // Not our event or can't decode
+          }
+        }
       }
-      return hash as `0x${string}`;
+
+      return { hash: hash as `0x${string}`, id: onChainId };
     }, 'create campaign');
     if (!result) throw new Error('Failed to create campaign');
-    return result as `0x${string}`;
-  }, [writeCreateCampaign, publicClient, handleContractCall]);
+    return result as { hash: `0x${string}`; id: number };
+  }, [writeContract, publicClient, handleContractCall, address, userAddress, ensureAllowance]);
 
-  const createClaimOrder = useCallback(async (
+  const topUpCampaign = useCallback(async (
     campaignId: number,
-    requestedAmount: string
+    amount: string,
+    tokenAddress: string
   ): Promise<void> => {
     await handleContractCall(async () => {
-      if (!writeCreateClaimOrder) {
-        throw new Error('Contract write function not available');
-      }
-      
-      const hash = await writeCreateClaimOrder({
+      if (!writeContract) throw new Error('Contract write function not available');
+      if (!userAddress) throw new Error('Wallet not connected');
+
+      const tokenInfo = getTokenInfo(tokenAddress);
+      const decimals = tokenInfo?.decimals ?? 18;
+      const amountWei = parseUnits(amount, decimals);
+
+      await ensureAllowance(tokenAddress, userAddress, address as `0x${string}`, amountWei);
+
+      const hash = await writeContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'createClaimOrder',
+        abi: sovAdsManagerAbi as any,
+        functionName: 'topUpCampaign',
         chainId,
-        args: [
-          BigInt(campaignId),
-          parseEther(requestedAmount)
-        ],
+        args: [BigInt(campaignId), amountWei],
       });
-      
-      // Wait for transaction confirmation
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
-      }
-    }, 'create claim order');
-  }, [writeCreateClaimOrder, publicClient, handleContractCall]);
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+      return hash as string;
+    }, 'top up campaign');
+  }, [writeContract, publicClient, handleContractCall, address, userAddress, ensureAllowance]);
+
+  const createClaim = useCallback(async (
+    campaignId: number,
+    amount: string
+  ): Promise<void> => {
+    await handleContractCall(async () => {
+      if (!writeContract) throw new Error('Contract write function not available');
+
+      const hash = await writeContract({
+        address: address as `0x${string}`,
+        abi: sovAdsManagerAbi as any,
+        functionName: 'createClaim',
+        chainId,
+        args: [BigInt(campaignId), parseUnits(amount, 18)],
+      });
+
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+    }, 'create claim');
+  }, [writeContract, publicClient, handleContractCall, address]);
 
   const subscribePublisher = useCallback(async (sites: string[]): Promise<void> => {
     await handleContractCall(async () => {
-      if (!writeSubscribePublisher) {
-        throw new Error('Contract write function not available');
-      }
-      
-      const hash = await writeSubscribePublisher({
+      if (!writeContract) throw new Error('Contract write function not available');
+
+      const hash = await writeContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
+        abi: sovAdsManagerAbi as any,
         functionName: 'subscribePublisher',
         chainId,
         args: [sites],
       });
-      
-      // Wait for transaction confirmation
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
-      }
+
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
     }, 'subscribe publisher');
-  }, [writeSubscribePublisher, publicClient, handleContractCall]);
+  }, [writeContract, publicClient, handleContractCall, address]);
 
   const addSite = useCallback(async (site: string): Promise<void> => {
     await handleContractCall(async () => {
-      if (!writeAddSite) {
-        throw new Error('Contract write function not available');
-      }
-      
-      const hash = await writeAddSite({
+      if (!writeContract) throw new Error('Contract write function not available');
+
+      const hash = await writeContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
+        abi: sovAdsManagerAbi as any,
         functionName: 'addSite',
         chainId,
         args: [site],
       });
-      
-      // Wait for transaction confirmation
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
-      }
-    }, 'add site');
-  }, [writeAddSite, publicClient, handleContractCall]);
 
-  const removeSite = useCallback(async (siteIndex: number): Promise<void> => {
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+    }, 'add site');
+  }, [writeContract, publicClient, handleContractCall, address]);
+
+  const recordInteraction = useCallback(async (
+    campaignId: number,
+    user: string,
+    count: number,
+    type: string
+  ): Promise<void> => {
     await handleContractCall(async () => {
-      if (!writeRemoveSite) {
-        throw new Error('Contract write function not available');
-      }
-      
-      const hash = await writeRemoveSite({
+      if (!writeContract) throw new Error('Contract write function not available');
+
+      const hash = await writeContract({
         address: address as `0x${string}`,
-        abi: sovAdsManagerAbi,
-        functionName: 'removeSite',
+        abi: sovAdsManagerAbi as any,
+        functionName: 'recordInteraction',
         chainId,
-        args: [BigInt(siteIndex)],
+        args: [BigInt(campaignId), user as `0x${string}`, BigInt(count), type],
       });
-      
-      // Wait for transaction confirmation
-      if (publicClient) {
-        await publicClient.waitForTransactionReceipt({ hash });
-      }
-    }, 'remove site');
-  }, [writeRemoveSite, publicClient, handleContractCall]);
+
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+    }, 'record interaction');
+  }, [writeContract, publicClient, handleContractCall, address]);
+
+  const toggleCampaignPause = useCallback(async (campaignId: number): Promise<void> => {
+    await handleContractCall(async () => {
+      if (!writeContract) throw new Error('Contract write function not available');
+      const hash = await writeContract({
+        address: address as `0x${string}`,
+        abi: sovAdsManagerAbi as any,
+        functionName: 'toggleCampaignPause',
+        chainId,
+        args: [BigInt(campaignId)],
+      });
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+    }, 'toggle campaign pause');
+  }, [writeContract, publicClient, handleContractCall, address]);
+
+  const updateCampaignMetadata = useCallback(async (campaignId: number, metadata: string): Promise<void> => {
+    await handleContractCall(async () => {
+      if (!writeContract) throw new Error('Contract write function not available');
+      const hash = await writeContract({
+        address: address as `0x${string}`,
+        abi: sovAdsManagerAbi as any,
+        functionName: 'updateCampaignMetadata',
+        chainId,
+        args: [BigInt(campaignId), metadata],
+      });
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+    }, 'update campaign metadata');
+  }, [writeContract, publicClient, handleContractCall, address]);
+
+  const extendCampaignDuration = useCallback(async (campaignId: number, additionalSeconds: number): Promise<void> => {
+    await handleContractCall(async () => {
+      if (!writeContract) throw new Error('Contract write function not available');
+      const hash = await writeContract({
+        address: address as `0x${string}`,
+        abi: sovAdsManagerAbi as any,
+        functionName: 'extendCampaignDuration',
+        chainId,
+        args: [BigInt(campaignId), BigInt(additionalSeconds)],
+      });
+      if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+    }, 'extend campaign duration');
+  }, [writeContract, publicClient, handleContractCall, address]);
 
   return {
-    // Contract state
     campaignCount: campaignCount as bigint | undefined,
-    claimOrderCount: claimOrderCount as bigint | undefined,
+    claimCount: claimCount as bigint | undefined,
     feePercent: feePercent as bigint | undefined,
-    protocolFees: protocolFees as bigint | undefined,
     paused: paused as boolean | undefined,
-    
-    // Campaign functions
     getCampaign,
-    getActiveCampaignsCount,
-    
-    // Publisher functions
+    getCampaignVault,
     getPublisher,
-    getPublisherSites,
     isPublisher,
-    
-    // Claim order functions
-    getClaimOrder,
-    
-    // Write functions
+    isViewer,
+    getClaim,
     createCampaign,
-    createClaimOrder,
+    topUpCampaign,
+    createClaim,
     subscribePublisher,
     addSite,
-    removeSite,
-    
-    // Utility functions
+    recordInteraction,
+    toggleCampaignPause,
+    updateCampaignMetadata,
+    extendCampaignDuration,
     getSupportedTokens,
-    isUserBanned,
-    
-    // Loading and error states
     isLoading,
     error,
   };

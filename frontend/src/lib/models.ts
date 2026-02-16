@@ -88,6 +88,7 @@ export interface Campaign {
   cpc: number
   active: boolean
   tokenAddress?: string
+  onChainId?: number
   metadataURI?: string
   mediaType: 'image' | 'video'
   tags: string[]

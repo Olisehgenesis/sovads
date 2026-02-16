@@ -1,205 +1,150 @@
 import { ethers } from "hardhat";
 import { expect } from "chai";
+import { Contract } from "ethers";
+import { SignerWithAddress } from "@nomiclabs/hardhat-ethers/signers";
 
-describe("SovAdsManager", function () {
-  let sovAdsManager: any;
-  let owner: any;
-  let advertiser: any;
-  let publisher: any;
-  let admin: any;
-  let mockToken: any;
-
-  // Test token addresses (Celo Alfajores testnet)
-  const CUSD_ADDRESS = "0x874069Fa1Eb16D44d13F0F66B92D3971647cE6c9";
-  const USDC_ADDRESS = "0x2C852e740B62308c46DD29B982FBb650D063Bd07";
+describe("SovAdsManager Unified", function () {
+  let sovAdsManager: Contract;
+  let mockToken: Contract;
+  let owner: SignerWithAddress;
+  let advertiser: SignerWithAddress;
+  let publisher: SignerWithAddress;
+  let viewer: SignerWithAddress;
+  let admin: SignerWithAddress;
+  let feeRecipient: SignerWithAddress;
 
   beforeEach(async function () {
-    [owner, advertiser, publisher, admin] = await ethers.getSigners();
+    [owner, advertiser, publisher, viewer, admin, feeRecipient] = await ethers.getSigners();
+
+    // Deploy Mock Token
+    const MockToken = await ethers.getContractFactory("SovAdsToken"); // Using existing token as mock
+    mockToken = await MockToken.deploy();
+    await mockToken.deployed();
 
     // Deploy SovAdsManager
     const SovAdsManager = await ethers.getContractFactory("SovAdsManager");
-    sovAdsManager = await SovAdsManager.deploy();
+    sovAdsManager = await SovAdsManager.deploy(feeRecipient.address);
     await sovAdsManager.deployed();
 
-    // Add supported tokens
-    await sovAdsManager.addSupportedToken(CUSD_ADDRESS);
-    await sovAdsManager.addSupportedToken(USDC_ADDRESS);
+    // Setup
+    await sovAdsManager.addSupportedToken(mockToken.address);
+    await sovAdsManager.setAdmin(admin.address, true);
+
+    // Transfer some tokens to advertiser
+    await mockToken.transfer(advertiser.address, ethers.utils.parseEther("1000"));
+    await mockToken.connect(advertiser).approve(sovAdsManager.address, ethers.utils.parseEther("1000"));
   });
 
-  describe("Campaign Management", function () {
-    it("Should create a campaign successfully", async function () {
-      const amount = ethers.utils.parseEther("100");
-      const duration = 86400; // 1 day
-      const metadataURI = "ipfs://QmTest123";
-
-      // Mock token transfer (in real test, you'd need actual tokens)
-      await expect(
-        sovAdsManager.connect(advertiser).createCampaign(
-          CUSD_ADDRESS,
-          amount,
-          duration,
-          metadataURI
-        )
-      ).to.be.revertedWith("ERC20: transfer amount exceeds allowance");
-    });
-
-    it("Should edit campaign details", async function () {
-      // First create a campaign (with proper token setup)
+  describe("Campaigns", function () {
+    it("Should create a campaign", async function () {
       const amount = ethers.utils.parseEther("100");
       const duration = 86400;
-      const metadataURI = "ipfs://QmTest123";
+      const metadata = "ipfs://campaign-metadata";
 
-      // This would require proper token setup in real tests
-      console.log("Campaign creation test requires token setup");
+      await expect(sovAdsManager.connect(advertiser).createCampaign(
+        mockToken.address,
+        amount,
+        duration,
+        metadata
+      )).to.emit(sovAdsManager, "CampaignCreated")
+        .withArgs(1, advertiser.address, mockToken.address, amount);
+
+      const campaign = await sovAdsManager.campaigns(1);
+      expect(campaign.creator).to.equal(advertiser.address);
+      expect(campaign.active).to.be.true;
     });
 
-    it("Should pause and resume campaign", async function () {
-      // Test pause/resume functionality
-      console.log("Pause/resume tests require campaign creation first");
-    });
-  });
+    it("Should top up a campaign", async function () {
+      await sovAdsManager.connect(advertiser).createCampaign(
+        mockToken.address,
+        ethers.utils.parseEther("100"),
+        86400,
+        "metadata"
+      );
 
-  describe("Publisher Management", function () {
-    it("Should subscribe publisher successfully", async function () {
-      const sites = ["example.com", "test.com"];
-      
-      await expect(
-        sovAdsManager.connect(publisher).subscribePublisher(sites)
-      ).to.emit(sovAdsManager, "PublisherSubscribed")
-      .withArgs(publisher.address, sites, await sovAdsManager.provider.getBlockNumber());
+      const topUpAmount = ethers.utils.parseEther("50");
+      await expect(sovAdsManager.connect(advertiser).topUpCampaign(1, topUpAmount))
+        .to.emit(sovAdsManager, "CampaignFunded")
+        .withArgs(1, topUpAmount);
 
-      // Verify publisher is registered
-      const publisherData = await sovAdsManager.getPublisher(publisher.address);
-      expect(publisherData.wallet).to.equal(publisher.address);
-      expect(publisherData.sites.length).to.equal(2);
-      expect(publisherData.banned).to.be.false;
-    });
-
-    it("Should add and remove sites", async function () {
-      // First subscribe
-      await sovAdsManager.connect(publisher).subscribePublisher(["example.com"]);
-      
-      // Add new site
-      await sovAdsManager.connect(publisher).addSite("newsite.com");
-      
-      let publisherData = await sovAdsManager.getPublisher(publisher.address);
-      expect(publisherData.sites.length).to.equal(2);
-      
-      // Remove site
-      await sovAdsManager.connect(publisher).removeSite(1);
-      
-      publisherData = await sovAdsManager.getPublisher(publisher.address);
-      expect(publisherData.sites.length).to.equal(1);
-    });
-
-    it("Should prevent banned users from subscribing", async function () {
-      // Ban user first
-      await sovAdsManager.connect(owner).banUser(publisher.address, "Test ban");
-      
-      // Try to subscribe
-      await expect(
-        sovAdsManager.connect(publisher).subscribePublisher(["example.com"])
-      ).to.be.revertedWith("User is banned");
+      const vault = await sovAdsManager.getCampaignVault(1);
+      expect(vault.totalFunded).to.equal(ethers.utils.parseEther("150"));
     });
   });
 
-  describe("Claim Orders", function () {
+  describe("Publishers", function () {
+    it("Should subscribe a publisher", async function () {
+      const sites = ["site1.com", "site2.com"];
+      await expect(sovAdsManager.connect(publisher).subscribePublisher(sites))
+        .to.emit(sovAdsManager, "PublisherSubscribed")
+        .withArgs(publisher.address, sites);
+
+      expect(await sovAdsManager.isPublisher(publisher.address)).to.be.true;
+    });
+  });
+
+  describe("Interactions & Claims", function () {
     beforeEach(async function () {
-      // Subscribe publisher
-      await sovAdsManager.connect(publisher).subscribePublisher(["example.com"]);
+      await sovAdsManager.connect(advertiser).createCampaign(
+        mockToken.address,
+        ethers.utils.parseEther("100"),
+        86400,
+        "metadata"
+      );
+      await sovAdsManager.connect(publisher).subscribePublisher(["site1.com"]);
     });
 
-    it("Should create claim order", async function () {
-      // This would require a campaign to exist first
-      console.log("Claim order tests require campaign creation");
-    });
+    it("Should record interactions and allow claiming", async function () {
+      // Admin records 10 impressions for the viewer via the publisher (wait, contract doesn't track publisher in interaction yet, just user)
+      // Actually recorded per campaign per user.
+      await sovAdsManager.connect(admin).recordInteraction(1, viewer.address, 10, "IMPRESSION");
 
-    it("Should process claim order as admin", async function () {
-      // Test admin processing of claims
-      console.log("Claim processing tests require campaign and claim order");
-    });
-  });
+      const [accrued] = await sovAdsManager.getBalanceInfo(1, viewer.address);
+      const impressionRate = await sovAdsManager.impressionRate();
+      expect(accrued).to.equal(impressionRate.mul(10));
 
-  describe("Admin Functions", function () {
-    it("Should ban and unban users", async function () {
-      // Ban user
-      await sovAdsManager.connect(owner).banUser(publisher.address, "Test ban");
-      
-      let isBanned = await sovAdsManager.isUserBanned(publisher.address);
-      expect(isBanned).to.be.true;
-      
-      // Unban user
-      await sovAdsManager.connect(owner).unbanUser(publisher.address);
-      
-      isBanned = await sovAdsManager.isUserBanned(publisher.address);
-      expect(isBanned).to.be.false;
-    });
+      // Create claim
+      const claimAmount = accrued;
+      await expect(sovAdsManager.connect(viewer).createClaim(1, claimAmount))
+        .to.emit(sovAdsManager, "ClaimCreated")
+        .withArgs(1, 1, viewer.address, claimAmount);
 
-    it("Should add and remove supported tokens", async function () {
-      const newToken = "0x1234567890123456789012345678901234567890";
-      
-      // Add token
-      await sovAdsManager.connect(owner).addSupportedToken(newToken);
-      
-      const supportedTokens = await sovAdsManager.getSupportedTokens();
-      expect(supportedTokens).to.include(newToken);
-      
-      // Remove token
-      await sovAdsManager.connect(owner).removeSupportedToken(newToken);
-      
-      const updatedTokens = await sovAdsManager.getSupportedTokens();
-      expect(updatedTokens).to.not.include(newToken);
-    });
-
-    it("Should set fee percentage", async function () {
-      await sovAdsManager.connect(owner).setFeePercent(10);
-      
+      // Process claim
+      const initialBalance = await mockToken.balanceOf(viewer.address);
       const feePercent = await sovAdsManager.feePercent();
-      expect(feePercent).to.equal(10);
-    });
+      const fee = claimAmount.mul(feePercent).div(10000);
+      const netAmount = claimAmount.sub(fee);
 
-    it("Should pause and unpause contract", async function () {
-      await sovAdsManager.connect(owner).pause();
-      
-      await expect(
-        sovAdsManager.connect(publisher).subscribePublisher(["example.com"])
-      ).to.be.revertedWith("Pausable: paused");
-      
-      await sovAdsManager.connect(owner).unpause();
-      
-      // Should work now
-      await sovAdsManager.connect(publisher).subscribePublisher(["example.com"]);
+      await expect(sovAdsManager.connect(admin).processClaim(1, true))
+        .to.emit(sovAdsManager, "ClaimProcessed")
+        .withArgs(1, viewer.address, claimAmount, true);
+
+      expect(await mockToken.balanceOf(viewer.address)).to.equal(initialBalance.add(netAmount));
+      expect(await mockToken.balanceOf(feeRecipient.address)).to.equal(fee);
     });
   });
 
-  describe("Access Control", function () {
-    it("Should only allow owner to call admin functions", async function () {
-      await expect(
-        sovAdsManager.connect(advertiser).banUser(publisher.address, "Test")
-      ).to.be.revertedWith("Ownable: caller is not the owner");
-      
-      await expect(
-        sovAdsManager.connect(advertiser).setFeePercent(10)
-      ).to.be.revertedWith("Ownable: caller is not the owner");
+  describe("Admin", function () {
+    it("Should set rates", async function () {
+      const newImpressionRate = ethers.utils.parseEther("0.01");
+      const newClickRate = ethers.utils.parseEther("0.05");
+
+      await expect(sovAdsManager.connect(owner).setRates(newImpressionRate, newClickRate))
+        .to.emit(sovAdsManager, "RateUpdated")
+        .withArgs("IMPRESSION", newImpressionRate);
+
+      expect(await sovAdsManager.impressionRate()).to.equal(newImpressionRate);
+      expect(await sovAdsManager.clickRate()).to.equal(newClickRate);
     });
 
-    it("Should only allow campaign creator to edit campaign", async function () {
-      await expect(
-        sovAdsManager.connect(advertiser).editCampaign(1, "newURI", 86400)
-      ).to.be.revertedWith("Campaign does not exist");
-    });
-  });
+    it("Should set fee config", async function () {
+      const newRecipient = advertiser.address;
+      const newBps = 1000; // 10%
 
-  describe("View Functions", function () {
-    it("Should return correct contract state", async function () {
-      const totalFees = await sovAdsManager.getTotalProtocolFees();
-      expect(totalFees).to.equal(0);
-      
-      const activeCampaigns = await sovAdsManager.getActiveCampaignsCount();
-      expect(activeCampaigns).to.equal(0);
-      
-      const supportedTokens = await sovAdsManager.getSupportedTokens();
-      expect(supportedTokens.length).to.equal(2);
+      await sovAdsManager.connect(owner).setFeeConfig(newRecipient, newBps);
+
+      expect(await sovAdsManager.feeRecipient()).to.equal(newRecipient);
+      expect(await sovAdsManager.feePercent()).to.equal(newBps);
     });
   });
 });

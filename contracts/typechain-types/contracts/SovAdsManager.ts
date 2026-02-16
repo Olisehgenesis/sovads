@@ -28,213 +28,104 @@ import type {
 } from "../common";
 
 export declare namespace SovAdsManager {
-  export type CampaignStruct = {
-    id: PromiseOrValue<BigNumberish>;
-    creator: PromiseOrValue<string>;
+  export type CampaignVaultStruct = {
     token: PromiseOrValue<string>;
-    amount: PromiseOrValue<BigNumberish>;
-    startTime: PromiseOrValue<BigNumberish>;
-    endTime: PromiseOrValue<BigNumberish>;
-    metadata: PromiseOrValue<string>;
-    active: PromiseOrValue<boolean>;
-    spent: PromiseOrValue<BigNumberish>;
-    paused: PromiseOrValue<boolean>;
+    totalFunded: PromiseOrValue<BigNumberish>;
+    locked: PromiseOrValue<BigNumberish>;
+    claimed: PromiseOrValue<BigNumberish>;
   };
 
-  export type CampaignStructOutput = [
-    BigNumber,
-    string,
+  export type CampaignVaultStructOutput = [
     string,
     BigNumber,
     BigNumber,
-    BigNumber,
-    string,
-    boolean,
-    BigNumber,
-    boolean
+    BigNumber
   ] & {
-    id: BigNumber;
-    creator: string;
     token: string;
-    amount: BigNumber;
-    startTime: BigNumber;
-    endTime: BigNumber;
-    metadata: string;
-    active: boolean;
-    spent: BigNumber;
-    paused: boolean;
-  };
-
-  export type ClaimOrderStruct = {
-    id: PromiseOrValue<BigNumberish>;
-    publisher: PromiseOrValue<string>;
-    campaignId: PromiseOrValue<BigNumberish>;
-    requestedAmount: PromiseOrValue<BigNumberish>;
-    approvedAmount: PromiseOrValue<BigNumberish>;
-    processed: PromiseOrValue<boolean>;
-    rejected: PromiseOrValue<boolean>;
-    reason: PromiseOrValue<string>;
-    createdAt: PromiseOrValue<BigNumberish>;
-    processedAt: PromiseOrValue<BigNumberish>;
-  };
-
-  export type ClaimOrderStructOutput = [
-    BigNumber,
-    string,
-    BigNumber,
-    BigNumber,
-    BigNumber,
-    boolean,
-    boolean,
-    string,
-    BigNumber,
-    BigNumber
-  ] & {
-    id: BigNumber;
-    publisher: string;
-    campaignId: BigNumber;
-    requestedAmount: BigNumber;
-    approvedAmount: BigNumber;
-    processed: boolean;
-    rejected: boolean;
-    reason: string;
-    createdAt: BigNumber;
-    processedAt: BigNumber;
-  };
-
-  export type PublisherStruct = {
-    wallet: PromiseOrValue<string>;
-    sites: PromiseOrValue<string>[];
-    banned: PromiseOrValue<boolean>;
-    totalEarned: PromiseOrValue<BigNumberish>;
-    totalClaimed: PromiseOrValue<BigNumberish>;
-    verified: PromiseOrValue<boolean>;
-    subscriptionDate: PromiseOrValue<BigNumberish>;
-  };
-
-  export type PublisherStructOutput = [
-    string,
-    string[],
-    boolean,
-    BigNumber,
-    BigNumber,
-    boolean,
-    BigNumber
-  ] & {
-    wallet: string;
-    sites: string[];
-    banned: boolean;
-    totalEarned: BigNumber;
-    totalClaimed: BigNumber;
-    verified: boolean;
-    subscriptionDate: BigNumber;
+    totalFunded: BigNumber;
+    locked: BigNumber;
+    claimed: BigNumber;
   };
 }
 
 export interface SovAdsManagerInterface extends utils.Interface {
   functions: {
-    "activeCampaigns(uint256)": FunctionFragment;
     "addSite(string)": FunctionFragment;
     "addSupportedToken(address)": FunctionFragment;
-    "banUser(address,string)": FunctionFragment;
-    "bannedUsers(address)": FunctionFragment;
+    "admins(address)": FunctionFragment;
     "campaignCount()": FunctionFragment;
     "campaigns(uint256)": FunctionFragment;
-    "cancelCampaign(uint256)": FunctionFragment;
-    "claimOrderCount()": FunctionFragment;
-    "claimOrders(uint256)": FunctionFragment;
-    "collectFees(address,uint256)": FunctionFragment;
+    "claimCount()": FunctionFragment;
+    "claims(uint256)": FunctionFragment;
+    "clickRate()": FunctionFragment;
     "createCampaign(address,uint256,uint256,string)": FunctionFragment;
-    "createClaimOrder(uint256,uint256)": FunctionFragment;
+    "createClaim(uint256,uint256)": FunctionFragment;
     "disburseFunds(uint256,address,uint256)": FunctionFragment;
-    "editCampaign(uint256,string,uint256)": FunctionFragment;
     "feePercent()": FunctionFragment;
-    "getActiveCampaignsCount()": FunctionFragment;
-    "getCampaign(uint256)": FunctionFragment;
-    "getClaimOrder(uint256)": FunctionFragment;
-    "getPublisher(address)": FunctionFragment;
-    "getPublisherSites(address)": FunctionFragment;
-    "getSupportedTokens()": FunctionFragment;
-    "getTotalProtocolFees()": FunctionFragment;
+    "feeRecipient()": FunctionFragment;
+    "getBalanceInfo(uint256,address)": FunctionFragment;
+    "getCampaignVault(uint256)": FunctionFragment;
+    "impressionRate()": FunctionFragment;
     "isPublisher(address)": FunctionFragment;
-    "isUserBanned(address)": FunctionFragment;
-    "minimumClaimAmount()": FunctionFragment;
+    "isViewer(address)": FunctionFragment;
     "owner()": FunctionFragment;
     "pause()": FunctionFragment;
-    "pauseCampaign(uint256)": FunctionFragment;
     "paused()": FunctionFragment;
-    "processClaimOrder(uint256,uint256,bool,string)": FunctionFragment;
-    "protocolFees()": FunctionFragment;
+    "processClaim(uint256,bool)": FunctionFragment;
     "publishers(address)": FunctionFragment;
-    "removeSite(uint256)": FunctionFragment;
-    "removeSupportedToken(address)": FunctionFragment;
+    "recordInteraction(uint256,address,uint256,string)": FunctionFragment;
     "renounceOwnership()": FunctionFragment;
-    "resumeCampaign(uint256)": FunctionFragment;
-    "setFeePercent(uint256)": FunctionFragment;
-    "setMinimumClaimAmount(uint256)": FunctionFragment;
+    "setAdmin(address,bool)": FunctionFragment;
+    "setFeeConfig(address,uint256)": FunctionFragment;
+    "setRates(uint256,uint256)": FunctionFragment;
     "subscribePublisher(string[])": FunctionFragment;
     "supportedTokens(address)": FunctionFragment;
-    "supportedTokensList(uint256)": FunctionFragment;
     "topUpCampaign(uint256,uint256)": FunctionFragment;
     "transferOwnership(address)": FunctionFragment;
-    "unbanUser(address)": FunctionFragment;
     "unpause()": FunctionFragment;
+    "valuations(uint256,address)": FunctionFragment;
+    "viewers(address)": FunctionFragment;
   };
 
   getFunction(
     nameOrSignatureOrTopic:
-      | "activeCampaigns"
       | "addSite"
       | "addSupportedToken"
-      | "banUser"
-      | "bannedUsers"
+      | "admins"
       | "campaignCount"
       | "campaigns"
-      | "cancelCampaign"
-      | "claimOrderCount"
-      | "claimOrders"
-      | "collectFees"
+      | "claimCount"
+      | "claims"
+      | "clickRate"
       | "createCampaign"
-      | "createClaimOrder"
+      | "createClaim"
       | "disburseFunds"
-      | "editCampaign"
       | "feePercent"
-      | "getActiveCampaignsCount"
-      | "getCampaign"
-      | "getClaimOrder"
-      | "getPublisher"
-      | "getPublisherSites"
-      | "getSupportedTokens"
-      | "getTotalProtocolFees"
+      | "feeRecipient"
+      | "getBalanceInfo"
+      | "getCampaignVault"
+      | "impressionRate"
       | "isPublisher"
-      | "isUserBanned"
-      | "minimumClaimAmount"
+      | "isViewer"
       | "owner"
       | "pause"
-      | "pauseCampaign"
       | "paused"
-      | "processClaimOrder"
-      | "protocolFees"
+      | "processClaim"
       | "publishers"
-      | "removeSite"
-      | "removeSupportedToken"
+      | "recordInteraction"
       | "renounceOwnership"
-      | "resumeCampaign"
-      | "setFeePercent"
-      | "setMinimumClaimAmount"
+      | "setAdmin"
+      | "setFeeConfig"
+      | "setRates"
       | "subscribePublisher"
       | "supportedTokens"
-      | "supportedTokensList"
       | "topUpCampaign"
       | "transferOwnership"
-      | "unbanUser"
       | "unpause"
+      | "valuations"
+      | "viewers"
   ): FunctionFragment;
 
-  encodeFunctionData(
-    functionFragment: "activeCampaigns",
-    values: [PromiseOrValue<BigNumberish>]
-  ): string;
   encodeFunctionData(
     functionFragment: "addSite",
     values: [PromiseOrValue<string>]
@@ -244,11 +135,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
-    functionFragment: "banUser",
-    values: [PromiseOrValue<string>, PromiseOrValue<string>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "bannedUsers",
+    functionFragment: "admins",
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
@@ -260,21 +147,14 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
-    functionFragment: "cancelCampaign",
-    values: [PromiseOrValue<BigNumberish>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "claimOrderCount",
+    functionFragment: "claimCount",
     values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "claimOrders",
+    functionFragment: "claims",
     values: [PromiseOrValue<BigNumberish>]
   ): string;
-  encodeFunctionData(
-    functionFragment: "collectFees",
-    values: [PromiseOrValue<string>, PromiseOrValue<BigNumberish>]
-  ): string;
+  encodeFunctionData(functionFragment: "clickRate", values?: undefined): string;
   encodeFunctionData(
     functionFragment: "createCampaign",
     values: [
@@ -285,19 +165,11 @@ export interface SovAdsManagerInterface extends utils.Interface {
     ]
   ): string;
   encodeFunctionData(
-    functionFragment: "createClaimOrder",
+    functionFragment: "createClaim",
     values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
     functionFragment: "disburseFunds",
-    values: [
-      PromiseOrValue<BigNumberish>,
-      PromiseOrValue<string>,
-      PromiseOrValue<BigNumberish>
-    ]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "editCampaign",
     values: [
       PromiseOrValue<BigNumberish>,
       PromiseOrValue<string>,
@@ -309,31 +181,19 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "getActiveCampaignsCount",
+    functionFragment: "feeRecipient",
     values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "getCampaign",
+    functionFragment: "getBalanceInfo",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<string>]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "getCampaignVault",
     values: [PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
-    functionFragment: "getClaimOrder",
-    values: [PromiseOrValue<BigNumberish>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "getPublisher",
-    values: [PromiseOrValue<string>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "getPublisherSites",
-    values: [PromiseOrValue<string>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "getSupportedTokens",
-    values?: undefined
-  ): string;
-  encodeFunctionData(
-    functionFragment: "getTotalProtocolFees",
+    functionFragment: "impressionRate",
     values?: undefined
   ): string;
   encodeFunctionData(
@@ -341,60 +201,44 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
-    functionFragment: "isUserBanned",
+    functionFragment: "isViewer",
     values: [PromiseOrValue<string>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "minimumClaimAmount",
-    values?: undefined
   ): string;
   encodeFunctionData(functionFragment: "owner", values?: undefined): string;
   encodeFunctionData(functionFragment: "pause", values?: undefined): string;
-  encodeFunctionData(
-    functionFragment: "pauseCampaign",
-    values: [PromiseOrValue<BigNumberish>]
-  ): string;
   encodeFunctionData(functionFragment: "paused", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "processClaimOrder",
-    values: [
-      PromiseOrValue<BigNumberish>,
-      PromiseOrValue<BigNumberish>,
-      PromiseOrValue<boolean>,
-      PromiseOrValue<string>
-    ]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "protocolFees",
-    values?: undefined
+    functionFragment: "processClaim",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<boolean>]
   ): string;
   encodeFunctionData(
     functionFragment: "publishers",
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
-    functionFragment: "removeSite",
-    values: [PromiseOrValue<BigNumberish>]
-  ): string;
-  encodeFunctionData(
-    functionFragment: "removeSupportedToken",
-    values: [PromiseOrValue<string>]
+    functionFragment: "recordInteraction",
+    values: [
+      PromiseOrValue<BigNumberish>,
+      PromiseOrValue<string>,
+      PromiseOrValue<BigNumberish>,
+      PromiseOrValue<string>
+    ]
   ): string;
   encodeFunctionData(
     functionFragment: "renounceOwnership",
     values?: undefined
   ): string;
   encodeFunctionData(
-    functionFragment: "resumeCampaign",
-    values: [PromiseOrValue<BigNumberish>]
+    functionFragment: "setAdmin",
+    values: [PromiseOrValue<string>, PromiseOrValue<boolean>]
   ): string;
   encodeFunctionData(
-    functionFragment: "setFeePercent",
-    values: [PromiseOrValue<BigNumberish>]
+    functionFragment: "setFeeConfig",
+    values: [PromiseOrValue<string>, PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
-    functionFragment: "setMinimumClaimAmount",
-    values: [PromiseOrValue<BigNumberish>]
+    functionFragment: "setRates",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
     functionFragment: "subscribePublisher",
@@ -405,10 +249,6 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
-    functionFragment: "supportedTokensList",
-    values: [PromiseOrValue<BigNumberish>]
-  ): string;
-  encodeFunctionData(
     functionFragment: "topUpCampaign",
     values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
   ): string;
@@ -416,141 +256,86 @@ export interface SovAdsManagerInterface extends utils.Interface {
     functionFragment: "transferOwnership",
     values: [PromiseOrValue<string>]
   ): string;
+  encodeFunctionData(functionFragment: "unpause", values?: undefined): string;
   encodeFunctionData(
-    functionFragment: "unbanUser",
+    functionFragment: "valuations",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<string>]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "viewers",
     values: [PromiseOrValue<string>]
   ): string;
-  encodeFunctionData(functionFragment: "unpause", values?: undefined): string;
 
-  decodeFunctionResult(
-    functionFragment: "activeCampaigns",
-    data: BytesLike
-  ): Result;
   decodeFunctionResult(functionFragment: "addSite", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "addSupportedToken",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(functionFragment: "banUser", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "bannedUsers",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "admins", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "campaignCount",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "campaigns", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "cancelCampaign",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "claimOrderCount",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "claimOrders",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "collectFees",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "claimCount", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "claims", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "clickRate", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "createCampaign",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "createClaimOrder",
+    functionFragment: "createClaim",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "disburseFunds",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(
-    functionFragment: "editCampaign",
-    data: BytesLike
-  ): Result;
   decodeFunctionResult(functionFragment: "feePercent", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "getActiveCampaignsCount",
+    functionFragment: "feeRecipient",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "getCampaign",
+    functionFragment: "getBalanceInfo",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "getClaimOrder",
+    functionFragment: "getCampaignVault",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "getPublisher",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "getPublisherSites",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "getSupportedTokens",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "getTotalProtocolFees",
+    functionFragment: "impressionRate",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "isPublisher",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(
-    functionFragment: "isUserBanned",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "minimumClaimAmount",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "isViewer", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "owner", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "pause", data: BytesLike): Result;
-  decodeFunctionResult(
-    functionFragment: "pauseCampaign",
-    data: BytesLike
-  ): Result;
   decodeFunctionResult(functionFragment: "paused", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "processClaimOrder",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "protocolFees",
+    functionFragment: "processClaim",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "publishers", data: BytesLike): Result;
-  decodeFunctionResult(functionFragment: "removeSite", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "removeSupportedToken",
+    functionFragment: "recordInteraction",
     data: BytesLike
   ): Result;
   decodeFunctionResult(
     functionFragment: "renounceOwnership",
     data: BytesLike
   ): Result;
+  decodeFunctionResult(functionFragment: "setAdmin", data: BytesLike): Result;
   decodeFunctionResult(
-    functionFragment: "resumeCampaign",
+    functionFragment: "setFeeConfig",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(
-    functionFragment: "setFeePercent",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
-    functionFragment: "setMinimumClaimAmount",
-    data: BytesLike
-  ): Result;
+  decodeFunctionResult(functionFragment: "setRates", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "subscribePublisher",
     data: BytesLike
@@ -560,10 +345,6 @@ export interface SovAdsManagerInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
-    functionFragment: "supportedTokensList",
-    data: BytesLike
-  ): Result;
-  decodeFunctionResult(
     functionFragment: "topUpCampaign",
     data: BytesLike
   ): Result;
@@ -571,48 +352,39 @@ export interface SovAdsManagerInterface extends utils.Interface {
     functionFragment: "transferOwnership",
     data: BytesLike
   ): Result;
-  decodeFunctionResult(functionFragment: "unbanUser", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "unpause", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "valuations", data: BytesLike): Result;
+  decodeFunctionResult(functionFragment: "viewers", data: BytesLike): Result;
 
   events: {
-    "CampaignCreated(uint256,address,address,uint256,uint256,uint256,string)": EventFragment;
-    "CampaignEdited(uint256,string,uint256)": EventFragment;
-    "CampaignPaused(uint256)": EventFragment;
-    "CampaignResumed(uint256)": EventFragment;
-    "ClaimOrderCreated(uint256,address,uint256,uint256)": EventFragment;
-    "ClaimOrderProcessed(uint256,uint256,bool,string)": EventFragment;
-    "FeeCollected(address,uint256)": EventFragment;
-    "FundsDisbursed(uint256,address,uint256)": EventFragment;
+    "CampaignCreated(uint256,address,address,uint256)": EventFragment;
+    "CampaignFunded(uint256,uint256)": EventFragment;
+    "ClaimCreated(uint256,uint256,address,uint256)": EventFragment;
+    "ClaimProcessed(uint256,address,uint256,bool)": EventFragment;
+    "InteractionRecorded(uint256,address,uint256,string)": EventFragment;
     "OwnershipTransferred(address,address)": EventFragment;
     "Paused(address)": EventFragment;
-    "PublisherBanned(address,string)": EventFragment;
-    "PublisherSubscribed(address,string[],uint256)": EventFragment;
-    "PublisherUnbanned(address)": EventFragment;
+    "PublisherSubscribed(address,string[])": EventFragment;
+    "RateUpdated(string,uint256)": EventFragment;
     "SiteAdded(address,string)": EventFragment;
-    "SiteRemoved(address,string)": EventFragment;
-    "SupportedTokenAdded(address)": EventFragment;
-    "SupportedTokenRemoved(address)": EventFragment;
     "Unpaused(address)": EventFragment;
+    "UserBanned(address)": EventFragment;
+    "UserUnbanned(address)": EventFragment;
   };
 
   getEvent(nameOrSignatureOrTopic: "CampaignCreated"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "CampaignEdited"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "CampaignPaused"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "CampaignResumed"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "ClaimOrderCreated"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "ClaimOrderProcessed"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "FeeCollected"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "FundsDisbursed"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "CampaignFunded"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "ClaimCreated"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "ClaimProcessed"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "InteractionRecorded"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "OwnershipTransferred"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "Paused"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "PublisherBanned"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "PublisherSubscribed"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "PublisherUnbanned"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "RateUpdated"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "SiteAdded"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "SiteRemoved"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "SupportedTokenAdded"): EventFragment;
-  getEvent(nameOrSignatureOrTopic: "SupportedTokenRemoved"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "Unpaused"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "UserBanned"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "UserUnbanned"): EventFragment;
 }
 
 export interface CampaignCreatedEventObject {
@@ -620,99 +392,64 @@ export interface CampaignCreatedEventObject {
   creator: string;
   token: string;
   amount: BigNumber;
-  startTime: BigNumber;
-  endTime: BigNumber;
-  metadata: string;
 }
 export type CampaignCreatedEvent = TypedEvent<
-  [BigNumber, string, string, BigNumber, BigNumber, BigNumber, string],
+  [BigNumber, string, string, BigNumber],
   CampaignCreatedEventObject
 >;
 
 export type CampaignCreatedEventFilter = TypedEventFilter<CampaignCreatedEvent>;
 
-export interface CampaignEditedEventObject {
+export interface CampaignFundedEventObject {
   id: BigNumber;
-  newMetadata: string;
-  newEndTime: BigNumber;
-}
-export type CampaignEditedEvent = TypedEvent<
-  [BigNumber, string, BigNumber],
-  CampaignEditedEventObject
->;
-
-export type CampaignEditedEventFilter = TypedEventFilter<CampaignEditedEvent>;
-
-export interface CampaignPausedEventObject {
-  id: BigNumber;
-}
-export type CampaignPausedEvent = TypedEvent<
-  [BigNumber],
-  CampaignPausedEventObject
->;
-
-export type CampaignPausedEventFilter = TypedEventFilter<CampaignPausedEvent>;
-
-export interface CampaignResumedEventObject {
-  id: BigNumber;
-}
-export type CampaignResumedEvent = TypedEvent<
-  [BigNumber],
-  CampaignResumedEventObject
->;
-
-export type CampaignResumedEventFilter = TypedEventFilter<CampaignResumedEvent>;
-
-export interface ClaimOrderCreatedEventObject {
-  orderId: BigNumber;
-  publisher: string;
-  campaignId: BigNumber;
-  requestedAmount: BigNumber;
-}
-export type ClaimOrderCreatedEvent = TypedEvent<
-  [BigNumber, string, BigNumber, BigNumber],
-  ClaimOrderCreatedEventObject
->;
-
-export type ClaimOrderCreatedEventFilter =
-  TypedEventFilter<ClaimOrderCreatedEvent>;
-
-export interface ClaimOrderProcessedEventObject {
-  orderId: BigNumber;
-  approvedAmount: BigNumber;
-  rejected: boolean;
-  reason: string;
-}
-export type ClaimOrderProcessedEvent = TypedEvent<
-  [BigNumber, BigNumber, boolean, string],
-  ClaimOrderProcessedEventObject
->;
-
-export type ClaimOrderProcessedEventFilter =
-  TypedEventFilter<ClaimOrderProcessedEvent>;
-
-export interface FeeCollectedEventObject {
-  admin: string;
   amount: BigNumber;
 }
-export type FeeCollectedEvent = TypedEvent<
-  [string, BigNumber],
-  FeeCollectedEventObject
+export type CampaignFundedEvent = TypedEvent<
+  [BigNumber, BigNumber],
+  CampaignFundedEventObject
 >;
 
-export type FeeCollectedEventFilter = TypedEventFilter<FeeCollectedEvent>;
+export type CampaignFundedEventFilter = TypedEventFilter<CampaignFundedEvent>;
 
-export interface FundsDisbursedEventObject {
+export interface ClaimCreatedEventObject {
+  claimId: BigNumber;
   campaignId: BigNumber;
-  recipient: string;
+  claimant: string;
   amount: BigNumber;
 }
-export type FundsDisbursedEvent = TypedEvent<
-  [BigNumber, string, BigNumber],
-  FundsDisbursedEventObject
+export type ClaimCreatedEvent = TypedEvent<
+  [BigNumber, BigNumber, string, BigNumber],
+  ClaimCreatedEventObject
 >;
 
-export type FundsDisbursedEventFilter = TypedEventFilter<FundsDisbursedEvent>;
+export type ClaimCreatedEventFilter = TypedEventFilter<ClaimCreatedEvent>;
+
+export interface ClaimProcessedEventObject {
+  claimId: BigNumber;
+  claimant: string;
+  amount: BigNumber;
+  approved: boolean;
+}
+export type ClaimProcessedEvent = TypedEvent<
+  [BigNumber, string, BigNumber, boolean],
+  ClaimProcessedEventObject
+>;
+
+export type ClaimProcessedEventFilter = TypedEventFilter<ClaimProcessedEvent>;
+
+export interface InteractionRecordedEventObject {
+  campaignId: BigNumber;
+  user: string;
+  value: BigNumber;
+  interactionType: string;
+}
+export type InteractionRecordedEvent = TypedEvent<
+  [BigNumber, string, BigNumber, string],
+  InteractionRecordedEventObject
+>;
+
+export type InteractionRecordedEventFilter =
+  TypedEventFilter<InteractionRecordedEvent>;
 
 export interface OwnershipTransferredEventObject {
   previousOwner: string;
@@ -733,40 +470,28 @@ export type PausedEvent = TypedEvent<[string], PausedEventObject>;
 
 export type PausedEventFilter = TypedEventFilter<PausedEvent>;
 
-export interface PublisherBannedEventObject {
-  publisher: string;
-  reason: string;
-}
-export type PublisherBannedEvent = TypedEvent<
-  [string, string],
-  PublisherBannedEventObject
->;
-
-export type PublisherBannedEventFilter = TypedEventFilter<PublisherBannedEvent>;
-
 export interface PublisherSubscribedEventObject {
   publisher: string;
   sites: string[];
-  subscriptionDate: BigNumber;
 }
 export type PublisherSubscribedEvent = TypedEvent<
-  [string, string[], BigNumber],
+  [string, string[]],
   PublisherSubscribedEventObject
 >;
 
 export type PublisherSubscribedEventFilter =
   TypedEventFilter<PublisherSubscribedEvent>;
 
-export interface PublisherUnbannedEventObject {
-  publisher: string;
+export interface RateUpdatedEventObject {
+  rateType: string;
+  newValue: BigNumber;
 }
-export type PublisherUnbannedEvent = TypedEvent<
-  [string],
-  PublisherUnbannedEventObject
+export type RateUpdatedEvent = TypedEvent<
+  [string, BigNumber],
+  RateUpdatedEventObject
 >;
 
-export type PublisherUnbannedEventFilter =
-  TypedEventFilter<PublisherUnbannedEvent>;
+export type RateUpdatedEventFilter = TypedEventFilter<RateUpdatedEvent>;
 
 export interface SiteAddedEventObject {
   publisher: string;
@@ -776,45 +501,26 @@ export type SiteAddedEvent = TypedEvent<[string, string], SiteAddedEventObject>;
 
 export type SiteAddedEventFilter = TypedEventFilter<SiteAddedEvent>;
 
-export interface SiteRemovedEventObject {
-  publisher: string;
-  site: string;
-}
-export type SiteRemovedEvent = TypedEvent<
-  [string, string],
-  SiteRemovedEventObject
->;
-
-export type SiteRemovedEventFilter = TypedEventFilter<SiteRemovedEvent>;
-
-export interface SupportedTokenAddedEventObject {
-  token: string;
-}
-export type SupportedTokenAddedEvent = TypedEvent<
-  [string],
-  SupportedTokenAddedEventObject
->;
-
-export type SupportedTokenAddedEventFilter =
-  TypedEventFilter<SupportedTokenAddedEvent>;
-
-export interface SupportedTokenRemovedEventObject {
-  token: string;
-}
-export type SupportedTokenRemovedEvent = TypedEvent<
-  [string],
-  SupportedTokenRemovedEventObject
->;
-
-export type SupportedTokenRemovedEventFilter =
-  TypedEventFilter<SupportedTokenRemovedEvent>;
-
 export interface UnpausedEventObject {
   account: string;
 }
 export type UnpausedEvent = TypedEvent<[string], UnpausedEventObject>;
 
 export type UnpausedEventFilter = TypedEventFilter<UnpausedEvent>;
+
+export interface UserBannedEventObject {
+  user: string;
+}
+export type UserBannedEvent = TypedEvent<[string], UserBannedEventObject>;
+
+export type UserBannedEventFilter = TypedEventFilter<UserBannedEvent>;
+
+export interface UserUnbannedEventObject {
+  user: string;
+}
+export type UserUnbannedEvent = TypedEvent<[string], UserUnbannedEventObject>;
+
+export type UserUnbannedEventFilter = TypedEventFilter<UserUnbannedEvent>;
 
 export interface SovAdsManager extends BaseContract {
   connect(signerOrProvider: Signer | Provider | string): this;
@@ -843,11 +549,6 @@ export interface SovAdsManager extends BaseContract {
   removeListener: OnEvent<this>;
 
   functions: {
-    activeCampaigns(
-      arg0: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<[BigNumber]>;
-
     addSite(
       _site: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -858,13 +559,7 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    banUser(
-      _user: PromiseOrValue<string>,
-      _reason: PromiseOrValue<string>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
-
-    bannedUsers(
+    admins(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<[boolean]>;
@@ -878,69 +573,52 @@ export interface SovAdsManager extends BaseContract {
       [
         BigNumber,
         string,
-        string,
-        BigNumber,
         BigNumber,
         BigNumber,
         string,
         boolean,
-        BigNumber,
-        boolean
+        boolean,
+        SovAdsManager.CampaignVaultStructOutput
       ] & {
         id: BigNumber;
         creator: string;
-        token: string;
-        amount: BigNumber;
         startTime: BigNumber;
         endTime: BigNumber;
         metadata: string;
         active: boolean;
-        spent: BigNumber;
         paused: boolean;
+        vault: SovAdsManager.CampaignVaultStructOutput;
       }
     >;
 
-    cancelCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
+    claimCount(overrides?: CallOverrides): Promise<[BigNumber]>;
 
-    claimOrderCount(overrides?: CallOverrides): Promise<[BigNumber]>;
-
-    claimOrders(
+    claims(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<
       [
         BigNumber,
+        BigNumber,
         string,
-        BigNumber,
-        BigNumber,
         BigNumber,
         boolean,
         boolean,
-        string,
         BigNumber,
         BigNumber
       ] & {
         id: BigNumber;
-        publisher: string;
         campaignId: BigNumber;
-        requestedAmount: BigNumber;
-        approvedAmount: BigNumber;
+        claimant: string;
+        amount: BigNumber;
         processed: boolean;
         rejected: boolean;
-        reason: string;
         createdAt: BigNumber;
         processedAt: BigNumber;
       }
     >;
 
-    collectFees(
-      _token: PromiseOrValue<string>,
-      _amount: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
+    clickRate(overrides?: CallOverrides): Promise<[BigNumber]>;
 
     createCampaign(
       _token: PromiseOrValue<string>,
@@ -950,9 +628,9 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    createClaimOrder(
+    createClaim(
       _campaignId: PromiseOrValue<BigNumberish>,
-      _requestedAmount: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
@@ -963,52 +641,38 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    editCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      _metadata: PromiseOrValue<string>,
-      _newDuration: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
-
     feePercent(overrides?: CallOverrides): Promise<[BigNumber]>;
 
-    getActiveCampaignsCount(overrides?: CallOverrides): Promise<[BigNumber]>;
+    feeRecipient(overrides?: CallOverrides): Promise<[string]>;
 
-    getCampaign(
+    getBalanceInfo(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<
+      [BigNumber, BigNumber, BigNumber] & {
+        accrued: BigNumber;
+        claimed: BigNumber;
+        pending: BigNumber;
+      }
+    >;
+
+    getCampaignVault(
       _campaignId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
-    ): Promise<[SovAdsManager.CampaignStructOutput]>;
+    ): Promise<[SovAdsManager.CampaignVaultStructOutput]>;
 
-    getClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<[SovAdsManager.ClaimOrderStructOutput]>;
-
-    getPublisher(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<[SovAdsManager.PublisherStructOutput]>;
-
-    getPublisherSites(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<[string[]]>;
-
-    getSupportedTokens(overrides?: CallOverrides): Promise<[string[]]>;
-
-    getTotalProtocolFees(overrides?: CallOverrides): Promise<[BigNumber]>;
+    impressionRate(overrides?: CallOverrides): Promise<[BigNumber]>;
 
     isPublisher(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<[boolean]>;
 
-    isUserBanned(
-      _user: PromiseOrValue<string>,
+    isViewer(
+      arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<[boolean]>;
-
-    minimumClaimAmount(overrides?: CallOverrides): Promise<[BigNumber]>;
 
     owner(overrides?: CallOverrides): Promise<[string]>;
 
@@ -1016,44 +680,30 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    pauseCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
-
     paused(overrides?: CallOverrides): Promise<[boolean]>;
 
-    processClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      _approvedAmount: PromiseOrValue<BigNumberish>,
-      _rejected: PromiseOrValue<boolean>,
-      _reason: PromiseOrValue<string>,
+    processClaim(
+      _claimId: PromiseOrValue<BigNumberish>,
+      _approve: PromiseOrValue<boolean>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
-
-    protocolFees(overrides?: CallOverrides): Promise<[BigNumber]>;
 
     publishers(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<
-      [string, boolean, BigNumber, BigNumber, boolean, BigNumber] & {
+      [string, boolean, BigNumber] & {
         wallet: string;
         banned: boolean;
-        totalEarned: BigNumber;
-        totalClaimed: BigNumber;
-        verified: boolean;
         subscriptionDate: BigNumber;
       }
     >;
 
-    removeSite(
-      _siteIndex: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
-
-    removeSupportedToken(
-      _token: PromiseOrValue<string>,
+    recordInteraction(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      _count: PromiseOrValue<BigNumberish>,
+      _type: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
@@ -1061,18 +711,21 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    resumeCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
+    setAdmin(
+      _admin: PromiseOrValue<string>,
+      _status: PromiseOrValue<boolean>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    setFeePercent(
-      _feePercent: PromiseOrValue<BigNumberish>,
+    setFeeConfig(
+      _recipient: PromiseOrValue<string>,
+      _bps: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    setMinimumClaimAmount(
-      _minimumAmount: PromiseOrValue<BigNumberish>,
+    setRates(
+      _impressionRate: PromiseOrValue<BigNumberish>,
+      _clickRate: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
@@ -1086,11 +739,6 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[boolean]>;
 
-    supportedTokensList(
-      arg0: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<[string]>;
-
     topUpCampaign(
       _campaignId: PromiseOrValue<BigNumberish>,
       _amount: PromiseOrValue<BigNumberish>,
@@ -1102,20 +750,34 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
-    unbanUser(
-      _user: PromiseOrValue<string>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<ContractTransaction>;
-
     unpause(
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
-  };
 
-  activeCampaigns(
-    arg0: PromiseOrValue<BigNumberish>,
-    overrides?: CallOverrides
-  ): Promise<BigNumber>;
+    valuations(
+      arg0: PromiseOrValue<BigNumberish>,
+      arg1: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<
+      [BigNumber, BigNumber, BigNumber, BigNumber] & {
+        impressions: BigNumber;
+        clicks: BigNumber;
+        valueAccrued: BigNumber;
+        valueClaimed: BigNumber;
+      }
+    >;
+
+    viewers(
+      arg0: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<
+      [string, boolean, BigNumber] & {
+        wallet: string;
+        active: boolean;
+        lastInteraction: BigNumber;
+      }
+    >;
+  };
 
   addSite(
     _site: PromiseOrValue<string>,
@@ -1127,13 +789,7 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  banUser(
-    _user: PromiseOrValue<string>,
-    _reason: PromiseOrValue<string>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
-
-  bannedUsers(
+  admins(
     arg0: PromiseOrValue<string>,
     overrides?: CallOverrides
   ): Promise<boolean>;
@@ -1147,69 +803,52 @@ export interface SovAdsManager extends BaseContract {
     [
       BigNumber,
       string,
-      string,
-      BigNumber,
       BigNumber,
       BigNumber,
       string,
       boolean,
-      BigNumber,
-      boolean
+      boolean,
+      SovAdsManager.CampaignVaultStructOutput
     ] & {
       id: BigNumber;
       creator: string;
-      token: string;
-      amount: BigNumber;
       startTime: BigNumber;
       endTime: BigNumber;
       metadata: string;
       active: boolean;
-      spent: BigNumber;
       paused: boolean;
+      vault: SovAdsManager.CampaignVaultStructOutput;
     }
   >;
 
-  cancelCampaign(
-    _campaignId: PromiseOrValue<BigNumberish>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
+  claimCount(overrides?: CallOverrides): Promise<BigNumber>;
 
-  claimOrderCount(overrides?: CallOverrides): Promise<BigNumber>;
-
-  claimOrders(
+  claims(
     arg0: PromiseOrValue<BigNumberish>,
     overrides?: CallOverrides
   ): Promise<
     [
       BigNumber,
+      BigNumber,
       string,
-      BigNumber,
-      BigNumber,
       BigNumber,
       boolean,
       boolean,
-      string,
       BigNumber,
       BigNumber
     ] & {
       id: BigNumber;
-      publisher: string;
       campaignId: BigNumber;
-      requestedAmount: BigNumber;
-      approvedAmount: BigNumber;
+      claimant: string;
+      amount: BigNumber;
       processed: boolean;
       rejected: boolean;
-      reason: string;
       createdAt: BigNumber;
       processedAt: BigNumber;
     }
   >;
 
-  collectFees(
-    _token: PromiseOrValue<string>,
-    _amount: PromiseOrValue<BigNumberish>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
+  clickRate(overrides?: CallOverrides): Promise<BigNumber>;
 
   createCampaign(
     _token: PromiseOrValue<string>,
@@ -1219,9 +858,9 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  createClaimOrder(
+  createClaim(
     _campaignId: PromiseOrValue<BigNumberish>,
-    _requestedAmount: PromiseOrValue<BigNumberish>,
+    _amount: PromiseOrValue<BigNumberish>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
@@ -1232,52 +871,38 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  editCampaign(
-    _campaignId: PromiseOrValue<BigNumberish>,
-    _metadata: PromiseOrValue<string>,
-    _newDuration: PromiseOrValue<BigNumberish>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
-
   feePercent(overrides?: CallOverrides): Promise<BigNumber>;
 
-  getActiveCampaignsCount(overrides?: CallOverrides): Promise<BigNumber>;
+  feeRecipient(overrides?: CallOverrides): Promise<string>;
 
-  getCampaign(
+  getBalanceInfo(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    _user: PromiseOrValue<string>,
+    overrides?: CallOverrides
+  ): Promise<
+    [BigNumber, BigNumber, BigNumber] & {
+      accrued: BigNumber;
+      claimed: BigNumber;
+      pending: BigNumber;
+    }
+  >;
+
+  getCampaignVault(
     _campaignId: PromiseOrValue<BigNumberish>,
     overrides?: CallOverrides
-  ): Promise<SovAdsManager.CampaignStructOutput>;
+  ): Promise<SovAdsManager.CampaignVaultStructOutput>;
 
-  getClaimOrder(
-    _orderId: PromiseOrValue<BigNumberish>,
-    overrides?: CallOverrides
-  ): Promise<SovAdsManager.ClaimOrderStructOutput>;
-
-  getPublisher(
-    _publisher: PromiseOrValue<string>,
-    overrides?: CallOverrides
-  ): Promise<SovAdsManager.PublisherStructOutput>;
-
-  getPublisherSites(
-    _publisher: PromiseOrValue<string>,
-    overrides?: CallOverrides
-  ): Promise<string[]>;
-
-  getSupportedTokens(overrides?: CallOverrides): Promise<string[]>;
-
-  getTotalProtocolFees(overrides?: CallOverrides): Promise<BigNumber>;
+  impressionRate(overrides?: CallOverrides): Promise<BigNumber>;
 
   isPublisher(
     arg0: PromiseOrValue<string>,
     overrides?: CallOverrides
   ): Promise<boolean>;
 
-  isUserBanned(
-    _user: PromiseOrValue<string>,
+  isViewer(
+    arg0: PromiseOrValue<string>,
     overrides?: CallOverrides
   ): Promise<boolean>;
-
-  minimumClaimAmount(overrides?: CallOverrides): Promise<BigNumber>;
 
   owner(overrides?: CallOverrides): Promise<string>;
 
@@ -1285,44 +910,30 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  pauseCampaign(
-    _campaignId: PromiseOrValue<BigNumberish>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
-
   paused(overrides?: CallOverrides): Promise<boolean>;
 
-  processClaimOrder(
-    _orderId: PromiseOrValue<BigNumberish>,
-    _approvedAmount: PromiseOrValue<BigNumberish>,
-    _rejected: PromiseOrValue<boolean>,
-    _reason: PromiseOrValue<string>,
+  processClaim(
+    _claimId: PromiseOrValue<BigNumberish>,
+    _approve: PromiseOrValue<boolean>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
-
-  protocolFees(overrides?: CallOverrides): Promise<BigNumber>;
 
   publishers(
     arg0: PromiseOrValue<string>,
     overrides?: CallOverrides
   ): Promise<
-    [string, boolean, BigNumber, BigNumber, boolean, BigNumber] & {
+    [string, boolean, BigNumber] & {
       wallet: string;
       banned: boolean;
-      totalEarned: BigNumber;
-      totalClaimed: BigNumber;
-      verified: boolean;
       subscriptionDate: BigNumber;
     }
   >;
 
-  removeSite(
-    _siteIndex: PromiseOrValue<BigNumberish>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
-
-  removeSupportedToken(
-    _token: PromiseOrValue<string>,
+  recordInteraction(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    _user: PromiseOrValue<string>,
+    _count: PromiseOrValue<BigNumberish>,
+    _type: PromiseOrValue<string>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
@@ -1330,18 +941,21 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  resumeCampaign(
-    _campaignId: PromiseOrValue<BigNumberish>,
+  setAdmin(
+    _admin: PromiseOrValue<string>,
+    _status: PromiseOrValue<boolean>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  setFeePercent(
-    _feePercent: PromiseOrValue<BigNumberish>,
+  setFeeConfig(
+    _recipient: PromiseOrValue<string>,
+    _bps: PromiseOrValue<BigNumberish>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  setMinimumClaimAmount(
-    _minimumAmount: PromiseOrValue<BigNumberish>,
+  setRates(
+    _impressionRate: PromiseOrValue<BigNumberish>,
+    _clickRate: PromiseOrValue<BigNumberish>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
@@ -1355,11 +969,6 @@ export interface SovAdsManager extends BaseContract {
     overrides?: CallOverrides
   ): Promise<boolean>;
 
-  supportedTokensList(
-    arg0: PromiseOrValue<BigNumberish>,
-    overrides?: CallOverrides
-  ): Promise<string>;
-
   topUpCampaign(
     _campaignId: PromiseOrValue<BigNumberish>,
     _amount: PromiseOrValue<BigNumberish>,
@@ -1371,21 +980,35 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  unbanUser(
-    _user: PromiseOrValue<string>,
-    overrides?: Overrides & { from?: PromiseOrValue<string> }
-  ): Promise<ContractTransaction>;
-
   unpause(
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
-  callStatic: {
-    activeCampaigns(
-      arg0: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<BigNumber>;
+  valuations(
+    arg0: PromiseOrValue<BigNumberish>,
+    arg1: PromiseOrValue<string>,
+    overrides?: CallOverrides
+  ): Promise<
+    [BigNumber, BigNumber, BigNumber, BigNumber] & {
+      impressions: BigNumber;
+      clicks: BigNumber;
+      valueAccrued: BigNumber;
+      valueClaimed: BigNumber;
+    }
+  >;
 
+  viewers(
+    arg0: PromiseOrValue<string>,
+    overrides?: CallOverrides
+  ): Promise<
+    [string, boolean, BigNumber] & {
+      wallet: string;
+      active: boolean;
+      lastInteraction: BigNumber;
+    }
+  >;
+
+  callStatic: {
     addSite(
       _site: PromiseOrValue<string>,
       overrides?: CallOverrides
@@ -1396,13 +1019,7 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
-    banUser(
-      _user: PromiseOrValue<string>,
-      _reason: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<void>;
-
-    bannedUsers(
+    admins(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<boolean>;
@@ -1416,69 +1033,52 @@ export interface SovAdsManager extends BaseContract {
       [
         BigNumber,
         string,
-        string,
-        BigNumber,
         BigNumber,
         BigNumber,
         string,
         boolean,
-        BigNumber,
-        boolean
+        boolean,
+        SovAdsManager.CampaignVaultStructOutput
       ] & {
         id: BigNumber;
         creator: string;
-        token: string;
-        amount: BigNumber;
         startTime: BigNumber;
         endTime: BigNumber;
         metadata: string;
         active: boolean;
-        spent: BigNumber;
         paused: boolean;
+        vault: SovAdsManager.CampaignVaultStructOutput;
       }
     >;
 
-    cancelCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<void>;
+    claimCount(overrides?: CallOverrides): Promise<BigNumber>;
 
-    claimOrderCount(overrides?: CallOverrides): Promise<BigNumber>;
-
-    claimOrders(
+    claims(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<
       [
         BigNumber,
+        BigNumber,
         string,
-        BigNumber,
-        BigNumber,
         BigNumber,
         boolean,
         boolean,
-        string,
         BigNumber,
         BigNumber
       ] & {
         id: BigNumber;
-        publisher: string;
         campaignId: BigNumber;
-        requestedAmount: BigNumber;
-        approvedAmount: BigNumber;
+        claimant: string;
+        amount: BigNumber;
         processed: boolean;
         rejected: boolean;
-        reason: string;
         createdAt: BigNumber;
         processedAt: BigNumber;
       }
     >;
 
-    collectFees(
-      _token: PromiseOrValue<string>,
-      _amount: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<void>;
+    clickRate(overrides?: CallOverrides): Promise<BigNumber>;
 
     createCampaign(
       _token: PromiseOrValue<string>,
@@ -1488,9 +1088,9 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
-    createClaimOrder(
+    createClaim(
       _campaignId: PromiseOrValue<BigNumberish>,
-      _requestedAmount: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<void>;
 
@@ -1501,112 +1101,87 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
-    editCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      _metadata: PromiseOrValue<string>,
-      _newDuration: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<void>;
-
     feePercent(overrides?: CallOverrides): Promise<BigNumber>;
 
-    getActiveCampaignsCount(overrides?: CallOverrides): Promise<BigNumber>;
+    feeRecipient(overrides?: CallOverrides): Promise<string>;
 
-    getCampaign(
+    getBalanceInfo(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<
+      [BigNumber, BigNumber, BigNumber] & {
+        accrued: BigNumber;
+        claimed: BigNumber;
+        pending: BigNumber;
+      }
+    >;
+
+    getCampaignVault(
       _campaignId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
-    ): Promise<SovAdsManager.CampaignStructOutput>;
+    ): Promise<SovAdsManager.CampaignVaultStructOutput>;
 
-    getClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<SovAdsManager.ClaimOrderStructOutput>;
-
-    getPublisher(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<SovAdsManager.PublisherStructOutput>;
-
-    getPublisherSites(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<string[]>;
-
-    getSupportedTokens(overrides?: CallOverrides): Promise<string[]>;
-
-    getTotalProtocolFees(overrides?: CallOverrides): Promise<BigNumber>;
+    impressionRate(overrides?: CallOverrides): Promise<BigNumber>;
 
     isPublisher(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<boolean>;
 
-    isUserBanned(
-      _user: PromiseOrValue<string>,
+    isViewer(
+      arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<boolean>;
-
-    minimumClaimAmount(overrides?: CallOverrides): Promise<BigNumber>;
 
     owner(overrides?: CallOverrides): Promise<string>;
 
     pause(overrides?: CallOverrides): Promise<void>;
 
-    pauseCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<void>;
-
     paused(overrides?: CallOverrides): Promise<boolean>;
 
-    processClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      _approvedAmount: PromiseOrValue<BigNumberish>,
-      _rejected: PromiseOrValue<boolean>,
-      _reason: PromiseOrValue<string>,
+    processClaim(
+      _claimId: PromiseOrValue<BigNumberish>,
+      _approve: PromiseOrValue<boolean>,
       overrides?: CallOverrides
     ): Promise<void>;
-
-    protocolFees(overrides?: CallOverrides): Promise<BigNumber>;
 
     publishers(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<
-      [string, boolean, BigNumber, BigNumber, boolean, BigNumber] & {
+      [string, boolean, BigNumber] & {
         wallet: string;
         banned: boolean;
-        totalEarned: BigNumber;
-        totalClaimed: BigNumber;
-        verified: boolean;
         subscriptionDate: BigNumber;
       }
     >;
 
-    removeSite(
-      _siteIndex: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<void>;
-
-    removeSupportedToken(
-      _token: PromiseOrValue<string>,
+    recordInteraction(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      _count: PromiseOrValue<BigNumberish>,
+      _type: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<void>;
 
     renounceOwnership(overrides?: CallOverrides): Promise<void>;
 
-    resumeCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
+    setAdmin(
+      _admin: PromiseOrValue<string>,
+      _status: PromiseOrValue<boolean>,
       overrides?: CallOverrides
     ): Promise<void>;
 
-    setFeePercent(
-      _feePercent: PromiseOrValue<BigNumberish>,
+    setFeeConfig(
+      _recipient: PromiseOrValue<string>,
+      _bps: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<void>;
 
-    setMinimumClaimAmount(
-      _minimumAmount: PromiseOrValue<BigNumberish>,
+    setRates(
+      _impressionRate: PromiseOrValue<BigNumberish>,
+      _clickRate: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<void>;
 
@@ -1620,11 +1195,6 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<boolean>;
 
-    supportedTokensList(
-      arg0: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<string>;
-
     topUpCampaign(
       _campaignId: PromiseOrValue<BigNumberish>,
       _amount: PromiseOrValue<BigNumberish>,
@@ -1636,104 +1206,94 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
-    unbanUser(
-      _user: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<void>;
-
     unpause(overrides?: CallOverrides): Promise<void>;
+
+    valuations(
+      arg0: PromiseOrValue<BigNumberish>,
+      arg1: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<
+      [BigNumber, BigNumber, BigNumber, BigNumber] & {
+        impressions: BigNumber;
+        clicks: BigNumber;
+        valueAccrued: BigNumber;
+        valueClaimed: BigNumber;
+      }
+    >;
+
+    viewers(
+      arg0: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<
+      [string, boolean, BigNumber] & {
+        wallet: string;
+        active: boolean;
+        lastInteraction: BigNumber;
+      }
+    >;
   };
 
   filters: {
-    "CampaignCreated(uint256,address,address,uint256,uint256,uint256,string)"(
+    "CampaignCreated(uint256,address,address,uint256)"(
       id?: PromiseOrValue<BigNumberish> | null,
       creator?: PromiseOrValue<string> | null,
       token?: PromiseOrValue<string> | null,
-      amount?: null,
-      startTime?: null,
-      endTime?: null,
-      metadata?: null
+      amount?: null
     ): CampaignCreatedEventFilter;
     CampaignCreated(
       id?: PromiseOrValue<BigNumberish> | null,
       creator?: PromiseOrValue<string> | null,
       token?: PromiseOrValue<string> | null,
-      amount?: null,
-      startTime?: null,
-      endTime?: null,
-      metadata?: null
+      amount?: null
     ): CampaignCreatedEventFilter;
 
-    "CampaignEdited(uint256,string,uint256)"(
+    "CampaignFunded(uint256,uint256)"(
       id?: PromiseOrValue<BigNumberish> | null,
-      newMetadata?: null,
-      newEndTime?: null
-    ): CampaignEditedEventFilter;
-    CampaignEdited(
+      amount?: null
+    ): CampaignFundedEventFilter;
+    CampaignFunded(
       id?: PromiseOrValue<BigNumberish> | null,
-      newMetadata?: null,
-      newEndTime?: null
-    ): CampaignEditedEventFilter;
-
-    "CampaignPaused(uint256)"(
-      id?: PromiseOrValue<BigNumberish> | null
-    ): CampaignPausedEventFilter;
-    CampaignPaused(
-      id?: PromiseOrValue<BigNumberish> | null
-    ): CampaignPausedEventFilter;
-
-    "CampaignResumed(uint256)"(
-      id?: PromiseOrValue<BigNumberish> | null
-    ): CampaignResumedEventFilter;
-    CampaignResumed(
-      id?: PromiseOrValue<BigNumberish> | null
-    ): CampaignResumedEventFilter;
-
-    "ClaimOrderCreated(uint256,address,uint256,uint256)"(
-      orderId?: PromiseOrValue<BigNumberish> | null,
-      publisher?: PromiseOrValue<string> | null,
-      campaignId?: PromiseOrValue<BigNumberish> | null,
-      requestedAmount?: null
-    ): ClaimOrderCreatedEventFilter;
-    ClaimOrderCreated(
-      orderId?: PromiseOrValue<BigNumberish> | null,
-      publisher?: PromiseOrValue<string> | null,
-      campaignId?: PromiseOrValue<BigNumberish> | null,
-      requestedAmount?: null
-    ): ClaimOrderCreatedEventFilter;
-
-    "ClaimOrderProcessed(uint256,uint256,bool,string)"(
-      orderId?: PromiseOrValue<BigNumberish> | null,
-      approvedAmount?: null,
-      rejected?: null,
-      reason?: null
-    ): ClaimOrderProcessedEventFilter;
-    ClaimOrderProcessed(
-      orderId?: PromiseOrValue<BigNumberish> | null,
-      approvedAmount?: null,
-      rejected?: null,
-      reason?: null
-    ): ClaimOrderProcessedEventFilter;
-
-    "FeeCollected(address,uint256)"(
-      admin?: PromiseOrValue<string> | null,
       amount?: null
-    ): FeeCollectedEventFilter;
-    FeeCollected(
-      admin?: PromiseOrValue<string> | null,
-      amount?: null
-    ): FeeCollectedEventFilter;
+    ): CampaignFundedEventFilter;
 
-    "FundsDisbursed(uint256,address,uint256)"(
+    "ClaimCreated(uint256,uint256,address,uint256)"(
+      claimId?: PromiseOrValue<BigNumberish> | null,
       campaignId?: PromiseOrValue<BigNumberish> | null,
-      recipient?: PromiseOrValue<string> | null,
+      claimant?: PromiseOrValue<string> | null,
       amount?: null
-    ): FundsDisbursedEventFilter;
-    FundsDisbursed(
+    ): ClaimCreatedEventFilter;
+    ClaimCreated(
+      claimId?: PromiseOrValue<BigNumberish> | null,
       campaignId?: PromiseOrValue<BigNumberish> | null,
-      recipient?: PromiseOrValue<string> | null,
+      claimant?: PromiseOrValue<string> | null,
       amount?: null
-    ): FundsDisbursedEventFilter;
+    ): ClaimCreatedEventFilter;
+
+    "ClaimProcessed(uint256,address,uint256,bool)"(
+      claimId?: PromiseOrValue<BigNumberish> | null,
+      claimant?: PromiseOrValue<string> | null,
+      amount?: null,
+      approved?: null
+    ): ClaimProcessedEventFilter;
+    ClaimProcessed(
+      claimId?: PromiseOrValue<BigNumberish> | null,
+      claimant?: PromiseOrValue<string> | null,
+      amount?: null,
+      approved?: null
+    ): ClaimProcessedEventFilter;
+
+    "InteractionRecorded(uint256,address,uint256,string)"(
+      campaignId?: PromiseOrValue<BigNumberish> | null,
+      user?: PromiseOrValue<string> | null,
+      value?: null,
+      interactionType?: null
+    ): InteractionRecordedEventFilter;
+    InteractionRecorded(
+      campaignId?: PromiseOrValue<BigNumberish> | null,
+      user?: PromiseOrValue<string> | null,
+      value?: null,
+      interactionType?: null
+    ): InteractionRecordedEventFilter;
 
     "OwnershipTransferred(address,address)"(
       previousOwner?: PromiseOrValue<string> | null,
@@ -1747,32 +1307,20 @@ export interface SovAdsManager extends BaseContract {
     "Paused(address)"(account?: null): PausedEventFilter;
     Paused(account?: null): PausedEventFilter;
 
-    "PublisherBanned(address,string)"(
+    "PublisherSubscribed(address,string[])"(
       publisher?: PromiseOrValue<string> | null,
-      reason?: null
-    ): PublisherBannedEventFilter;
-    PublisherBanned(
-      publisher?: PromiseOrValue<string> | null,
-      reason?: null
-    ): PublisherBannedEventFilter;
-
-    "PublisherSubscribed(address,string[],uint256)"(
-      publisher?: PromiseOrValue<string> | null,
-      sites?: null,
-      subscriptionDate?: null
+      sites?: null
     ): PublisherSubscribedEventFilter;
     PublisherSubscribed(
       publisher?: PromiseOrValue<string> | null,
-      sites?: null,
-      subscriptionDate?: null
+      sites?: null
     ): PublisherSubscribedEventFilter;
 
-    "PublisherUnbanned(address)"(
-      publisher?: PromiseOrValue<string> | null
-    ): PublisherUnbannedEventFilter;
-    PublisherUnbanned(
-      publisher?: PromiseOrValue<string> | null
-    ): PublisherUnbannedEventFilter;
+    "RateUpdated(string,uint256)"(
+      rateType?: null,
+      newValue?: null
+    ): RateUpdatedEventFilter;
+    RateUpdated(rateType?: null, newValue?: null): RateUpdatedEventFilter;
 
     "SiteAdded(address,string)"(
       publisher?: PromiseOrValue<string> | null,
@@ -1783,39 +1331,21 @@ export interface SovAdsManager extends BaseContract {
       site?: null
     ): SiteAddedEventFilter;
 
-    "SiteRemoved(address,string)"(
-      publisher?: PromiseOrValue<string> | null,
-      site?: null
-    ): SiteRemovedEventFilter;
-    SiteRemoved(
-      publisher?: PromiseOrValue<string> | null,
-      site?: null
-    ): SiteRemovedEventFilter;
-
-    "SupportedTokenAdded(address)"(
-      token?: PromiseOrValue<string> | null
-    ): SupportedTokenAddedEventFilter;
-    SupportedTokenAdded(
-      token?: PromiseOrValue<string> | null
-    ): SupportedTokenAddedEventFilter;
-
-    "SupportedTokenRemoved(address)"(
-      token?: PromiseOrValue<string> | null
-    ): SupportedTokenRemovedEventFilter;
-    SupportedTokenRemoved(
-      token?: PromiseOrValue<string> | null
-    ): SupportedTokenRemovedEventFilter;
-
     "Unpaused(address)"(account?: null): UnpausedEventFilter;
     Unpaused(account?: null): UnpausedEventFilter;
+
+    "UserBanned(address)"(
+      user?: PromiseOrValue<string> | null
+    ): UserBannedEventFilter;
+    UserBanned(user?: PromiseOrValue<string> | null): UserBannedEventFilter;
+
+    "UserUnbanned(address)"(
+      user?: PromiseOrValue<string> | null
+    ): UserUnbannedEventFilter;
+    UserUnbanned(user?: PromiseOrValue<string> | null): UserUnbannedEventFilter;
   };
 
   estimateGas: {
-    activeCampaigns(
-      arg0: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<BigNumber>;
-
     addSite(
       _site: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -1826,13 +1356,7 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    banUser(
-      _user: PromiseOrValue<string>,
-      _reason: PromiseOrValue<string>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<BigNumber>;
-
-    bannedUsers(
+    admins(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
@@ -1844,23 +1368,14 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    cancelCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<BigNumber>;
+    claimCount(overrides?: CallOverrides): Promise<BigNumber>;
 
-    claimOrderCount(overrides?: CallOverrides): Promise<BigNumber>;
-
-    claimOrders(
+    claims(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    collectFees(
-      _token: PromiseOrValue<string>,
-      _amount: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<BigNumber>;
+    clickRate(overrides?: CallOverrides): Promise<BigNumber>;
 
     createCampaign(
       _token: PromiseOrValue<string>,
@@ -1870,9 +1385,9 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    createClaimOrder(
+    createClaim(
       _campaignId: PromiseOrValue<BigNumberish>,
-      _requestedAmount: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
@@ -1883,52 +1398,32 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    editCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      _metadata: PromiseOrValue<string>,
-      _newDuration: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<BigNumber>;
-
     feePercent(overrides?: CallOverrides): Promise<BigNumber>;
 
-    getActiveCampaignsCount(overrides?: CallOverrides): Promise<BigNumber>;
+    feeRecipient(overrides?: CallOverrides): Promise<BigNumber>;
 
-    getCampaign(
+    getBalanceInfo(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<BigNumber>;
+
+    getCampaignVault(
       _campaignId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    getClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<BigNumber>;
-
-    getPublisher(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<BigNumber>;
-
-    getPublisherSites(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<BigNumber>;
-
-    getSupportedTokens(overrides?: CallOverrides): Promise<BigNumber>;
-
-    getTotalProtocolFees(overrides?: CallOverrides): Promise<BigNumber>;
+    impressionRate(overrides?: CallOverrides): Promise<BigNumber>;
 
     isPublisher(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    isUserBanned(
-      _user: PromiseOrValue<string>,
+    isViewer(
+      arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
-
-    minimumClaimAmount(overrides?: CallOverrides): Promise<BigNumber>;
 
     owner(overrides?: CallOverrides): Promise<BigNumber>;
 
@@ -1936,35 +1431,24 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    pauseCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<BigNumber>;
-
     paused(overrides?: CallOverrides): Promise<BigNumber>;
 
-    processClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      _approvedAmount: PromiseOrValue<BigNumberish>,
-      _rejected: PromiseOrValue<boolean>,
-      _reason: PromiseOrValue<string>,
+    processClaim(
+      _claimId: PromiseOrValue<BigNumberish>,
+      _approve: PromiseOrValue<boolean>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
-
-    protocolFees(overrides?: CallOverrides): Promise<BigNumber>;
 
     publishers(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
-    removeSite(
-      _siteIndex: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<BigNumber>;
-
-    removeSupportedToken(
-      _token: PromiseOrValue<string>,
+    recordInteraction(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      _count: PromiseOrValue<BigNumberish>,
+      _type: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
@@ -1972,18 +1456,21 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    resumeCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
+    setAdmin(
+      _admin: PromiseOrValue<string>,
+      _status: PromiseOrValue<boolean>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    setFeePercent(
-      _feePercent: PromiseOrValue<BigNumberish>,
+    setFeeConfig(
+      _recipient: PromiseOrValue<string>,
+      _bps: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    setMinimumClaimAmount(
-      _minimumAmount: PromiseOrValue<BigNumberish>,
+    setRates(
+      _impressionRate: PromiseOrValue<BigNumberish>,
+      _clickRate: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
@@ -1994,11 +1481,6 @@ export interface SovAdsManager extends BaseContract {
 
     supportedTokens(
       arg0: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<BigNumber>;
-
-    supportedTokensList(
-      arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
@@ -2013,22 +1495,23 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    unbanUser(
-      _user: PromiseOrValue<string>,
+    unpause(
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
-    unpause(
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    valuations(
+      arg0: PromiseOrValue<BigNumberish>,
+      arg1: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<BigNumber>;
+
+    viewers(
+      arg0: PromiseOrValue<string>,
+      overrides?: CallOverrides
     ): Promise<BigNumber>;
   };
 
   populateTransaction: {
-    activeCampaigns(
-      arg0: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
     addSite(
       _site: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
@@ -2039,13 +1522,7 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    banUser(
-      _user: PromiseOrValue<string>,
-      _reason: PromiseOrValue<string>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<PopulatedTransaction>;
-
-    bannedUsers(
+    admins(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
@@ -2057,23 +1534,14 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    cancelCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<PopulatedTransaction>;
+    claimCount(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
-    claimOrderCount(overrides?: CallOverrides): Promise<PopulatedTransaction>;
-
-    claimOrders(
+    claims(
       arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    collectFees(
-      _token: PromiseOrValue<string>,
-      _amount: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<PopulatedTransaction>;
+    clickRate(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     createCampaign(
       _token: PromiseOrValue<string>,
@@ -2083,9 +1551,9 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    createClaimOrder(
+    createClaim(
       _campaignId: PromiseOrValue<BigNumberish>,
-      _requestedAmount: PromiseOrValue<BigNumberish>,
+      _amount: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
@@ -2096,58 +1564,30 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    editCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      _metadata: PromiseOrValue<string>,
-      _newDuration: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<PopulatedTransaction>;
-
     feePercent(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
-    getActiveCampaignsCount(
+    feeRecipient(overrides?: CallOverrides): Promise<PopulatedTransaction>;
+
+    getBalanceInfo(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    getCampaign(
+    getCampaignVault(
       _campaignId: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    getClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
-    getPublisher(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
-    getPublisherSites(
-      _publisher: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
-    getSupportedTokens(
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
-    getTotalProtocolFees(
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
+    impressionRate(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     isPublisher(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    isUserBanned(
-      _user: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
-    minimumClaimAmount(
+    isViewer(
+      arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
@@ -2157,35 +1597,24 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    pauseCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<PopulatedTransaction>;
-
     paused(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
-    processClaimOrder(
-      _orderId: PromiseOrValue<BigNumberish>,
-      _approvedAmount: PromiseOrValue<BigNumberish>,
-      _rejected: PromiseOrValue<boolean>,
-      _reason: PromiseOrValue<string>,
+    processClaim(
+      _claimId: PromiseOrValue<BigNumberish>,
+      _approve: PromiseOrValue<boolean>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
-
-    protocolFees(overrides?: CallOverrides): Promise<PopulatedTransaction>;
 
     publishers(
       arg0: PromiseOrValue<string>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
-    removeSite(
-      _siteIndex: PromiseOrValue<BigNumberish>,
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
-    ): Promise<PopulatedTransaction>;
-
-    removeSupportedToken(
-      _token: PromiseOrValue<string>,
+    recordInteraction(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _user: PromiseOrValue<string>,
+      _count: PromiseOrValue<BigNumberish>,
+      _type: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
@@ -2193,18 +1622,21 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    resumeCampaign(
-      _campaignId: PromiseOrValue<BigNumberish>,
+    setAdmin(
+      _admin: PromiseOrValue<string>,
+      _status: PromiseOrValue<boolean>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    setFeePercent(
-      _feePercent: PromiseOrValue<BigNumberish>,
+    setFeeConfig(
+      _recipient: PromiseOrValue<string>,
+      _bps: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    setMinimumClaimAmount(
-      _minimumAmount: PromiseOrValue<BigNumberish>,
+    setRates(
+      _impressionRate: PromiseOrValue<BigNumberish>,
+      _clickRate: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
@@ -2215,11 +1647,6 @@ export interface SovAdsManager extends BaseContract {
 
     supportedTokens(
       arg0: PromiseOrValue<string>,
-      overrides?: CallOverrides
-    ): Promise<PopulatedTransaction>;
-
-    supportedTokensList(
-      arg0: PromiseOrValue<BigNumberish>,
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
@@ -2234,13 +1661,19 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    unbanUser(
-      _user: PromiseOrValue<string>,
+    unpause(
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
-    unpause(
-      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    valuations(
+      arg0: PromiseOrValue<BigNumberish>,
+      arg1: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<PopulatedTransaction>;
+
+    viewers(
+      arg0: PromiseOrValue<string>,
+      overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
   };
 }

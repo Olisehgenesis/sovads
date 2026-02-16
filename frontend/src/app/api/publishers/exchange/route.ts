@@ -118,7 +118,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'wallet required' }, { status: 400 })
     }
 
-    const publisher = await collections.publishers().findOne({ wallet })
+    const publishersCol = await collections.publishers()
+    const publisher = await publishersCol.findOne({ wallet })
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }

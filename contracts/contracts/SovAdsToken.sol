@@ -23,7 +23,7 @@ contract SovAdsToken is ERC20, ERC20Burnable, Ownable, Pausable {
     event MinterRemoved(address indexed minter);
     event TokensMinted(address indexed to, uint256 amount);
     
-    constructor() ERC20("SovAds", "SOV") Ownable(msg.sender) {
+    constructor() ERC20("SovAds", "SOV") {
         // Mint initial supply to deployer
         _mint(msg.sender, INITIAL_SUPPLY);
     }

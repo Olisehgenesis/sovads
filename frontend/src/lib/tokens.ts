@@ -2,7 +2,7 @@
  * Token configuration - Celo mainnet & Sepolia
  */
 
-import { isMainnet } from './chain-config';
+// Token list — mainnet only
 
 export interface TokenInfo {
   symbol: string;
@@ -11,54 +11,7 @@ export interface TokenInfo {
   address: string;
 }
 
-/**
- * Known tokens on Celo Sepolia Testnet
- * Addresses are stored in lowercase for consistent lookups
- */
-export const CELO_SEPOLIA_TOKENS: Record<string, TokenInfo> = {
-  // Celo Dollar (cUSD)
-  '0xef4d55d6de8e8d73232827cd1e9b2f2dbb45bc80': {
-    symbol: 'cUSD',
-    name: 'Celo Dollar',
-    decimals: 18,
-    address: '0xEF4d55D6dE8e8d73232827Cd1e9b2F2dBb45bC80'
-  },
-  // USDC
-  '0x01c5c0122039549ad1493b8220cabedd739bc44e': {
-    symbol: 'USDC',
-    name: 'USD Coin',
-    decimals: 6,
-    address: '0x01C5C0122039549AD1493B8220cABEdD739BC44E'
-  },
-  // USDT (Tether USD)
-  '0xd077a400968890eacc75cdc901f0356c943e4fdb': {
-    symbol: 'USDT',
-    name: 'Tether USD',
-    decimals: 6,
-    address: '0xd077A400968890Eacc75cdc901F0356c943e4fDb'
-  },
-  // Good Dollar (G$) - Celo mainnet
-  '0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a': {
-    symbol: 'G$',
-    name: 'Good Dollar',
-    decimals: 2,
-    address: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
-  },
-  // CELO (ERC20)
-  '0x471ece3750da237f93b8e339c536989b8978a438': {
-    symbol: 'CELO',
-    name: 'Celo Native Token',
-    decimals: 18,
-    address: '0x471EcE3750Da237f93B8E339c536989b8978a438'
-  },
-  // Alternative cUSD address (if it exists)
-  '0xde9e4c3ce781b4ba68120d6261cbad65ce0ab00b': {
-    symbol: 'cUSD',
-    name: 'Celo Dollar (Alt)',
-    decimals: 18,
-    address: '0xdE9e4C3ce781b4bA68120d6261cbad65ce0aB00b'
-  }
-};
+// (No testnet token list maintained — use mainnet tokens below)
 
 /** Celo mainnet tokens (SovadGs, G$, treasury) */
 export const CELO_MAINNET_TOKENS: Record<string, TokenInfo> = {
@@ -83,7 +36,7 @@ export const CELO_MAINNET_TOKENS: Record<string, TokenInfo> = {
   '0x62b8b11039fcfe5ab0c56e502b1c372a3d2a9c7a': {
     symbol: 'G$',
     name: 'Good Dollar',
-    decimals: 2,
+    decimals: 18,
     address: '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
   },
   '0x471ece3750da237f93b8e339c536989b8978a438': {
@@ -94,8 +47,8 @@ export const CELO_MAINNET_TOKENS: Record<string, TokenInfo> = {
   }
 };
 
-/** Active chain tokens */
-const baseTokens = isMainnet ? { ...CELO_MAINNET_TOKENS } : { ...CELO_SEPOLIA_TOKENS };
+/** Active chain tokens (mainnet) */
+const baseTokens = { ...CELO_MAINNET_TOKENS };
 const SOV_TOKEN_ADDRESS = typeof window !== 'undefined'
   ? (process.env.NEXT_PUBLIC_SOV_TOKEN_ADDRESS || '')
   : (process.env.NEXT_PUBLIC_SOV_TOKEN_ADDRESS || '');

@@ -2,3 +2,4 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { SovAdsManager } from "./SovAdsManager";
+export type { SovAdsToken } from "./SovAdsToken";

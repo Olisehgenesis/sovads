@@ -41,6 +41,7 @@ export async function GET(request: NextRequest) {
         startDate: campaign.startDate ?? null,
         endDate: campaign.endDate ?? null,
         mediaType: campaign.mediaType ?? 'image',
+        onChainId: campaign.onChainId ?? undefined,
       }))
       .toArray()
 

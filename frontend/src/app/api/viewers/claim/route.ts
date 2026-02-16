@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { collections } from '@/lib/db'
+import { payoutG$, isSovadGsConfigured } from '@/lib/sovadgs'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,6 +22,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet or fingerprint required' }, { status: 400, headers: corsHeaders })
     }
 
+    if (!isSovadGsConfigured) {
+      console.warn('G$ payouts not configured, points will be marked as claimed in DB only')
+    }
+
     const viewerPointsCollection = await collections.viewerPoints()
     const viewerRewardsCollection = await collections.viewerRewards()
 
@@ -29,7 +34,7 @@ export async function POST(request: NextRequest) {
     if (wallet) {
       viewer = await viewerPointsCollection.findOne({ wallet })
     } else {
-      viewer = await viewerPointsCollection.findOne({ 
+      viewer = await viewerPointsCollection.findOne({
         fingerprint,
         $or: [{ wallet: null }, { wallet: { $exists: false } }] as any
       })
@@ -44,12 +49,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Insufficient pending points' }, { status: 400, headers: corsHeaders })
     }
 
-    // TODO: Integrate with smart contract to actually transfer tokens
-    // For now, we'll just mark points as claimed in the database
-    // In production, this should call the contract's claimViewerPoints function
+    // Execute actual payout if wallet is connected and G$ payout is configured
+    let txHash = null
+    if (wallet && isSovadGsConfigured) {
+      try {
+        txHash = await payoutG$(wallet, claimAmount)
+      } catch (payoutError) {
+        console.error('Contract payout failed:', payoutError)
+        return NextResponse.json({
+          error: 'Contract payout failed. Please try again later.',
+          details: payoutError instanceof Error ? payoutError.message : 'Unknown contract error'
+        }, { status: 500, headers: corsHeaders })
+      }
+    }
 
     const now = new Date()
-    
+
     // Update viewer points
     await viewerPointsCollection.updateOne(
       { _id: viewer._id },
@@ -66,7 +81,7 @@ export async function POST(request: NextRequest) {
         claimed: false,
       },
       {
-        $set: { claimed: true, claimedAt: now },
+        $set: { claimed: true, claimedAt: now, txHash },
       }
     )
 
@@ -74,7 +89,10 @@ export async function POST(request: NextRequest) {
       success: true,
       claimed: claimAmount,
       remaining: viewer.pendingPoints - claimAmount,
-      message: 'Points claimed successfully. Tokens will be transferred to your wallet.',
+      txHash,
+      message: txHash
+        ? `Successfully claimed ${claimAmount} G$! Transaction: ${txHash}`
+        : `Points marked as claimed. Tokens will be transferred manually.`
     }, { headers: corsHeaders })
   } catch (error) {
     console.error('Error claiming points:', error)

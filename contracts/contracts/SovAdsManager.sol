@@ -2,212 +2,131 @@
 pragma solidity ^0.8.28;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 
 /**
  * @title SovAdsManager
- * @dev Decentralized Ad Network Manager Contract
- * @notice Manages campaigns, publishers, claim orders, and admin functions
+ * @dev Unified Decentralized Ad Network Manager. Merges Vault, Valuation, and Claims.
  */
 contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
-    
+    using SafeERC20 for IERC20;
+
     // ============ STRUCTS ============
-    
+
+    struct CampaignVault {
+        address token;          // ERC20 token used for funding (GS, cUSD, etc.)
+        uint256 totalFunded;    // Cumulative deposits
+        uint256 locked;         // Funds tied to pending claims
+        uint256 claimed;        // Funds already paid out
+    }
+
+    struct Valuation {
+        uint256 impressions;
+        uint256 clicks;
+        uint256 valueAccrued;   // Earned token amount based on rates
+        uint256 valueClaimed;   // Amount already converted into pending/completed claims
+    }
+
     struct Campaign {
         uint256 id;
         address creator;
-        address token; // ERC20 token used for funding
-        uint256 amount; // Total budget
         uint256 startTime;
         uint256 endTime;
-        string metadata; // JSON metadata stored on-chain
+        string metadata;
         bool active;
-        uint256 spent; // Amount spent from campaign
         bool paused;
+        CampaignVault vault;
     }
-    
-    struct ClaimOrder {
+
+    struct Claim {
         uint256 id;
-        address publisher;
         uint256 campaignId;
-        uint256 requestedAmount;
-        uint256 approvedAmount;
+        address claimant;
+        uint256 amount;
         bool processed;
         bool rejected;
-        string reason; // Reason for rejection
         uint256 createdAt;
         uint256 processedAt;
     }
-    
+
     struct Publisher {
         address wallet;
-        string[] sites; // Array of website domains
+        string[] sites;
         bool banned;
-        uint256 totalEarned;
-        uint256 totalClaimed;
-        bool verified;
         uint256 subscriptionDate;
     }
-    
+
     struct Viewer {
         address wallet;
-        uint256 totalPoints; // Total SOV points earned
-        uint256 claimedPoints; // Points already claimed
-        uint256 pendingPoints; // Points available to claim
-        uint256 lastInteraction; // Timestamp of last interaction
+        bool active;
+        uint256 lastInteraction;
     }
-    
+
     // ============ STATE VARIABLES ============
-    
+
     mapping(uint256 => Campaign) public campaigns;
-    mapping(uint256 => ClaimOrder) public claimOrders;
+    mapping(uint256 => Claim) public claims;
     mapping(address => Publisher) public publishers;
-    mapping(address => bool) public isPublisher;
-    mapping(address => bool) public supportedTokens;
-    mapping(address => bool) public bannedUsers;
-    
-    // Viewer rewards system
     mapping(address => Viewer) public viewers;
+    
+    // Valuation: campaignId => userAddress => Valuation
+    mapping(uint256 => mapping(address => Valuation)) public valuations;
+
+    mapping(address => bool) public isPublisher;
     mapping(address => bool) public isViewer;
-    address public sovToken; // SOV token address for rewards
-    uint256 public pointsPerImpression = 1 * 10**18; // 1 SOV per impression
-    uint256 public pointsPerClick = 5 * 10**18; // 5 SOV per click
-    uint256 public minimumClaimPoints = 10 * 10**18; // Minimum 10 SOV to claim
-    
-    // Arrays for iteration
-    address[] public supportedTokensList;
-    uint256[] public activeCampaigns;
-    
+    mapping(address => bool) public supportedTokens;
+    mapping(address => bool) public admins; // Dedicated admins/oracles
+
     uint256 public campaignCount;
-    uint256 public claimOrderCount;
-    uint256 public feePercent = 5; // 5% protocol fee
-    uint256 public protocolFees;
-    uint256 public minimumClaimAmount = 0.01 ether; // Minimum claim amount (adjust per token decimals)
-    
+    uint256 public claimCount;
+    uint256 public feePercent = 500; // 5% in basis points (10000 = 100%)
+    address public feeRecipient;
+
+    // Default rates (can be campaign-specific in the future)
+    uint256 public impressionRate = 1e15; // Example 0.001 tokens per impression
+    uint256 public clickRate = 5e15;      // Example 0.005 tokens per click
+
     // ============ EVENTS ============
-    
-    event CampaignCreated(
-        uint256 indexed id,
-        address indexed creator,
-        address indexed token,
-        uint256 amount,
-        uint256 startTime,
-        uint256 endTime,
-        string metadata
-    );
-    
-    event CampaignEdited(
-        uint256 indexed id,
-        string newMetadata,
-        uint256 newEndTime
-    );
-    
-    event CampaignPaused(uint256 indexed id);
-    event CampaignResumed(uint256 indexed id);
-    
-    event PublisherSubscribed(
-        address indexed publisher,
-        string[] sites,
-        uint256 subscriptionDate
-    );
-    
+
+    event CampaignCreated(uint256 indexed id, address indexed creator, address indexed token, uint256 amount);
+    event CampaignFunded(uint256 indexed id, uint256 amount);
+    event CampaignPaused(uint256 indexed id, bool paused);
+    event CampaignMetadataUpdated(uint256 indexed id, string metadata);
+    event CampaignDurationExtended(uint256 indexed id, uint256 newEndTime);
+    event InteractionRecorded(uint256 indexed campaignId, address indexed user, uint256 value, string interactionType);
+    event ClaimCreated(uint256 indexed claimId, uint256 indexed campaignId, address indexed claimant, uint256 amount);
+    event ClaimProcessed(uint256 indexed claimId, address indexed claimant, uint256 amount, bool approved);
+    event PublisherSubscribed(address indexed publisher, string[] sites);
     event SiteAdded(address indexed publisher, string site);
-    event SiteRemoved(address indexed publisher, string site);
-    
-    event ClaimOrderCreated(
-        uint256 indexed orderId,
-        address indexed publisher,
-        uint256 indexed campaignId,
-        uint256 requestedAmount
-    );
-    
-    event ClaimOrderProcessed(
-        uint256 indexed orderId,
-        uint256 approvedAmount,
-        bool rejected,
-        string reason
-    );
-    
-    event PublisherBanned(address indexed publisher, string reason);
-    event PublisherUnbanned(address indexed publisher);
-    
-    event FundsDisbursed(
-        uint256 indexed campaignId,
-        address indexed recipient,
-        uint256 amount
-    );
-    
-    event FeeCollected(address indexed admin, uint256 amount);
-    
-    event SupportedTokenAdded(address indexed token);
-    event SupportedTokenRemoved(address indexed token);
-    
-    // Viewer rewards events
-    event PointsAwarded(
-        address indexed viewer,
-        uint256 indexed campaignId,
-        uint256 points,
-        string interactionType
-    );
-    
-    event PointsClaimed(
-        address indexed viewer,
-        uint256 amount,
-        uint256 timestamp
-    );
-    
+    event UserBanned(address indexed user);
+    event UserUnbanned(address indexed user);
+    event RateUpdated(string rateType, uint256 newValue);
+
     // ============ MODIFIERS ============
-    
-    modifier onlyPublisher() {
-        require(isPublisher[msg.sender], "Not a publisher");
-        require(!bannedUsers[msg.sender], "Publisher is banned");
+
+    modifier onlyAdmin() {
+        require(msg.sender == owner() || admins[msg.sender], "Not admin");
         _;
     }
-    
-    modifier campaignExists(uint256 _campaignId) {
-        require(_campaignId > 0 && _campaignId <= campaignCount, "Campaign does not exist");
-        _;
-    }
-    
+
     modifier campaignActive(uint256 _campaignId) {
-        Campaign storage campaign = campaigns[_campaignId];
-        require(campaign.active, "Campaign is not active");
-        require(!campaign.paused, "Campaign is paused");
-        require(block.timestamp >= campaign.startTime, "Campaign has not started");
-        
-        // Auto-pause if campaign has ended
-        if (block.timestamp > campaign.endTime) {
-            campaign.paused = true;
-            campaign.active = false;
-            emit CampaignPaused(_campaignId);
-        }
-        require(block.timestamp <= campaign.endTime, "Campaign has ended");
+        require(campaigns[_campaignId].active && !campaigns[_campaignId].paused, "Campaign inactive");
+        require(block.timestamp <= campaigns[_campaignId].endTime, "Campaign expired");
         _;
     }
-    
-    modifier onlyCampaignCreator(uint256 _campaignId) {
-        require(campaigns[_campaignId].creator == msg.sender, "Not campaign creator");
-        _;
-    }
-    
+
     // ============ CONSTRUCTOR ============
-    
-    constructor() {
-        // Add default supported tokens (cUSD, USDC, etc.)
-        // These will be set during deployment
+
+    constructor(address _feeRecipient) {
+        require(_feeRecipient != address(0), "Invalid fee recipient");
+        feeRecipient = _feeRecipient;
     }
-    
+
     // ============ CAMPAIGN FUNCTIONS ============
-    
-    /**
-     * @dev Create a new campaign
-     * @param _token ERC20 token address for funding
-     * @param _amount Campaign budget amount
-     * @param _duration Campaign duration in seconds
-     * @param _metadata JSON metadata stored on-chain
-     */
+
     function createCampaign(
         address _token,
         uint256 _amount,
@@ -215,605 +134,235 @@ contract SovAdsManager is Ownable, ReentrancyGuard, Pausable {
         string calldata _metadata
     ) external whenNotPaused nonReentrant {
         require(supportedTokens[_token], "Token not supported");
-        require(_amount > 0, "Amount must be greater than 0");
-        require(_duration > 0, "Duration must be greater than 0");
-        require(bytes(_metadata).length > 0, "Metadata required");
+        require(_amount > 0, "Amount must be > 0");
+        require(_duration > 0, "Duration must be > 0");
 
-        // Transfer tokens from creator to contract
-        IERC20(_token).transferFrom(msg.sender, address(this), _amount);
+        IERC20(_token).safeTransferFrom(msg.sender, address(this), _amount);
 
         campaignCount++;
-        uint256 campaignId = campaignCount;
-
-        campaigns[campaignId] = Campaign({
-            id: campaignId,
+        campaigns[campaignCount] = Campaign({
+            id: campaignCount,
             creator: msg.sender,
-            token: _token,
-            amount: _amount,
             startTime: block.timestamp,
             endTime: block.timestamp + _duration,
             metadata: _metadata,
             active: true,
-            spent: 0,
-            paused: false
+            paused: false,
+            vault: CampaignVault({
+                token: _token,
+                totalFunded: _amount,
+                locked: 0,
+                claimed: 0
+            })
         });
 
-        activeCampaigns.push(campaignId);
+        emit CampaignCreated(campaignCount, msg.sender, _token, _amount);
+    }
 
-        emit CampaignCreated(
-            campaignId,
-            msg.sender,
-            _token,
-            _amount,
-            block.timestamp,
-            block.timestamp + _duration,
-            _metadata
-        );
-    }
-    
-    /**
-     * @dev Edit campaign details
-     * @param _campaignId Campaign ID to edit
-     * @param _metadata New JSON metadata
-     * @param _newDuration New duration (extends from current time)
-     */
-    function editCampaign(
-        uint256 _campaignId,
-        string calldata _metadata,
-        uint256 _newDuration
-    ) external campaignExists(_campaignId) onlyCampaignCreator(_campaignId) {
-        Campaign storage campaign = campaigns[_campaignId];
-        require(campaign.active, "Campaign is not active");
-        require(!campaign.paused, "Campaign is paused");
-
-        campaign.metadata = _metadata;
-        campaign.endTime = block.timestamp + _newDuration;
-
-        emit CampaignEdited(_campaignId, _metadata, campaign.endTime);
-    }
-    
-    /**
-     * @dev Pause a campaign
-     * @param _campaignId Campaign ID to pause
-     */
-    function pauseCampaign(uint256 _campaignId) 
-        external 
-        campaignExists(_campaignId) 
-        onlyCampaignCreator(_campaignId) 
-    {
-        campaigns[_campaignId].paused = true;
-        emit CampaignPaused(_campaignId);
-    }
-    
-    /**
-     * @dev Resume a paused campaign
-     * @param _campaignId Campaign ID to resume
-     */
-    function resumeCampaign(uint256 _campaignId) 
-        external 
-        campaignExists(_campaignId) 
-        onlyCampaignCreator(_campaignId) 
-    {
-        Campaign storage campaign = campaigns[_campaignId];
-        require(block.timestamp <= campaign.endTime, "Campaign has ended");
-        campaign.paused = false;
-        emit CampaignResumed(_campaignId);
-    }
-    
-    /**
-     * @dev Top up campaign budget
-     * @param _campaignId Campaign ID to top up
-     * @param _amount Additional amount to add
-     */
     function topUpCampaign(uint256 _campaignId, uint256 _amount) 
         external 
-        campaignExists(_campaignId) 
-        onlyCampaignCreator(_campaignId) 
-        whenNotPaused 
         nonReentrant 
     {
         Campaign storage campaign = campaigns[_campaignId];
-        require(campaign.active, "Campaign is not active");
-        require(_amount > 0, "Amount must be greater than 0");
-        
-        // Transfer tokens from creator to contract
-        IERC20(campaign.token).transferFrom(msg.sender, address(this), _amount);
-        
-        campaign.amount += _amount;
-        
-        emit CampaignEdited(_campaignId, campaign.metadata, campaign.endTime);
+        require(campaign.active, "Campaign inactive");
+        require(_amount > 0, "Amount must be > 0");
+
+        IERC20(campaign.vault.token).safeTransferFrom(msg.sender, address(this), _amount);
+        campaign.vault.totalFunded += _amount;
+
+        emit CampaignFunded(_campaignId, _amount);
     }
-    
-    /**
-     * @dev Cancel campaign and refund remaining balance
-     * @param _campaignId Campaign ID to cancel
-     */
-    function cancelCampaign(uint256 _campaignId) 
-        external 
-        campaignExists(_campaignId) 
-        onlyCampaignCreator(_campaignId) 
-        nonReentrant 
-    {
+
+    function toggleCampaignPause(uint256 _campaignId) external {
         Campaign storage campaign = campaigns[_campaignId];
-        require(campaign.active, "Campaign is not active");
+        require(msg.sender == campaign.creator || admins[msg.sender] || msg.sender == owner(), "Not authorized");
         
-        uint256 remainingBalance = campaign.amount - campaign.spent;
-        campaign.active = false;
-        campaign.paused = true;
-        
-        if (remainingBalance > 0) {
-            IERC20(campaign.token).transfer(campaign.creator, remainingBalance);
-        }
-        
-        emit CampaignPaused(_campaignId);
+        campaign.paused = !campaign.paused;
+        emit CampaignPaused(_campaignId, campaign.paused);
     }
-    
-    // ============ PUBLISHER FUNCTIONS ============
-    
-    /**
-     * @dev Subscribe as a publisher with initial sites
-     * @param _sites Array of website domains
-     */
-    function subscribePublisher(string[] calldata _sites) external whenNotPaused {
-        require(!isPublisher[msg.sender], "Already subscribed");
-        require(_sites.length > 0, "At least one site required");
-        require(!bannedUsers[msg.sender], "User is banned");
+
+    function updateCampaignMetadata(uint256 _campaignId, string calldata _metadata) external {
+        Campaign storage campaign = campaigns[_campaignId];
+        require(msg.sender == campaign.creator || admins[msg.sender], "Not authorized");
         
-        Publisher storage publisher = publishers[msg.sender];
-        publisher.wallet = msg.sender;
-        publisher.banned = false;
-        publisher.totalEarned = 0;
-        publisher.totalClaimed = 0;
-        publisher.verified = false;
-        publisher.subscriptionDate = block.timestamp;
-        
-        // Add sites
-        for (uint256 i = 0; i < _sites.length; i++) {
-            publisher.sites.push(_sites[i]);
-        }
-        
-        isPublisher[msg.sender] = true;
-        
-        emit PublisherSubscribed(msg.sender, _sites, block.timestamp);
+        campaign.metadata = _metadata;
+        emit CampaignMetadataUpdated(_campaignId, _metadata);
     }
-    
-    /**
-     * @dev Add a new site to publisher's list
-     * @param _site Website domain to add
-     */
-    function addSite(string calldata _site) external onlyPublisher {
-        require(bytes(_site).length > 0, "Site cannot be empty");
+
+    function extendCampaignDuration(uint256 _campaignId, uint256 _additionalDuration) external {
+        Campaign storage campaign = campaigns[_campaignId];
+        require(msg.sender == campaign.creator || admins[msg.sender], "Not authorized");
+        require(_additionalDuration > 0, "Duration must be > 0");
         
-        publishers[msg.sender].sites.push(_site);
-        emit SiteAdded(msg.sender, _site);
+        campaign.endTime += _additionalDuration;
+        emit CampaignDurationExtended(_campaignId, campaign.endTime);
     }
-    
-    /**
-     * @dev Remove a site from publisher's list
-     * @param _siteIndex Index of site to remove
-     */
-    function removeSite(uint256 _siteIndex) external onlyPublisher {
-        Publisher storage publisher = publishers[msg.sender];
-        require(_siteIndex < publisher.sites.length, "Invalid site index");
-        
-        string memory siteToRemove = publisher.sites[_siteIndex];
-        
-        // Remove site by swapping with last element
-        publisher.sites[_siteIndex] = publisher.sites[publisher.sites.length - 1];
-        publisher.sites.pop();
-        
-        emit SiteRemoved(msg.sender, siteToRemove);
-    }
-    
-    /**
-     * @dev Get publisher's sites
-     * @param _publisher Publisher address
-     * @return Array of site domains
-     */
-    function getPublisherSites(address _publisher) external view returns (string[] memory) {
-        return publishers[_publisher].sites;
-    }
-    
-    // ============ CLAIM ORDER FUNCTIONS ============
-    
-    /**
-     * @dev Create a claim order for rewards
-     * @param _campaignId Campaign ID to claim from
-     * @param _requestedAmount Amount to claim
-     */
-    function createClaimOrder(
+
+    // ============ VALUATION LAYER ============
+
+    function recordInteraction(
         uint256 _campaignId,
-        uint256 _requestedAmount
-    ) external onlyPublisher campaignExists(_campaignId) campaignActive(_campaignId) {
+        address _user,
+        uint256 _count,
+        string calldata _type
+    ) external onlyAdmin {
         Campaign storage campaign = campaigns[_campaignId];
-        require(_requestedAmount >= minimumClaimAmount, "Amount below minimum claim threshold");
-        require(
-            campaign.spent + _requestedAmount <= campaign.amount,
-            "Exceeds campaign budget"
-        );
+        require(campaign.active, "Campaign inactive");
         
-        claimOrderCount++;
-        uint256 orderId = claimOrderCount;
+        uint256 value;
+        if (keccak256(abi.encodePacked(_type)) == keccak256(abi.encodePacked("IMPRESSION"))) {
+            value = _count * impressionRate;
+            valuations[_campaignId][_user].impressions += _count;
+        } else if (keccak256(abi.encodePacked(_type)) == keccak256(abi.encodePacked("CLICK"))) {
+            value = _count * clickRate;
+            valuations[_campaignId][_user].clicks += _count;
+        } else {
+            revert("Invalid interaction type");
+        }
+
+        valuations[_campaignId][_user].valueAccrued += value;
+        emit InteractionRecorded(_campaignId, _user, value, _type);
+    }
+
+    // ============ CLAIM FLOW ============
+
+    function createClaim(uint256 _campaignId, uint256 _amount) external nonReentrant {
+        Valuation storage v = valuations[_campaignId][msg.sender];
+        Campaign storage c = campaigns[_campaignId];
         
-        claimOrders[orderId] = ClaimOrder({
-            id: orderId,
-            publisher: msg.sender,
+        uint256 availableToClaim = v.valueAccrued - v.valueClaimed;
+        require(_amount <= availableToClaim, "Exceeds accrued value");
+
+        uint256 vaultAvailable = c.vault.totalFunded - c.vault.claimed - c.vault.locked;
+        require(_amount <= vaultAvailable, "Insufficient vault funds");
+
+        claimCount++;
+        claims[claimCount] = Claim({
+            id: claimCount,
             campaignId: _campaignId,
-            requestedAmount: _requestedAmount,
-            approvedAmount: 0,
+            claimant: msg.sender,
+            amount: _amount,
             processed: false,
             rejected: false,
-            reason: "",
             createdAt: block.timestamp,
             processedAt: 0
         });
-        
-        emit ClaimOrderCreated(orderId, msg.sender, _campaignId, _requestedAmount);
+
+        v.valueClaimed += _amount;
+        c.vault.locked += _amount;
+
+        emit ClaimCreated(claimCount, _campaignId, msg.sender, _amount);
     }
-    
-    /**
-     * @dev Process a claim order (Admin only)
-     * @param _orderId Order ID to process
-     * @param _approvedAmount Amount to approve (can be different from requested)
-     * @param _rejected Whether to reject the order
-     * @param _reason Reason for rejection or approval
-     */
-    function processClaimOrder(
-        uint256 _orderId,
-        uint256 _approvedAmount,
-        bool _rejected,
-        string calldata _reason
-    ) external onlyOwner {
-        require(_orderId > 0 && _orderId <= claimOrderCount, "Order does not exist");
+
+    function processClaim(uint256 _claimId, bool _approve) external onlyAdmin nonReentrant {
+        Claim storage claim = claims[_claimId];
+        require(!claim.processed, "Already processed");
         
-        ClaimOrder storage order = claimOrders[_orderId];
-        require(!order.processed, "Order already processed");
-        
-        order.processed = true;
-        order.processedAt = block.timestamp;
-        order.reason = _reason;
-        
-        if (_rejected) {
-            order.rejected = true;
-            order.approvedAmount = 0;
-        } else {
-            order.rejected = false;
-            order.approvedAmount = _approvedAmount;
+        Campaign storage c = campaigns[claim.campaignId];
+        Valuation storage v = valuations[claim.campaignId][claim.claimant];
+
+        claim.processed = true;
+        claim.processedAt = block.timestamp;
+        c.vault.locked -= claim.amount;
+
+        if (_approve) {
+            uint256 fee = (claim.amount * feePercent) / 10000;
+            uint256 netAmount = claim.amount - fee;
+
+            c.vault.claimed += claim.amount;
             
-            // Transfer approved amount to publisher
-            Campaign storage campaign = campaigns[order.campaignId];
-            require(
-                campaign.spent + _approvedAmount <= campaign.amount,
-                "Exceeds campaign budget"
-            );
-            
-            // Calculate fee
-            uint256 fee = (_approvedAmount * feePercent) / 100;
-            uint256 netAmount = _approvedAmount - fee;
-            
-            // Update campaign spent amount
-            campaign.spent += _approvedAmount;
-            
-            // Update publisher stats
-            publishers[order.publisher].totalEarned += netAmount;
-            publishers[order.publisher].totalClaimed += netAmount;
-            
-            // Add to protocol fees
-            protocolFees += fee;
-            
-            // Transfer tokens to publisher
-            IERC20(campaign.token).transfer(order.publisher, netAmount);
-        }
-        
-        emit ClaimOrderProcessed(_orderId, order.approvedAmount, order.rejected, _reason);
-    }
-    
-    // ============ ADMIN FUNCTIONS ============
-    
-    /**
-     * @dev Ban a user
-     * @param _user User address to ban
-     * @param _reason Reason for banning
-     */
-    function banUser(address _user, string calldata _reason) external onlyOwner {
-        require(_user != address(0), "Invalid address");
-        require(!bannedUsers[_user], "User already banned");
-        
-        bannedUsers[_user] = true;
-        if (isPublisher[_user]) {
-            publishers[_user].banned = true;
-        }
-        
-        emit PublisherBanned(_user, _reason);
-    }
-    
-    /**
-     * @dev Unban a user
-     * @param _user User address to unban
-     */
-    function unbanUser(address _user) external onlyOwner {
-        require(bannedUsers[_user], "User not banned");
-        
-        bannedUsers[_user] = false;
-        if (isPublisher[_user]) {
-            publishers[_user].banned = false;
-        }
-        
-        emit PublisherUnbanned(_user);
-    }
-    
-    /**
-     * @dev Disburse funds manually (Admin only)
-     * @param _campaignId Campaign ID
-     * @param _recipient Recipient address
-     * @param _amount Amount to disburse
-     */
-    function disburseFunds(
-        uint256 _campaignId,
-        address _recipient,
-        uint256 _amount
-    ) external onlyOwner campaignExists(_campaignId) {
-        Campaign storage campaign = campaigns[_campaignId];
-        require(_amount > 0, "Amount must be greater than 0");
-        require(
-            campaign.spent + _amount <= campaign.amount,
-            "Exceeds campaign budget"
-        );
-        
-        campaign.spent += _amount;
-        IERC20(campaign.token).transfer(_recipient, _amount);
-        
-        emit FundsDisbursed(_campaignId, _recipient, _amount);
-    }
-    
-    /**
-     * @dev Collect protocol fees
-     * @param _token Token address to collect fees from
-     * @param _amount Amount to collect
-     */
-    function collectFees(address _token, uint256 _amount) external onlyOwner {
-        require(_amount > 0, "Amount must be greater than 0");
-        require(_amount <= protocolFees, "Exceeds available fees");
-        
-        protocolFees -= _amount;
-        IERC20(_token).transfer(owner(), _amount);
-        
-        emit FeeCollected(owner(), _amount);
-    }
-    
-    /**
-     * @dev Add supported ERC20 token
-     * @param _token Token address to add
-     */
-    function addSupportedToken(address _token) external onlyOwner {
-        require(_token != address(0), "Invalid token address");
-        require(!supportedTokens[_token], "Token already supported");
-        
-        supportedTokens[_token] = true;
-        supportedTokensList.push(_token);
-        
-        emit SupportedTokenAdded(_token);
-    }
-    
-    /**
-     * @dev Remove supported ERC20 token
-     * @param _token Token address to remove
-     */
-    function removeSupportedToken(address _token) external onlyOwner {
-        require(supportedTokens[_token], "Token not supported");
-        
-        supportedTokens[_token] = false;
-        
-        // Remove from array
-        for (uint256 i = 0; i < supportedTokensList.length; i++) {
-            if (supportedTokensList[i] == _token) {
-                supportedTokensList[i] = supportedTokensList[supportedTokensList.length - 1];
-                supportedTokensList.pop();
-                break;
+            if (fee > 0) {
+                IERC20(c.vault.token).safeTransfer(feeRecipient, fee);
             }
+            IERC20(c.vault.token).safeTransfer(claim.claimant, netAmount);
+        } else {
+            claim.rejected = true;
+            v.valueClaimed -= claim.amount; // Allow user to claim this value again
         }
+
+        emit ClaimProcessed(_claimId, claim.claimant, claim.amount, _approve);
+    }
+
+    /**
+     * @dev Manual disbursement of funds from a campaign (admin only).
+     * Bypasses the claim flow for adjustments/direct payouts.
+     */
+    function disburseFunds(uint256 _campaignId, address _recipient, uint256 _amount) 
+        external 
+        onlyAdmin 
+        nonReentrant 
+    {
+        Campaign storage c = campaigns[_campaignId];
+        require(c.active, "Campaign inactive");
         
-        emit SupportedTokenRemoved(_token);
+        uint256 vaultAvailable = c.vault.totalFunded - c.vault.claimed - c.vault.locked;
+        require(_amount <= vaultAvailable, "Insufficient vault funds");
+
+        c.vault.claimed += _amount;
+        IERC20(c.vault.token).safeTransfer(_recipient, _amount);
+
+        // Optional: emit an event
     }
-    
-    /**
-     * @dev Set protocol fee percentage
-     * @param _feePercent New fee percentage (basis points)
-     */
-    function setFeePercent(uint256 _feePercent) external onlyOwner {
-        require(_feePercent <= 1000, "Fee cannot exceed 10%"); // Max 10%
-        feePercent = _feePercent;
+
+    // ============ PUBLISHER/VIEWER SETUP ============
+
+    function subscribePublisher(string[] calldata _sites) external whenNotPaused {
+        require(!isPublisher[msg.sender], "Already subscribed");
+        publishers[msg.sender] = Publisher({
+            wallet: msg.sender,
+            sites: _sites,
+            banned: false,
+            subscriptionDate: block.timestamp
+        });
+        isPublisher[msg.sender] = true;
+        emit PublisherSubscribed(msg.sender, _sites);
     }
-    
-    /**
-     * @dev Set minimum claim amount
-     * @param _minimumAmount New minimum claim amount
-     */
-    function setMinimumClaimAmount(uint256 _minimumAmount) external onlyOwner {
-        minimumClaimAmount = _minimumAmount;
+
+    function addSite(string calldata _site) external {
+        require(isPublisher[msg.sender], "Not a publisher");
+        publishers[msg.sender].sites.push(_site);
+        emit SiteAdded(msg.sender, _site);
     }
-    
-    /**
-     * @dev Pause the entire contract
-     */
-    function pause() external onlyOwner {
-        _pause();
+
+    // ============ ADMIN FUNCTIONS ============
+
+    function addSupportedToken(address _token) external onlyOwner {
+        supportedTokens[_token] = true;
     }
-    
-    /**
-     * @dev Unpause the entire contract
-     */
-    function unpause() external onlyOwner {
-        _unpause();
+
+    function setAdmin(address _admin, bool _status) external onlyOwner {
+        admins[_admin] = _status;
     }
-    
-    // ============ VIEWER REWARDS FUNCTIONS ============
-    
-    /**
-     * @dev Set SOV token address (only owner)
-     * @param _sovToken SOV token contract address
-     */
-    function setSovToken(address _sovToken) external onlyOwner {
-        require(_sovToken != address(0), "Invalid token address");
-        sovToken = _sovToken;
+
+    function setRates(uint256 _impressionRate, uint256 _clickRate) external onlyOwner {
+        impressionRate = _impressionRate;
+        clickRate = _clickRate;
+        emit RateUpdated("IMPRESSION", _impressionRate);
+        emit RateUpdated("CLICK", _clickRate);
     }
-    
-    /**
-     * @dev Award points to viewer for ad interaction (only owner/oracle)
-     * @param _viewer Viewer wallet address
-     * @param _campaignId Campaign ID
-     * @param _points Points to award
-     * @param _interactionType Type of interaction (IMPRESSION, CLICK)
-     */
-    function awardViewerPoints(
-        address _viewer,
-        uint256 _campaignId,
-        uint256 _points,
-        string calldata _interactionType
-    ) external onlyOwner {
-        require(_viewer != address(0), "Invalid viewer address");
-        require(_campaignId > 0 && _campaignId <= campaignCount, "Invalid campaign");
-        require(_points > 0, "Points must be greater than 0");
-        require(sovToken != address(0), "SOV token not set");
-        
-        // Initialize viewer if doesn't exist
-        if (!isViewer[_viewer]) {
-            viewers[_viewer] = Viewer({
-                wallet: _viewer,
-                totalPoints: 0,
-                claimedPoints: 0,
-                pendingPoints: 0,
-                lastInteraction: 0
-            });
-            isViewer[_viewer] = true;
-        }
-        
-        // Update viewer stats
-        Viewer storage viewer = viewers[_viewer];
-        viewer.totalPoints += _points;
-        viewer.pendingPoints += _points;
-        viewer.lastInteraction = block.timestamp;
-        
-        emit PointsAwarded(_viewer, _campaignId, _points, _interactionType);
+
+    function setFeeConfig(address _recipient, uint256 _bps) external onlyOwner {
+        require(_recipient != address(0), "Invalid address");
+        require(_bps <= 2000, "Fee too high"); // Max 20%
+        feeRecipient = _recipient;
+        feePercent = _bps;
     }
-    
-    /**
-     * @dev Claim pending SOV points
-     * @param _amount Amount of points to claim (0 = claim all)
-     */
-    function claimViewerPoints(uint256 _amount) external nonReentrant whenNotPaused {
-        require(isViewer[msg.sender], "Not a registered viewer");
-        require(sovToken != address(0), "SOV token not set");
-        
-        Viewer storage viewer = viewers[msg.sender];
-        require(viewer.pendingPoints > 0, "No points to claim");
-        
-        uint256 claimAmount = _amount == 0 ? viewer.pendingPoints : _amount;
-        require(claimAmount <= viewer.pendingPoints, "Insufficient pending points");
-        require(claimAmount >= minimumClaimPoints, "Below minimum claim amount");
-        
-        // Update viewer stats
-        viewer.pendingPoints -= claimAmount;
-        viewer.claimedPoints += claimAmount;
-        
-        // Transfer SOV tokens to viewer
-        IERC20(sovToken).transfer(msg.sender, claimAmount);
-        
-        emit PointsClaimed(msg.sender, claimAmount, block.timestamp);
-    }
-    
-    /**
-     * @dev Get viewer details
-     * @param _viewer Viewer address
-     * @return Viewer struct
-     */
-    function getViewer(address _viewer) external view returns (Viewer memory) {
-        return viewers[_viewer];
-    }
-    
-    /**
-     * @dev Set points per impression (only owner)
-     * @param _points Points to award per impression
-     */
-    function setPointsPerImpression(uint256 _points) external onlyOwner {
-        pointsPerImpression = _points;
-    }
-    
-    /**
-     * @dev Set points per click (only owner)
-     * @param _points Points to award per click
-     */
-    function setPointsPerClick(uint256 _points) external onlyOwner {
-        pointsPerClick = _points;
-    }
-    
-    /**
-     * @dev Set minimum claim points (only owner)
-     * @param _points Minimum points required to claim
-     */
-    function setMinimumClaimPoints(uint256 _points) external onlyOwner {
-        minimumClaimPoints = _points;
-    }
-    
+
+    function pause() external onlyOwner { _pause(); }
+    function unpause() external onlyOwner { _unpause(); }
+
     // ============ VIEW FUNCTIONS ============
-    
-    /**
-     * @dev Get campaign details
-     * @param _campaignId Campaign ID
-     * @return Campaign struct
-     */
-    function getCampaign(uint256 _campaignId) external view returns (Campaign memory) {
-        return campaigns[_campaignId];
+
+    function getCampaignVault(uint256 _campaignId) external view returns (CampaignVault memory) {
+        return campaigns[_campaignId].vault;
     }
-    
-    /**
-     * @dev Get claim order details
-     * @param _orderId Order ID
-     * @return ClaimOrder struct
-     */
-    function getClaimOrder(uint256 _orderId) external view returns (ClaimOrder memory) {
-        return claimOrders[_orderId];
-    }
-    
-    /**
-     * @dev Get publisher details
-     * @param _publisher Publisher address
-     * @return Publisher struct
-     */
-    function getPublisher(address _publisher) external view returns (Publisher memory) {
-        return publishers[_publisher];
-    }
-    
-    /**
-     * @dev Get all supported tokens
-     * @return Array of supported token addresses
-     */
-    function getSupportedTokens() external view returns (address[] memory) {
-        return supportedTokensList;
-    }
-    
-    /**
-     * @dev Get active campaigns count
-     * @return Number of active campaigns
-     */
-    function getActiveCampaignsCount() external view returns (uint256) {
-        return activeCampaigns.length;
-    }
-    
-    /**
-     * @dev Get total protocol fees
-     * @return Total accumulated fees
-     */
-    function getTotalProtocolFees() external view returns (uint256) {
-        return protocolFees;
-    }
-    
-    /**
-     * @dev Check if user is banned
-     * @param _user User address
-     * @return True if banned
-     */
-    function isUserBanned(address _user) external view returns (bool) {
-        return bannedUsers[_user];
+
+    function getBalanceInfo(uint256 _campaignId, address _user) 
+        external 
+        view 
+        returns (uint256 accrued, uint256 claimed, uint256 pending) 
+    {
+        Valuation storage v = valuations[_campaignId][_user];
+        return (v.valueAccrued, v.valueClaimed, v.valueAccrued - v.valueClaimed);
     }
 }

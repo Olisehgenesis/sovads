@@ -8,6 +8,9 @@ import WalletButton from '@/components/WalletButton'
 import { BannerAd, SidebarAd } from '@/components/ads/AdSlots'
 import { useAds } from '@/hooks/useAds'
 import { TREASURY_ADDRESS, SUPPORTED_EXCHANGE_TOKENS, ERC20_TRANSFER_ABI, GS_RATES } from '@/lib/treasury-tokens'
+import { getTokenInfo } from '@/lib/tokens'
+// Good Dollar (G$) token address (Celo mainnet)
+const GOOD_DOLLAR_ADDRESS = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
 
 interface PublisherStats {
   impressions: number
@@ -28,13 +31,15 @@ interface PublisherSite {
 
 export default function PublisherDashboard() {
   const { address, isConnected } = useAccount()
-  const { subscribePublisher, addSite, removeSite, getPublisherSites, isPublisher, isLoading: contractLoading } = useAds()
+  const { subscribePublisher, addSite, isPublisher, isLoading: contractLoading, topUpCampaign, campaignCount, getCampaignVault } = useAds()
+
   const [stats, setStats] = useState<PublisherStats>({
     impressions: 0,
     clicks: 0,
     ctr: 0,
     totalRevenue: 0
   })
+
   const [wallet, setWallet] = useState('')
   const [newDomain, setNewDomain] = useState('')
   const [sites, setSites] = useState<PublisherSite[]>([])
@@ -43,7 +48,7 @@ export default function PublisherDashboard() {
   const [isRegisteredOnChain, setIsRegisteredOnChain] = useState(false)
   const [isRegisteringOnChain, setIsRegisteringOnChain] = useState(false)
   const [isAddingSite, setIsAddingSite] = useState(false)
-  const [isRemovingSite, setIsRemovingSite] = useState<string | null>(null)
+
   const [registrationError, setRegistrationError] = useState<string | null>(null)
   const [registrationSuccess, setRegistrationSuccess] = useState<string | null>(null)
   const [selectedSite, setSelectedSite] = useState<PublisherSite | null>(null)
@@ -67,6 +72,28 @@ export default function PublisherDashboard() {
   const [isToppingUp, setIsToppingUp] = useState(false)
   const [topupError, setTopupError] = useState<string | null>(null)
   const [topupSuccess, setTopupSuccess] = useState<string | null>(null)
+  const [fundCampaignId, setFundCampaignId] = useState('')
+  const [fundAmount, setFundAmount] = useState('')
+  const [isFunding, setIsFunding] = useState(false)
+  const [fundError, setFundError] = useState<string | null>(null)
+  const [fundSuccess, setFundSuccess] = useState<string | null>(null)
+  const [selectedCampaignVault, setSelectedCampaignVault] = useState<any | null>(null)
+
+  const formatVaultAmount = (value: any, tokenAddress: string) => {
+    try {
+      if (value === null || value === undefined) return '0'
+      const info = getTokenInfo(tokenAddress)
+      const decimals = info?.decimals ?? 18
+      const v = typeof value === 'bigint' ? value : BigInt(value)
+      const base = BigInt(10) ** BigInt(decimals)
+      const whole = v / base
+      const frac = v % base
+      const fracStr = frac.toString().padStart(decimals, '0').slice(0, Math.min(4, decimals))
+      return `${whole.toString()}.${fracStr}`
+    } catch (e) {
+      return String(value)
+    }
+  }
 
   const { writeContractAsync: writeTransfer } = useWriteContract()
   const isChecking = Boolean(domainCheckStatus?.checking)
@@ -76,14 +103,12 @@ export default function PublisherDashboard() {
   useEffect(() => {
     if (isConnected && address) {
       setWallet(address)
-      // Load data in sequence: check on-chain first, then sync
       const loadData = async () => {
         await checkOnChainRegistration(address)
-        await loadOnChainSites(address) // This will call loadPublisherData internally
+        await loadPublisherData(address)
       }
       loadData()
     } else {
-      // Reset when disconnected
       setIsRegisteredOnChain(false)
       setSites([])
       setOnChainSites([])
@@ -94,7 +119,6 @@ export default function PublisherDashboard() {
   const checkOnChainRegistration = async (walletAddress: string) => {
     try {
       const isRegistered = await isPublisher(walletAddress)
-      console.log('On-chain registration check:', { walletAddress, isRegistered })
       setIsRegisteredOnChain(isRegistered === true)
     } catch (error) {
       console.error('Error checking on-chain registration:', error)
@@ -102,9 +126,8 @@ export default function PublisherDashboard() {
     }
   }
 
-  const loadPublisherData = async (walletAddress: string, onChainSitesList?: string[]) => {
+  const loadPublisherData = async (walletAddress: string) => {
     try {
-      // Load publisher and sites
       const [publisherResponse, sitesResponse] = await Promise.all([
         fetch(`/api/publishers/register?wallet=${walletAddress}`),
         fetch(`/api/publishers/sites?wallet=${walletAddress}`)
@@ -120,60 +143,12 @@ export default function PublisherDashboard() {
       }
 
       if (sitesResponse.ok) {
-        const sitesData = (await sitesResponse.json()) as { sites?: PublisherSite[] }
-        const dbSites: PublisherSite[] = (sitesData.sites ?? []).map((site) => ({
+        const sitesData = await sitesResponse.json()
+        const dbSites = (sitesData.sites ?? []).map((site: any) => ({
           ...site,
           apiSecret: site.apiSecret ?? undefined,
         }))
         setSites(dbSites)
-
-        // Store new API secrets temporarily for display
-        dbSites.forEach((site: PublisherSite) => {
-          if (site.apiSecret && !newApiSecrets[site.id]) {
-            setNewApiSecrets(prev => ({ ...prev, [site.id]: site.apiSecret! }))
-          }
-        })
-
-        // Sync on-chain sites to database if they don't exist
-        const sitesToSync = onChainSitesList || onChainSites
-        if (sitesToSync.length > 0) {
-          let needsReload = false
-          for (const onChainSite of sitesToSync) {
-            const existsInDb = dbSites.some((s: PublisherSite) => s.domain === onChainSite)
-            if (!existsInDb) {
-              // Site exists on-chain but not in DB - add it
-              try {
-                const response = await fetch('/api/publishers/sites', {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify({ wallet: walletAddress, domain: onChainSite })
-                })
-                if (response.ok) {
-                  needsReload = true
-                  console.log('Synced on-chain site to database:', onChainSite)
-                }
-              } catch (error) {
-                console.error('Error syncing on-chain site to database:', error)
-              }
-            }
-          }
-
-          // Reload sites if any were added
-          if (needsReload) {
-            const updatedResponse = await fetch(`/api/publishers/sites?wallet=${walletAddress}`)
-            if (updatedResponse.ok) {
-              const updatedData = await updatedResponse.json()
-              const updatedSites = updatedData.sites || []
-              setSites(updatedSites)
-              if (updatedSites.length > 0 && (!selectedSite || !updatedSites.find((s: PublisherSite) => s.id === selectedSite.id))) {
-                setSelectedSite(updatedSites[0])
-              }
-              return // Exit early after reload
-            }
-          }
-        }
 
         if (dbSites.length > 0 && !selectedSite) {
           setSelectedSite(dbSites[0])
@@ -181,28 +156,6 @@ export default function PublisherDashboard() {
       }
     } catch (error) {
       console.error('Error loading publisher data:', error)
-    }
-  }
-
-  const loadOnChainSites = async (walletAddress: string) => {
-    try {
-      const sites = await getPublisherSites(walletAddress)
-      console.log('Loaded on-chain sites:', { walletAddress, sites })
-      const onChainSitesList = sites || []
-      setOnChainSites(onChainSitesList)
-      // If there are sites on-chain, publisher is registered
-      if (onChainSitesList.length > 0) {
-        setIsRegisteredOnChain(true)
-        // Sync on-chain sites to database
-        await loadPublisherData(walletAddress, onChainSitesList)
-      } else {
-        // No on-chain sites, just load from database
-        await loadPublisherData(walletAddress, [])
-      }
-    } catch (error) {
-      console.error('Error loading on-chain sites:', error)
-      // Even if on-chain check fails, load from database
-      await loadPublisherData(walletAddress, [])
     }
   }
 
@@ -247,273 +200,86 @@ export default function PublisherDashboard() {
     }
   }
 
-  // URL validation function
   const validateUrl = (url: string): { valid: boolean; domain: string | null; error: string | null } => {
     if (!url || url.trim() === '') {
       return { valid: false, domain: null, error: 'URL is required' }
     }
-
     const trimmedUrl = url.trim()
-
-    // Extract domain from URL (handles http://, https://, www., etc.)
-    let domain = trimmedUrl
-
     try {
-      // If it doesn't start with http:// or https://, add https:// for parsing
       const urlToParse = trimmedUrl.startsWith('http://') || trimmedUrl.startsWith('https://')
         ? trimmedUrl
         : `https://${trimmedUrl}`
-
       const urlObj = new URL(urlToParse)
-      domain = urlObj.hostname
-
-      // Remove www. prefix if present
-      domain = domain.replace(/^www\./, '')
-
-      // Validate domain format (basic check)
+      let domain = urlObj.hostname.replace(/^www\./, '')
       const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
       if (!domainRegex.test(domain)) {
         return { valid: false, domain: null, error: 'Invalid domain format' }
       }
-
       return { valid: true, domain, error: null }
     } catch (error) {
-      // If URL parsing fails, try simple domain validation
-      const simpleDomainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
-      if (simpleDomainRegex.test(trimmedUrl)) {
-        return { valid: true, domain: trimmedUrl.replace(/^www\./, ''), error: null }
-      }
-
       return { valid: false, domain: null, error: 'Invalid URL format' }
     }
   }
 
-  const checkDomainRegistration = async (domain: string): Promise<{ registeredOnChain: boolean; registeredInDB: boolean }> => {
-    if (!domain || !address) {
-      return { registeredOnChain: false, registeredInDB: false }
-    }
-
-    setDomainCheckStatus({ checking: true, registeredOnChain: false, registeredInDB: false, domain })
-
+  const checkDomainRegistration = async (domain: string): Promise<{ registeredInDB: boolean }> => {
+    if (!domain || !address) return { registeredInDB: false }
     try {
-      // Check on-chain registration
-      let onChainRegistered = false
-      try {
-        const onChainSites = await getPublisherSites(address)
-        onChainRegistered = onChainSites?.includes(domain) || false
-      } catch (error) {
-        console.error('Error checking on-chain registration:', error)
+      const response = await fetch(`/api/publishers/sites?wallet=${address}`)
+      if (response.ok) {
+        const data = await response.json()
+        const dbRegistered = (data.sites || []).some((site: PublisherSite) => site.domain === domain)
+        return { registeredInDB: dbRegistered }
       }
-
-      // Check DB registration
-      let dbRegistered = false
-      try {
-        const response = await fetch(`/api/publishers/sites?wallet=${address}`)
-        if (response.ok) {
-          const data = await response.json()
-          const sites = data.sites || []
-          dbRegistered = sites.some((site: PublisherSite) => site.domain === domain)
-        }
-      } catch (error) {
-        console.error('Error checking DB registration:', error)
-      }
-
-      const result = {
-        checking: false,
-        registeredOnChain: onChainRegistered,
-        registeredInDB: dbRegistered,
-        domain
-      }
-
-      setDomainCheckStatus(result)
-      return { registeredOnChain: onChainRegistered, registeredInDB: dbRegistered }
+      return { registeredInDB: false }
     } catch (error) {
-      console.error('Error checking domain registration:', error)
-      setDomainCheckStatus(null)
-      return { registeredOnChain: false, registeredInDB: false }
+      return { registeredInDB: false }
     }
   }
 
   const registerPublisher = async () => {
-    if (!wallet || !newDomain) return
-    if (!address) {
-      setRegistrationError('Please connect your wallet')
-      return
-    }
-
-    // Validate URL first
+    if (!wallet || !newDomain || !address) return
     const validation = validateUrl(newDomain)
     if (!validation.valid || !validation.domain) {
       setRegistrationError(validation.error || 'Invalid URL format')
       return
     }
-
     setRegistrationError(null)
     setRegistrationSuccess(null)
-
     try {
-      const domainToRegister = validation.domain // Use extracted domain
+      const domainToRegister = validation.domain
+      setIsRegisteringOnChain(true)
 
-      // Check current registration status
-      let isOnChain = false
-      let isInDB = false
-
-      if (domainCheckStatus?.domain === domainToRegister && !domainCheckStatus.checking) {
-        isOnChain = domainCheckStatus.registeredOnChain
-        isInDB = domainCheckStatus.registeredInDB
+      // Register on-chain
+      if (!isRegisteredOnChain) {
+        await subscribePublisher([domainToRegister])
+        setIsRegisteredOnChain(true)
       } else {
-        const checkResult = await checkDomainRegistration(domainToRegister)
-        isOnChain = checkResult.registeredOnChain
-        isInDB = checkResult.registeredInDB
+        await addSite(domainToRegister)
       }
 
-      // Register on-chain if not already registered
-      let onChainSuccess = false
-      if (!isOnChain) {
-        setIsRegisteringOnChain(true)
-        try {
-          if (!isRegisteredOnChain) {
-            console.log('Registering publisher on-chain...')
-            await subscribePublisher([domainToRegister])
-            console.log('Publisher registered on-chain successfully')
-            setIsRegisteredOnChain(true)
-            onChainSuccess = true
-            await loadOnChainSites(address)
-          } else {
-            // Add site on-chain if publisher already registered
-            console.log('Adding site on-chain...')
-            await addSite(domainToRegister)
-            onChainSuccess = true
-            await loadOnChainSites(address)
-          }
-        } catch (onChainError) {
-          console.error('On-chain registration error:', onChainError)
-          const errorMsg = onChainError instanceof Error ? onChainError.message : 'Unknown error'
+      // Register in DB
+      const response = await fetch('/api/publishers/sites', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ wallet: address, domain: domainToRegister })
+      })
 
-          // If on-chain fails but we still need to register in DB, continue
-          if (!isInDB) {
-            setRegistrationError(`On-chain registration failed: ${errorMsg}. Will still try to register in database.`)
-          } else {
-            throw new Error(`On-chain registration failed: ${errorMsg}`)
-          }
-        } finally {
-          setIsRegisteringOnChain(false)
+      if (response.ok) {
+        const data = await response.json()
+        if (data.site?.apiSecret) {
+          setNewApiSecrets(prev => ({ ...prev, [data.site.id]: data.site.apiSecret }))
+          setShowApiSecret(prev => ({ ...prev, [data.site.id]: true }))
         }
-      } else {
-        onChainSuccess = true // Already registered on-chain
-      }
-
-      // Register in DB if not already registered
-      let dbSuccess = false
-      if (!isInDB) {
-        try {
-          const response = await fetch('/api/publishers/sites', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ wallet: address, domain: domainToRegister })
-          })
-
-          if (response.ok) {
-            const data = await response.json()
-            dbSuccess = true
-
-            // Store API secret if returned (new sites only)
-            if (data.site?.apiSecret) {
-              setNewApiSecrets((prev: Record<string, string>) => ({ ...prev, [data.site.id]: data.site.apiSecret }))
-              setShowApiSecret((prev: Record<string, boolean>) => ({ ...prev, [data.site.id]: true }))
-            }
-
-            // Reload data to show updated status
-            await loadPublisherData(address)
-            await loadOnChainSites(address)
-
-            let successMsg = ''
-            if (isOnChain && !isInDB) {
-              successMsg = `✓ Successfully added ${domainToRegister} to database! Site is now registered on both platforms.`
-            } else if (!isOnChain && isInDB) {
-              successMsg = `✓ Successfully registered ${domainToRegister} on-chain! Site is now registered on both platforms.`
-            } else {
-              successMsg = data.site?.apiSecret
-                ? `✓ Successfully registered ${domainToRegister} on both platforms! API credentials generated.`
-                : `✓ Successfully registered ${domainToRegister} on both platforms!`
-            }
-
-            setRegistrationSuccess(successMsg)
-            setTimeout(() => setRegistrationSuccess(null), 5000)
-          } else {
-            const errorData = await response.json()
-            if (response.status === 409) {
-              throw new Error('This site is already registered in the database')
-            } else if (response.status === 500) {
-              throw new Error(`Database error: ${errorData.error || errorData.details || 'Failed to save to database. Please check your connection and try again.'}`)
-            } else {
-              throw new Error(errorData.error || `Failed to save to database (Status: ${response.status})`)
-            }
-          }
-        } catch (dbError) {
-          console.error('Database registration error:', dbError)
-          const errorMsg = dbError instanceof Error ? dbError.message : 'Unknown error'
-
-          // If on-chain succeeded but DB failed, show specific error
-          if (onChainSuccess) {
-            setRegistrationError(`⚠️ Site registered on-chain but database registration failed: ${errorMsg}. The site is on-chain but not in database. Please try again or contact support.`)
-          } else {
-            throw new Error(`Database registration failed: ${errorMsg}`)
-          }
-        }
-      } else {
-        dbSuccess = true // Already registered in DB
-      }
-
-      // Final status check and success message
-      if (isOnChain && isInDB) {
-        if (onChainSuccess && dbSuccess) {
-          // Both were already registered, no action taken
-          setRegistrationError('This site is already registered on both platforms. No action needed.')
-        } else if (!onChainSuccess || !dbSuccess) {
-          // One platform registration failed
-          const failedPlatforms = []
-          if (!onChainSuccess) failedPlatforms.push('on-chain')
-          if (!dbSuccess) failedPlatforms.push('database')
-          setRegistrationError(`⚠️ Registration partially completed. Failed on: ${failedPlatforms.join(' and ')}. Please try again.`)
-        }
-      } else if (onChainSuccess && dbSuccess) {
-        // Both registrations succeeded
+        await loadPublisherData(address)
+        setRegistrationSuccess(`✓ Successfully registered ${domainToRegister}!`)
         setNewDomain('')
-        // Re-check registration status to confirm
-        if (domainToRegister) {
-          setTimeout(() => {
-            checkDomainRegistration(domainToRegister)
-          }, 1000)
-        }
-      } else if (!onChainSuccess && !dbSuccess) {
-        setRegistrationError('❌ Registration failed on both platforms. Please check your connection and try again.')
+      } else {
+        const errorData = await response.json()
+        throw new Error(errorData.error || 'Failed to save to database')
       }
-
     } catch (error) {
       console.error('Error registering publisher:', error)
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error'
-
-      // Provide more helpful, user-friendly error messages
-      if (errorMsg.includes('user rejected') || errorMsg.includes('User rejected')) {
-        setRegistrationError('❌ Transaction was rejected. Please approve the transaction in your wallet to complete registration.')
-      } else if (errorMsg.includes('insufficient funds') || errorMsg.includes('gas')) {
-        setRegistrationError('❌ Insufficient funds. Please ensure you have enough tokens for gas fees in your wallet.')
-      } else if (errorMsg.includes('network') || errorMsg.includes('connection') || errorMsg.includes('fetch')) {
-        setRegistrationError('❌ Network error. Please check your internet connection and try again.')
-      } else if (errorMsg.includes('database') || errorMsg.includes('MongoDB') || errorMsg.includes('Database')) {
-        setRegistrationError('❌ Database connection error. The service may be temporarily unavailable. Please try again in a moment.')
-      } else if (errorMsg.includes('contract') || errorMsg.includes('on-chain') || errorMsg.includes('Contract')) {
-        setRegistrationError(`❌ On-chain registration failed: ${errorMsg}. Please check your wallet connection and network, then try again.`)
-      } else if (errorMsg.includes('already registered') || errorMsg.includes('already exists')) {
-        setRegistrationError(`ℹ️ ${errorMsg}. The site may already be registered.`)
-      } else if (errorMsg.includes('timeout') || errorMsg.includes('Timeout')) {
-        setRegistrationError('❌ Request timed out. Please check your connection and try again.')
-      } else {
-        setRegistrationError(`❌ Registration failed: ${errorMsg}. Please try again or contact support if the issue persists.`)
-      }
+      setRegistrationError(error instanceof Error ? error.message : 'Registration failed')
     } finally {
       setIsRegisteringOnChain(false)
     }
@@ -521,93 +287,53 @@ export default function PublisherDashboard() {
 
   const addNewSite = async () => {
     if (!newDomain || !address) return
+    const validation = validateUrl(newDomain)
+    if (!validation.valid || !validation.domain) {
+      setRegistrationError(validation.error || 'Invalid URL format')
+      return
+    }
     setIsAddingSite(true)
     setRegistrationError(null)
-    setRegistrationSuccess(null)
-
     try {
-      const domainToAdd = newDomain.trim()
-
-      // Add on-chain if publisher is registered
+      const domainToAdd = validation.domain
       if (isRegisteredOnChain) {
         await addSite(domainToAdd)
-        await loadOnChainSites(address)
       }
-
-      // Add to database
       const response = await fetch('/api/publishers/sites', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ wallet: address, domain: domainToAdd })
       })
-
       if (response.ok) {
         const data = await response.json()
-        // Store API secret if returned (new sites only)
         if (data.site?.apiSecret) {
           setNewApiSecrets(prev => ({ ...prev, [data.site.id]: data.site.apiSecret }))
           setShowApiSecret(prev => ({ ...prev, [data.site.id]: true }))
         }
         await loadPublisherData(address)
-        // Clear input and show success
         setNewDomain('')
-        const successMsg = data.site?.apiSecret
-          ? `Successfully added ${domainToAdd}! API credentials generated.`
-          : `Successfully added ${domainToAdd}!`
-        setRegistrationSuccess(successMsg)
-        // Clear success message after 5 seconds
-        setTimeout(() => setRegistrationSuccess(null), 5000)
+        setRegistrationSuccess(`Successfully added ${domainToAdd}!`)
       } else {
         const errorData = await response.json()
-        if (response.status === 409) {
-          setRegistrationError('This site is already registered')
-        } else {
-          throw new Error(errorData.error || 'Failed to add site')
-        }
+        throw new Error(errorData.error || 'Failed to add site')
       }
     } catch (error) {
-      console.error('Error adding site:', error)
       setRegistrationError(error instanceof Error ? error.message : 'Failed to add site')
     } finally {
       setIsAddingSite(false)
     }
   }
 
-  const removeSiteFromDB = async (siteId: string, domain: string) => {
+  const removeSiteFromDB = async (siteId: string) => {
     if (!address) return
-    setIsRemovingSite(siteId)
-    setRegistrationError(null)
-
     try {
-      // Remove from contract if needed
-      if (isRegisteredOnChain && onChainSites.includes(domain)) {
-        const index = onChainSites.indexOf(domain)
-        if (index !== -1) {
-          await removeSite(index)
-          await loadOnChainSites(address)
-        }
-      }
-
-      // Remove from database
-      const response = await fetch(`/api/publishers/sites?siteId=${siteId}`, {
-        method: 'DELETE'
-      })
-
+      const response = await fetch(`/api/publishers/sites?siteId=${siteId}`, { method: 'DELETE' })
       if (response.ok) {
         await loadPublisherData(address)
-        if (selectedSite?.id === siteId) {
-          setSelectedSite(null)
-        }
-      } else {
-        throw new Error('Failed to remove site')
+        if (selectedSite?.id === siteId) setSelectedSite(null)
       }
     } catch (error) {
       console.error('Error removing site:', error)
-      setRegistrationError(error instanceof Error ? error.message : 'Failed to remove site')
-    } finally {
-      setIsRemovingSite(null)
     }
   }
 
@@ -615,836 +341,316 @@ export default function PublisherDashboard() {
     navigator.clipboard.writeText(text)
   }
 
-  const copyAllSiteIds = () => {
-    if (sites.length === 0) return
-    const payload = sites.map((site) => `${site.domain} → ${site.siteId}`).join('\n')
-    copyToClipboard(payload)
-    setRegistrationSuccess('All site IDs copied to clipboard')
-    setTimeout(() => setRegistrationSuccess(null), 3000)
+  if (!isConnected) {
+    return (
+      <div className="max-w-7xl mx-auto px-4 py-6">
+        <div className="glass-card rounded-lg p-6 text-center">
+          <h2 className="text-sm font-semibold mb-3 uppercase tracking-wider">Connect Your Wallet</h2>
+          <p className="text-[var(--text-secondary)] text-[11px] mb-4">Connect your wallet to register as a publisher and start earning</p>
+          <WalletButton />
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="min-h-screen bg-transparent">
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <h1 className="text-base font-bold text-[var(--text-primary)] mb-6 uppercase tracking-wider">Publisher Dashboard</h1>
+    <div className="max-w-7xl mx-auto px-4 py-6 space-y-8">
+      <h1 className="text-base font-bold text-[var(--text-primary)] uppercase tracking-wider">Publisher Dashboard</h1>
 
-        {!isConnected ? (
-          <div className="glass-card rounded-lg p-4">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Connect Your Wallet</h2>
-            <p className="text-[var(--text-secondary)] mb-6">
-              Connect your wallet to register as a publisher and start earning from ads
-            </p>
-            <WalletButton className="w-full" />
+      {!isRegistered ? (
+        <div className="glass-card rounded-lg p-6">
+          <h2 className="text-sm font-semibold mb-4 uppercase tracking-wider">Register Your First Website</h2>
+          <div className="space-y-4">
+            <input
+              type="text"
+              value={newDomain}
+              onChange={(e) => setNewDomain(e.target.value)}
+              className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+              placeholder="example.com"
+            />
+            {registrationError && <p className="text-xs text-destructive">{registrationError}</p>}
+            {registrationSuccess && <p className="text-xs text-green-600">{registrationSuccess}</p>}
+            <button
+              onClick={registerPublisher}
+              disabled={isRegisteringOnChain || !newDomain}
+              className="w-full btn btn-primary py-2"
+            >
+              {isRegisteringOnChain ? 'Registering...' : 'Register Publisher'}
+            </button>
           </div>
-        ) : !isRegistered ? (
-          <div className="glass-card rounded-lg p-4">
-            <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Register Your First Website</h2>
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-medium text-[var(--text-primary)] mb-1 uppercase tracking-tight">
-                  Domain
-                </label>
-                <div>
-                  <input
-                    type="text"
-                    value={newDomain}
-                    onChange={(e) => {
-                      const url = e.target.value
-                      setNewDomain(url)
-                      setDomainCheckStatus(null)
-                      setUrlError(null)
-
-                      // Validate URL in real-time
-                      if (url.trim()) {
-                        const validation = validateUrl(url)
-                        setIsUrlValid(validation.valid)
-                        setUrlError(validation.error)
-
-                        // If valid, extract domain and check registration
-                        if (validation.valid && validation.domain && address) {
-                          // Debounce the check
-                          setTimeout(() => {
-                            if (newDomain === url) { // Make sure user hasn't changed it
-                              checkDomainRegistration(validation.domain!)
-                            }
-                          }, 500)
-                        } else {
-                          setIsUrlValid(false)
-                        }
-                      } else {
-                        setIsUrlValid(false)
-                      }
-                    }}
-                    onBlur={() => {
-                      if (newDomain.trim()) {
-                        const validation = validateUrl(newDomain)
-                        if (validation.valid && validation.domain && address) {
-                          checkDomainRegistration(validation.domain)
-                        }
-                      }
-                    }}
-                    className="w-full px-2 py-1.5 bg-input border border-border rounded-md text-[var(--text-primary)] text-[11px] focus:outline-none focus:ring-1 focus:ring-ring"
-                    placeholder="example.com or https://example.com"
-                  />
-                  {urlError && (
-                    <p className="text-sm text-red-600 mt-1">{urlError}</p>
-                  )}
-                  {!urlError && newDomain.trim() && !isUrlValid && (
-                    <p className="text-sm text-[var(--text-secondary)] mt-1">
-                      Enter a valid URL or domain
-                    </p>
-                  )}
-                  {isUrlValid && !urlError && (
-                    <p className="text-sm text-green-600 mt-1">
-                      ✓ Valid URL
-                    </p>
-                  )}
-                </div>
-
-                {/* Domain Registration Status */}
-                {domainCheckStatus && !domainCheckStatus.checking && isUrlValid && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className={`font-medium ${domainCheckStatus.registeredOnChain ? 'text-green-600' : 'text-gray-500'}`}>
-                        {domainCheckStatus.registeredOnChain ? '✓' : '○'} On-Chain:
-                      </span>
-                      <span className={domainCheckStatus.registeredOnChain ? 'text-green-600' : 'text-gray-500'}>
-                        {domainCheckStatus.registeredOnChain ? 'Registered' : 'Not Registered'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm">
-                      <span className={`font-medium ${domainCheckStatus.registeredInDB ? 'text-green-600' : 'text-gray-500'}`}>
-                        {domainCheckStatus.registeredInDB ? '✓' : '○'} Database:
-                      </span>
-                      <span className={domainCheckStatus.registeredInDB ? 'text-green-600' : 'text-gray-500'}>
-                        {domainCheckStatus.registeredInDB ? 'Registered' : 'Not Registered'}
-                      </span>
-                    </div>
-
-                    {/* Action Prompts */}
-                    {domainCheckStatus.registeredOnChain && !domainCheckStatus.registeredInDB && (
-                      <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
-                        ⚠️ Registered on-chain but not in database. Click "Register Publisher" to add to database.
-                      </div>
-                    )}
-                    {!domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB && (
-                      <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
-                        ⚠️ Registered in database but not on-chain. Click "Register Publisher" to register on-chain.
-                      </div>
-                    )}
-                    {!domainCheckStatus.registeredOnChain && !domainCheckStatus.registeredInDB && (
-                      <div className="bg-blue-500/20 border border-blue-500/50 rounded-md p-3 text-blue-700 dark:text-blue-400 text-sm">
-                        ℹ️ Not registered. Click "Register Publisher" to register on both platforms.
-                      </div>
-                    )}
-                    {domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB && (
-                      <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm">
-                        ✓ Already registered on both platforms. Button disabled.
-                      </div>
-                    )}
-                  </div>
-                )}
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            {[
+              { label: 'Impressions', value: stats.impressions.toLocaleString() },
+              { label: 'Clicks', value: stats.clicks.toLocaleString() },
+              { label: 'CTR', value: `${stats.ctr.toFixed(2)}%` },
+              { label: 'Total Revenue (GS)', value: stats.totalRevenue.toFixed(2) }
+            ].map(s => (
+              <div key={s.label} className="glass-card rounded-lg p-4">
+                <div className="text-lg font-bold">{s.value}</div>
+                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">{s.label}</div>
               </div>
-              {registrationError && (
-                <div className="bg-destructive/20 border border-destructive/50 rounded-md p-3 text-destructive text-sm">
-                  {registrationError}
+            ))}
+          </div>
+
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Your Websites</h2>
+            <div className="space-y-4">
+              {sites.map(site => (
+                <div key={site.id} className="bg-muted/30 border border-border rounded-lg p-4 flex justify-between items-center">
+                  <div>
+                    <div className="font-medium text-sm">{site.domain}</div>
+                    <div className="text-[10px] text-[var(--text-secondary)]">ID: {site.siteId}</div>
+                  </div>
+                  <button
+                    onClick={() => removeSiteFromDB(site.id)}
+                    className="text-xs text-destructive hover:underline"
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newDomain}
+                  onChange={(e) => setNewDomain(e.target.value)}
+                  className="flex-1 px-3 py-1.5 bg-input border border-border rounded-md text-[11px]"
+                  placeholder="newsite.com"
+                />
+                <button
+                  onClick={addNewSite}
+                  disabled={isAddingSite || !newDomain}
+                  className="btn btn-primary px-4 py-1.5 text-xs"
+                >
+                  {isAddingSite ? 'Adding...' : 'Add Site'}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {selectedSite && (
+            <div className="glass-card rounded-lg p-4">
+              <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Integration Code: {selectedSite.domain}</h2>
+              <pre className="bg-neutral-950 text-neutral-100 text-[10px] p-4 rounded-lg overflow-x-auto">
+                <code>{`// Install: npm install @sovads/sdk
+import { SovAds, Banner } from '@sovads/sdk';
+
+const adsClient = new SovAds({
+  siteId: '${selectedSite.siteId}',
+  apiKey: '${selectedSite.apiKey || 'YOUR_API_KEY'}',
+  apiSecret: '${selectedSite.apiSecret || newApiSecrets[selectedSite.id] || '••••••••'}'
+});
+
+const banner = new Banner(adsClient, 'banner-id');
+await banner.render();`}</code>
+              </pre>
+            </div>
+          )}
+
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Exchange Tokens for G$</h2>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <select
+                  value={topupToken}
+                  onChange={(e) => setTopupToken(e.target.value)}
+                  className="bg-input border border-border rounded-md px-2 py-1.5 text-xs outline-none"
+                >
+                  {SUPPORTED_EXCHANGE_TOKENS.map(t => (
+                    <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  placeholder="Amount"
+                  className="flex-1 bg-input border border-border rounded-md px-3 py-1.5 text-xs outline-none"
+                />
+              </div>
+
+              {topupAmount && (
+                <div className="text-[10px] text-[var(--text-secondary)] uppercase">
+                  Estimated: {(Number(topupAmount) * (SUPPORTED_EXCHANGE_TOKENS.find(t => t.symbol === topupToken)?.gsPerUnit || 10000)).toLocaleString()} G$
                 </div>
               )}
-              {registrationSuccess && (
-                <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm">
-                  ✓ {registrationSuccess}
+
+              <button
+                onClick={async () => {
+                  if (!address || !topupAmount) return
+                  const token = SUPPORTED_EXCHANGE_TOKENS.find(t => t.symbol === topupToken)
+                  if (!token) return
+
+                  setIsToppingUp(true)
+                  setTopupError(null)
+                  setTopupSuccess(null)
+
+                  try {
+                    const amountWei = parseUnits(topupAmount, token.decimals)
+
+                    // Step 1: Transfer to Treasury
+                    const txHash = await writeTransfer({
+                      address: token.address,
+                      abi: ERC20_TRANSFER_ABI,
+                      functionName: 'transfer',
+                      args: [TREASURY_ADDRESS, amountWei]
+                    })
+
+                    // Step 2: Notify backend
+                    const res = await fetch('/api/publishers/topup', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        wallet: address,
+                        amount: Number(topupAmount),
+                        token: topupToken,
+                        txHash
+                      })
+                    })
+
+                    if (res.ok) {
+                      setTopupSuccess('Exchange successful! Your G$ balance will update shortly.')
+                      setTopupAmount('')
+                      loadBalance(address)
+                      loadExchangeHistory(address)
+                    } else {
+                      throw new Error('Failed to sync with backend')
+                    }
+                  } catch (e) {
+                    setTopupError(e instanceof Error ? e.message : 'Exchange failed')
+                  } finally {
+                    setIsToppingUp(false)
+                  }
+                }}
+                disabled={isToppingUp || !topupAmount}
+                className="w-full btn btn-primary py-2 text-xs"
+              >
+                {isToppingUp ? 'Processing...' : `Exchange ${topupToken} to G$`}
+              </button>
+              {topupSuccess && <p className="text-xs text-green-600">{topupSuccess}</p>}
+              {topupError && <p className="text-xs text-destructive">{topupError}</p>}
+            </div>
+          </div>
+
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Fund Campaign (Good Dollar)</h2>
+            <div className="space-y-3">
+              {campaignCount && Number(campaignCount) > 0 ? (
+                <select
+                  value={fundCampaignId}
+                  onChange={async (e) => {
+                    setFundCampaignId(e.target.value)
+                    // load vault info for selected campaign
+                    try {
+                      const vault = await getCampaignVault(Number(e.target.value))
+                      setSelectedCampaignVault(vault)
+                    } catch (err) {
+                      setSelectedCampaignVault(null)
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+                >
+                  <option value="">Select campaign</option>
+                  {Array.from({ length: Number(campaignCount) }).map((_, i) => (
+                    <option key={i + 1} value={i + 1}>#{i + 1}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="number"
+                  value={fundCampaignId}
+                  onChange={(e) => setFundCampaignId(e.target.value)}
+                  placeholder="Campaign ID"
+                  className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+                />
+              )}
+              <input
+                type="number"
+                value={fundAmount}
+                onChange={(e) => setFundAmount(e.target.value)}
+                placeholder="Amount (G$)"
+                className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+              />
+              {selectedCampaignVault && (
+                <div className="text-[12px] text-[var(--text-secondary)] space-y-1">
+                  <div>Token: {getTokenInfo(selectedCampaignVault.token)?.symbol ?? selectedCampaignVault.token}</div>
+                  <div>Funded: {formatVaultAmount(selectedCampaignVault.totalFunded, selectedCampaignVault.token)}</div>
+                  <div>Locked: {formatVaultAmount(selectedCampaignVault.locked, selectedCampaignVault.token)}</div>
+                  <div>Claimed: {formatVaultAmount(selectedCampaignVault.claimed, selectedCampaignVault.token)}</div>
                 </div>
               )}
               <button
-                onClick={registerPublisher}
-                disabled={
-                  isRegisteringOnChain ||
-                  contractLoading ||
-                  isChecking ||
-                  !isUrlValid ||
-                  !newDomain.trim() ||
-                  Boolean(domainCheckStatus && domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB)
-                }
-                className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isRegisteringOnChain
-                  ? 'Registering...'
-                  : isChecking
-                    ? 'Checking...'
-                    : !isUrlValid
-                      ? 'Enter Valid URL'
-                      : domainCheckStatus && domainCheckStatus.registeredOnChain && domainCheckStatus.registeredInDB
-                        ? 'Already Registered'
-                        : domainCheckStatus && (!domainCheckStatus.registeredOnChain || !domainCheckStatus.registeredInDB)
-                          ? 'Complete Registration'
-                          : 'Register Publisher'}
-              </button>
-              {isRegisteredOnChain && (
-                <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm">
-                  ✓ Already registered on-chain
-                </div>
-              )}
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div className="glass-card rounded-lg p-4">
-                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.impressions.toLocaleString()}</div>
-                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Impressions</div>
-              </div>
-              <div className="glass-card rounded-lg p-4">
-                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.clicks.toLocaleString()}</div>
-                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Clicks</div>
-              </div>
-              <div className="glass-card rounded-lg p-4">
-                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.ctr.toFixed(2)}%</div>
-                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">CTR</div>
-              </div>
-              <div className="glass-card rounded-lg p-4">
-                <div className="text-lg font-bold text-[var(--text-primary)]">{stats.totalRevenue.toFixed(6)}</div>
-                <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Total Revenue (GS)</div>
-              </div>
-            </div>
-
-            {/* Live Ad Preview */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-6">
-              <div className="glass-card rounded-lg p-4">
-                <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Banner Placement Preview</h2>
-                <BannerAd className="min-h-[120px] rounded-md border border-dashed border-border" />
-              </div>
-              <div className="glass-card rounded-lg p-4">
-                <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Sidebar Placement Preview</h2>
-                <SidebarAd className="min-h-[180px] rounded-md border border-dashed border-border" />
-              </div>
-            </div>
-
-            {/* Websites Management */}
-            <div className="glass-card rounded-lg p-4 mb-6">
-              <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Your Websites</h2>
-              <div className="space-y-4">
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="block text-[10px] font-medium text-[var(--text-primary)] uppercase tracking-tight">
-                      On-chain Registration Status
-                    </label>
-                    <button
-                      onClick={async () => {
-                        if (address) {
-                          await checkOnChainRegistration(address)
-                          await loadOnChainSites(address)
-                        }
-                      }}
-                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded hover:bg-muted/50"
-                      title="Refresh status"
-                    >
-                      ↻ Refresh
-                    </button>
-                  </div>
-                  <div className={`inline-block px-2 py-0.5 rounded-md text-[10px] uppercase font-medium ${isRegisteredOnChain
-                    ? 'bg-green-500/20 text-[var(--accent-primary-solid)] border border-[var(--accent-primary-solid)]/30'
-                    : 'bg-yellow-500/20 text-yellow-500 border border-yellow-500/30'
-                    }`}>
-                    {isRegisteredOnChain ? '✓ Registered' : '⚠ Not Registered'}
-                  </div>
-                  {onChainSites.length > 0 && (
-                    <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 uppercase">
-                      Found {onChainSites.length} site(s) registered: {onChainSites.join(', ')}
-                    </p>
-                  )}
-                  {!isRegisteredOnChain && onChainSites.length === 0 && (
-                    <p className="text-[10px] text-[var(--text-secondary)] mt-1.5 uppercase">
-                      Register your publisher address on the smart contract to start earning.
-                    </p>
-                  )}
-                </div>
-
-                {/* Sites List */}
-                {sites.length > 0 && (
-                  <div className="space-y-2">
-                    <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                      Registered Websites ({sites.length})
-                    </label>
-                    <div className="flex justify-between items-center mb-2">
-                      <span className="text-xs text-[var(--text-secondary)]">
-                        Click any site to view or copy its unique identifiers.
-                      </span>
-                      <button
-                        onClick={copyAllSiteIds}
-                        className="text-xs px-3 py-1 border border-border rounded-md hover:bg-muted/50"
-                        disabled={sites.length === 0}
-                      >
-                        Copy All Site IDs
-                      </button>
-                    </div>
-                    <div className="space-y-2">
-                      {sites.map((site) => (
-                        <div key={site.id} className="bg-muted/50 border border-border rounded-md p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="font-medium text-[var(--text-primary)]">{site.domain}</span>
-                                {onChainSites.includes(site.domain) && (
-                                  <span className="px-2 py-0.5 bg-green-500/20 text-green-700 dark:text-green-400 text-xs rounded border border-green-500/50">
-                                    On-chain
-                                  </span>
-                                )}
-                                {site.verified && (
-                                  <span className="px-2 py-0.5 bg-blue-500/20 text-blue-700 dark:text-blue-400 text-xs rounded border border-blue-500/50">
-                                    Verified
-                                  </span>
-                                )}
-                              </div>
-                              <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                  <code className="text-xs text-[var(--text-secondary)] bg-muted px-2 py-1 rounded">
-                                    {site.siteId}
-                                  </code>
-                                  <button
-                                    onClick={() => copyToClipboard(site.siteId)}
-                                    className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                                  >
-                                    Copy
-                                  </button>
-                                </div>
-                                {site.apiKey && (
-                                  <div className="flex items-center gap-2">
-                                    <span className="text-xs text-[var(--text-secondary)]">API Key:</span>
-                                    <code className="text-xs text-[var(--text-secondary)] bg-muted px-2 py-1 rounded flex-1 truncate">
-                                      {site.apiKey}
-                                    </code>
-                                    <button
-                                      onClick={() => copyToClipboard(site.apiKey!)}
-                                      className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                                    >
-                                      Copy
-                                    </button>
-                                  </div>
-                                )}
-                                {(site.apiSecret || newApiSecrets[site.id]) && (
-                                  <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-[var(--text-secondary)]">API Secret:</span>
-                                      <code className="text-xs text-[var(--text-secondary)] bg-muted px-2 py-1 rounded flex-1 truncate">
-                                        {showApiSecret[site.id] ? (site.apiSecret || newApiSecrets[site.id]) : '••••••••'}
-                                      </code>
-                                      <button
-                                        onClick={() => setShowApiSecret(prev => ({ ...prev, [site.id]: !prev[site.id] }))}
-                                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                                      >
-                                        {showApiSecret[site.id] ? 'Hide' : 'Show'}
-                                      </button>
-                                      <button
-                                        onClick={() => copyToClipboard(site.apiSecret || newApiSecrets[site.id] || '')}
-                                        className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-                                      >
-                                        Copy
-                                      </button>
-                                    </div>
-                                    <p className="text-xs text-yellow-600 dark:text-yellow-400">
-                                      ⚠️ Save this secret securely! It won't be shown again.
-                                    </p>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              onClick={() => removeSiteFromDB(site.id, site.domain)}
-                              disabled={isRemovingSite === site.id}
-                              className="ml-4 px-3 py-1.5 bg-destructive/20 text-destructive text-sm rounded hover:bg-destructive/30 disabled:opacity-50"
-                            >
-                              {isRemovingSite === site.id ? 'Removing...' : 'Remove'}
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Add New Site */}
-                <div className="border-t border-border pt-4">
-                  <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                    Add New Website
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={newDomain}
-                      onChange={(e) => {
-                        setNewDomain(e.target.value)
-                        // Clear messages when user starts typing
-                        if (registrationError) setRegistrationError(null)
-                        if (registrationSuccess) setRegistrationSuccess(null)
-                      }}
-                      className="flex-1 px-3 py-2 bg-input border border-border rounded-md text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-ring"
-                      placeholder="example.com"
-                      onKeyPress={(e) => {
-                        if (e.key === 'Enter' && !isAddingSite && !isRegisteringOnChain && newDomain.trim()) {
-                          if (sites.length === 0 && !isRegisteredOnChain) {
-                            registerPublisher()
-                          } else {
-                            addNewSite()
-                          }
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => {
-                        if (sites.length === 0 && !isRegisteredOnChain) {
-                          registerPublisher()
-                        } else {
-                          addNewSite()
-                        }
-                      }}
-                      disabled={!newDomain.trim() || isAddingSite || isRegisteringOnChain || contractLoading}
-                      className="px-4 py-2 bg-primary text-primary-foreground rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isAddingSite || isRegisteringOnChain ? 'Adding...' : 'Add Site'}
-                    </button>
-                  </div>
-                  {registrationError && (
-                    <div className="bg-destructive/20 border border-destructive/50 rounded-md p-3 text-destructive text-sm mt-2">
-                      {registrationError}
-                    </div>
-                  )}
-                  {registrationSuccess && (
-                    <div className="bg-green-500/20 border border-green-500/50 rounded-md p-3 text-green-700 dark:text-green-400 text-sm mt-2">
-                      ✓ {registrationSuccess}
-                    </div>
-                  )}
-                  {sites.length === 0 && !isRegisteredOnChain && !registrationError && !registrationSuccess && (
-                    <p className="text-sm text-[var(--text-secondary)] mt-2">
-                      Adding your first site will register you as a publisher on-chain.
-                    </p>
-                  )}
-                </div>
-
-                {!isRegisteredOnChain && sites.length > 0 && (
-                  <button
-                    onClick={async () => {
-                      if (!address) return
-                      setIsRegisteringOnChain(true)
-                      setRegistrationError(null)
-                      try {
-                        await subscribePublisher(sites.map(s => s.domain))
-                        setIsRegisteredOnChain(true)
-                        await checkOnChainRegistration(address)
-                        await loadOnChainSites(address)
-                      } catch (error) {
-                        setRegistrationError(error instanceof Error ? error.message : 'Failed to register on-chain')
-                      } finally {
-                        setIsRegisteringOnChain(false)
-                      }
-                    }}
-                    disabled={isRegisteringOnChain || contractLoading}
-                    className="w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {isRegisteringOnChain ? 'Registering on-chain...' : 'Register All Sites on-chain'}
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Integration Code for Selected Site */}
-            {selectedSite && (
-              <div className="glass-card rounded-lg p-4 mb-6">
-                <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">
-                  Integration Code
-                </h2>
-
-                <div className="space-y-6">
-                  <div>
-                    <label className="block text-[10px] font-medium text-[var(--text-primary)] mb-1 uppercase tracking-tight">
-                      Select Website
-                    </label>
-                    <select
-                      value={selectedSite.id}
-                      onChange={(e) => {
-                        const site = sites.find(s => s.id === e.target.value)
-                        if (site) setSelectedSite(site)
-                      }}
-                      className="w-full px-3 py-2 bg-input border border-border rounded-md text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-ring"
-                    >
-                      {sites.map(site => (
-                        <option key={site.id} value={site.id}>{site.domain}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Tabs */}
-                  <div className="flex border-b border-border">
-                    <button
-                      onClick={() => setActiveTab('sdk')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${activeTab === 'sdk'
-                        ? 'text-[var(--text-primary)] border-b-2 border-primary'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
-                    >
-                      <div className="flex items-center justify-center gap-2">
-                        <span>SDK</span>
-                        <span className="px-2 py-0.5 bg-primary/20 text-primary text-xs rounded border border-primary/50">
-                          Recommended
-                        </span>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('script')}
-                      className={`flex-1 px-4 py-3 text-sm font-medium transition-colors relative ${activeTab === 'script'
-                        ? 'text-[var(--text-primary)] border-b-2 border-primary'
-                        : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
-                        }`}
-                    >
-                      Script Tag
-                    </button>
-                  </div>
-
-                  {/* SDK Method (Recommended) */}
-                  {activeTab === 'sdk' && (
-                    <div>
-                      <div className="rounded-2xl overflow-hidden shadow-sm border border-border">
-                        {/* Code Header */}
-                        <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900">
-                          <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
-                          <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
-                          <span className="h-2.5 w-2.5 rounded-full bg-green-500"></span>
-                          <span className="ml-2 text-xs text-neutral-400">sdk-integration.js</span>
-                        </div>
-                        {/* Code Content */}
-                        <pre className="bg-neutral-950 text-neutral-100 text-sm leading-6 p-4 overflow-x-auto">
-                          <code>
-                            <span className="text-neutral-400">{'// '}</span>
-                            <span className="text-white">Integration code for {selectedSite.domain}</span>
-                            {'\n'}
-                            <span className="text-neutral-400">{'// '}</span>
-                            <span className="text-white">Install: npm install @sovads/sdk</span>
-                            {'\n\n'}
-                            <span className="text-primary">import</span>
-                            <span className="text-white"> {'{'} SovAds, Banner {'}'} </span>
-                            <span className="text-primary">from</span>
-                            <span className="text-green-400"> '@sovads/sdk'</span>
-                            <span className="text-neutral-400">{';'}</span>
-                            {'\n\n'}
-                            <span className="text-primary">const</span>
-                            <span className="text-white"> adsClient = </span>
-                            <span className="text-primary">new</span>
-                            <span className="text-white"> SovAds({'{'}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">siteId</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'{selectedSite.siteId}'</span>
-                            <span className="text-neutral-400">{','}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">apiKey</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'{selectedSite.apiKey || 'YOUR_API_KEY'}'</span>
-                            <span className="text-neutral-400">{','}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">apiSecret</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'{selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'}'</span>
-                            {'\n'}
-                            <span className="text-white">{'});'}</span>
-                            <span className="text-neutral-400">{';'}</span>
-                            {'\n\n'}
-                            <span className="text-primary">const</span>
-                            <span className="text-white"> banner = </span>
-                            <span className="text-primary">new</span>
-                            <span className="text-white"> Banner(adsClient, </span>
-                            <span className="text-green-400">'banner'</span>
-                            <span className="text-white">);</span>
-                            {'\n'}
-                            <span className="text-primary">await</span>
-                            <span className="text-white"> banner.render(); </span>
-                            <span className="text-neutral-400">{'// renders after site ready'}</span>
-                          </code>
-                        </pre>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const apiKey = selectedSite.apiKey || 'YOUR_API_KEY'
-                          const apiSecret = selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'
-                          const code = `// Integration code for ${selectedSite.domain}\n// Install: npm install @sovads/sdk\n\nimport { SovAds, Banner } from '@sovads/sdk';\n\nconst adsClient = new SovAds({\n    siteId: '${selectedSite.siteId}',\n    apiKey: '${apiKey}',\n    apiSecret: '${apiSecret}', // Keep this secure!\n});\n\nconst banner = new Banner(adsClient, 'banner');\nawait banner.render(); // renders after site ready`
-                          copyToClipboard(code)
-                        }}
-                        className="mt-2 w-full bg-primary text-primary-foreground px-4 py-2 rounded-md font-medium hover:bg-primary/90"
-                      >
-                        Copy SDK Code
-                      </button>
-                      {(!selectedSite.apiKey || (!selectedSite.apiSecret && !newApiSecrets[selectedSite.id])) && (
-                        <p className="mt-2 text-xs text-yellow-600 dark:text-yellow-400">
-                          ⚠️ API credentials not available. Please regenerate them.
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Script Method */}
-                  {activeTab === 'script' && (
-                    <div>
-                      <div className="rounded-2xl overflow-hidden shadow-sm border border-border">
-                        {/* Code Header */}
-                        <div className="flex items-center gap-2 px-4 py-2 bg-neutral-900">
-                          <span className="h-2.5 w-2.5 rounded-full bg-red-500"></span>
-                          <span className="h-2.5 w-2.5 rounded-full bg-yellow-400"></span>
-                          <span className="h-2.5 w-2.5 rounded-full bg-green-500"></span>
-                          <span className="ml-2 text-xs text-neutral-400">script-integration.html</span>
-                        </div>
-                        {/* Code Content */}
-                        <pre className="bg-neutral-950 text-neutral-100 text-sm leading-6 p-4 overflow-x-auto">
-                          <code>
-                            <span className="text-neutral-400">{'<!-- '}</span>
-                            <span className="text-white">Integration code for {selectedSite.domain}</span>
-                            <span className="text-neutral-400">{' -->'}</span>
-                            {'\n'}
-                            <span className="text-neutral-400">{'<!-- '}</span>
-                            <span className="text-white">Add this to your website's {'<head>'}</span>
-                            <span className="text-neutral-400">{' -->'}</span>
-                            {'\n'}
-                            <span className="text-neutral-400">{'<script '}</span>
-                            <span className="text-primary">src</span>
-                            <span className="text-white">=</span>
-                            <span className="text-green-400">"https://api.sovads.com/sdk.js"</span>
-                            <span className="text-neutral-400">{'></script>'}</span>
-                            {'\n\n'}
-                            <span className="text-neutral-400">{'<!-- '}</span>
-                            <span className="text-white">Add this where you want ads to appear</span>
-                            <span className="text-neutral-400">{' -->'}</span>
-                            {'\n'}
-                            <span className="text-neutral-400">{'<div '}</span>
-                            <span className="text-primary">id</span>
-                            <span className="text-white">=</span>
-                            <span className="text-green-400">"sovads-banner"</span>
-                            <span className="text-neutral-400">{'></div>'}</span>
-                            {'\n\n'}
-                            <span className="text-neutral-400">{'<script>'}</span>
-                            {'\n'}
-                            <span className="text-neutral-400">{'// '}</span>
-                            <span className="text-white">Initialize SovAds SDK</span>
-                            {'\n'}
-                            <span className="text-primary">const</span>
-                            <span className="text-white"> sovads = </span>
-                            <span className="text-primary">new</span>
-                            <span className="text-white"> SovAds({'{'}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">siteId</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'{selectedSite.siteId}'</span>
-                            <span className="text-neutral-400">{','}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">apiKey</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'{selectedSite.apiKey || 'YOUR_API_KEY'}'</span>
-                            <span className="text-neutral-400">{','}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">apiSecret</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'{selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'}'</span>
-                            <span className="text-neutral-400">{','}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">containerId</span>
-                            <span className="text-white">: </span>
-                            <span className="text-green-400">'sovads-banner'</span>
-                            <span className="text-neutral-400">{','}</span>
-                            {'\n'}
-                            <span className="text-white">    </span>
-                            <span className="text-primary">debug</span>
-                            <span className="text-white">: </span>
-                            <span className="text-accent">true</span>
-                            {'\n'}
-                            <span className="text-white">{'});'}</span>
-                            {'\n'}
-                            <span className="text-neutral-400">{'</script>'}</span>
-                          </code>
-                        </pre>
-                      </div>
-                      <button
-                        onClick={() => {
-                          const apiKey = selectedSite.apiKey || 'YOUR_API_KEY'
-                          const apiSecret = selectedSite.apiSecret || newApiSecrets[selectedSite.id] || 'YOUR_API_SECRET'
-                          const code = `<!-- Integration code for ${selectedSite.domain} -->\n<!-- Add this to your website's <head> -->\n<script src="https://api.sovads.com/sdk.js"></script>\n\n<!-- Add this where you want ads to appear -->\n<div id="sovads-banner"></div>\n\n<script>\n// Initialize SovAds SDK (encrypted)\nconst sovads = new SovAds({\n    siteId: '${selectedSite.siteId}',\n    apiKey: '${apiKey}',\n    apiSecret: '${apiSecret}', // Keep this secure!\n    containerId: 'sovads-banner',\n    debug: true\n});\n</script>`
-                          copyToClipboard(code)
-                        }}
-                        className="mt-2 w-full bg-muted text-[var(--text-primary)] px-4 py-2 rounded-md font-medium hover:bg-muted/80 border border-border"
-                      >
-                        Copy Script Code
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Exchange Section - cUSD, USDC, USDT → G$ */}
-            <div className="glass-card rounded-lg p-6">
-              <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-4">Exchange for G$</h2>
-              <div className="space-y-4">
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Exchange cUSD, USDC, or USDT for G$. 1 USDC ($1) = 10,000 G$. Send to treasury on <strong>Celo mainnet</strong>.
-                </p>
-                <div className="text-xs text-[var(--text-secondary)] bg-muted/50 rounded p-2">
-                  <strong>Rates:</strong> 1 G$ = ${GS_RATES.GS_TO_USD} | 1 G$ = {GS_RATES.GS_TO_CELO} CELO | 1 USDC = {GS_RATES.USDC_TO_GS.toLocaleString()} G$
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-[var(--text-secondary)]">Treasury:</span>
-                  <code className="text-xs bg-muted px-2 py-1 rounded truncate max-w-[200px]" title={TREASURY_ADDRESS}>
-                    {TREASURY_ADDRESS.slice(0, 10)}...{TREASURY_ADDRESS.slice(-8)}
-                  </code>
-                  <button
-                    type="button"
-                    className="text-xs text-primary hover:underline"
-                    onClick={() => navigator.clipboard.writeText(TREASURY_ADDRESS)}
-                  >
-                    Copy
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    value={topupToken}
-                    onChange={(e) => setTopupToken(e.target.value)}
-                    className="bg-muted border border-border rounded px-3 py-2 text-sm"
-                  >
-                    {SUPPORTED_EXCHANGE_TOKENS.map((t) => (
-                      <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
-                    ))}
-                  </select>
-                  <input
-                    type="number"
-                    placeholder="Amount"
-                    value={topupAmount}
-                    onChange={(e) => setTopupAmount(e.target.value)}
-                    className="bg-muted border border-border rounded px-3 py-2 text-sm w-28"
-                    min="0"
-                    step="0.01"
-                  />
-                  <button
-                    className="bg-primary text-primary-foreground px-4 py-2 rounded-md text-sm font-medium hover:bg-primary/90 disabled:opacity-50"
-                    disabled={isToppingUp || !topupAmount || parseFloat(topupAmount) <= 0}
-                    onClick={async () => {
-                      if (!address) return
-                      const amt = parseFloat(topupAmount)
-                      if (amt <= 0) return
-                      const tokenInfo = SUPPORTED_EXCHANGE_TOKENS.find((t) => t.symbol === topupToken)
-                      if (!tokenInfo) return
-                      setIsToppingUp(true)
-                      setTopupError(null)
-                      setTopupSuccess(null)
-                      try {
-                        const rawAmount = parseUnits(amt.toFixed(tokenInfo.decimals), tokenInfo.decimals)
-                        const txHash = await writeTransfer({
-                          address: tokenInfo.address,
-                          abi: ERC20_TRANSFER_ABI,
-                          functionName: 'transfer',
-                          args: [TREASURY_ADDRESS, rawAmount]
-                        })
-                        const res = await fetch('/api/publishers/exchange', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ wallet: address, amount: amt, token: topupToken, txHash })
-                        })
-                        const data = await res.json()
-                        if (!res.ok) throw new Error(data.error || 'Failed to record exchange')
-                        setTopupSuccess(`${amt} ${topupToken} → ${data.gsReceived} G$`)
-                        setTopupAmount('')
-                        loadBalance(address)
-                        loadExchangeHistory(address)
-                      } catch (e) {
-                        setTopupError(e instanceof Error ? e.message : 'Exchange failed')
-                      } finally {
-                        setIsToppingUp(false)
-                      }
-                    }}
-                  >
-                    {isToppingUp ? 'Exchanging...' : 'Exchange for G$'}
-                  </button>
-                </div>
-                {topupError && <p className="text-sm text-destructive">{topupError}</p>}
-                {topupSuccess && <p className="text-sm text-green-600">{topupSuccess}</p>}
-                {exchangeHistory.length > 0 && (
-                  <div className="mt-4">
-                    <h3 className="text-sm font-medium text-[var(--text-primary)] mb-2">Exchange history</h3>
-                    <div className="overflow-x-auto rounded border border-border">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="bg-muted/50">
-                            <th className="text-left p-2">From</th>
-                            <th className="text-left p-2">Amount</th>
-                            <th className="text-left p-2">G$ received</th>
-                            <th className="text-left p-2">Date</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {exchangeHistory.map((ex, i) => (
-                            <tr key={i} className="border-t border-border">
-                              <td className="p-2">{ex.fromToken}</td>
-                              <td className="p-2">{ex.fromAmount.toFixed(2)}</td>
-                              <td className="p-2">{ex.gsReceived.toFixed(2)} G$</td>
-                              <td className="p-2 text-[var(--text-secondary)]">
-                                {new Date(ex.createdAt).toLocaleDateString()}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Withdraw Section - 1 SovPoint = 1 G$ */}
-            <div className="glass-card rounded-lg p-4 mb-6">
-              <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Withdraw (G$)</h2>
-              <div className="space-y-4">
-                <div className="text-[var(--text-primary)]">
-                  Available: <span className="text-[var(--text-primary)] font-semibold">{availableBalance.toFixed(2)}</span> G$ (earnings + topups)
-                </div>
-                <button
-                  className="bg-primary text-primary-foreground px-6 py-2 rounded-md font-medium hover:bg-primary/90 disabled:opacity-50"
-                  disabled={isWithdrawing || availableBalance <= 0}
-                  onClick={async () => {
-                    if (!address || availableBalance <= 0) return
-                    setIsWithdrawing(true)
-                    setWithdrawError(null)
-                    setWithdrawSuccess(null)
-                    try {
-                      const res = await fetch('/api/publishers/withdraw', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ wallet: address, amount: availableBalance })
-                      })
-                      const data = await res.json()
-                      if (!res.ok) throw new Error(data.error || 'Withdrawal failed')
-                      setWithdrawSuccess(`Sent ${data.amount} G$ — Tx: ${data.txHash?.slice(0, 10)}...`)
-                      loadBalance(address)
-                      if (publisherId) loadStats(publisherId)
-                    } catch (e) {
-                      setWithdrawError(e instanceof Error ? e.message : 'Withdrawal failed')
-                    } finally {
-                      setIsWithdrawing(false)
+                onClick={async () => {
+                  if (!address || !fundCampaignId || !fundAmount) return
+                  const ok = window.confirm(`Fund campaign #${fundCampaignId} with ${fundAmount} G$?`)
+                  if (!ok) return
+                  setIsFunding(true)
+                  setFundError(null)
+                  setFundSuccess(null)
+                  try {
+                    const txHash = await topUpCampaign(Number(fundCampaignId), fundAmount, GOOD_DOLLAR_ADDRESS)
+                    if (txHash) {
+                      setFundSuccess(`Campaign funded on-chain. Tx: ${txHash}`)
+                    } else {
+                      setFundSuccess('Campaign funded (tx submitted).')
                     }
-                  }}
-                >
-                  {isWithdrawing ? 'Processing...' : 'Withdraw All'}
-                </button>
-                {withdrawError && <p className="text-sm text-destructive">{withdrawError}</p>}
-                {withdrawSuccess && <p className="text-sm text-green-600">{withdrawSuccess}</p>}
-                <p className="text-sm text-[var(--text-secondary)]">
-                  Withdrawals are sent as G$ on Celo mainnet. Call admin topup to fund SovadGs.
-                </p>
-              </div>
+                    setFundCampaignId('')
+                    setFundAmount('')
+                  } catch (e) {
+                    setFundError(e instanceof Error ? e.message : 'Funding failed')
+                  } finally {
+                    setIsFunding(false)
+                  }
+                }}
+                disabled={isFunding || !fundCampaignId || !fundAmount}
+                className="w-full btn btn-primary py-2 text-xs"
+              >
+                {isFunding ? 'Funding...' : 'Fund with G$'}
+              </button>
+              {fundSuccess && <p className="text-xs text-green-600">{fundSuccess}</p>}
+              {fundError && <p className="text-xs text-destructive">{fundError}</p>}
             </div>
           </div>
-        )}
-      </div>
+
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Withdraw Earnings (G$)</h2>
+            <div className="space-y-4">
+              <div className="text-sm">Available: <span className="font-bold">{availableBalance.toFixed(2)}</span> G$</div>
+              <button
+                onClick={async () => {
+                  if (!address || availableBalance <= 0) return
+                  setIsWithdrawing(true)
+                  try {
+                    const res = await fetch('/api/publishers/withdraw', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ wallet: address, amount: availableBalance })
+                    })
+                    if (res.ok) {
+                      const data = await res.json()
+                      setWithdrawSuccess(`Withdrawn ${data.amount} G$!`)
+                      loadBalance(address)
+                    }
+                  } catch (e) {
+                    setWithdrawError('Withdrawal failed')
+                  } finally {
+                    setIsWithdrawing(false)
+                  }
+                }}
+                disabled={isWithdrawing || availableBalance <= 0}
+                className="btn btn-primary px-6 py-2"
+              >
+                {isWithdrawing ? 'Processing...' : 'Withdraw All'}
+              </button>
+              {withdrawSuccess && <p className="text-xs text-green-600">{withdrawSuccess}</p>}
+              {withdrawError && <p className="text-xs text-destructive">{withdrawError}</p>}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

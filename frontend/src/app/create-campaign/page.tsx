@@ -23,7 +23,7 @@ interface CampaignFormData {
 export default function CreateCampaign() {
   const { address } = useAccount();
   const { createCampaign, isLoading, error, getSupportedTokens } = useAds();
-  
+
   const [formData, setFormData] = useState<CampaignFormData>(() => {
     // Check if cloning from URL params
     if (typeof window !== 'undefined') {
@@ -61,12 +61,14 @@ export default function CreateCampaign() {
     }
   });
   const [startDate, setStartDate] = useState<string>('');
+  const [startTime, setStartTime] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
+  const [endTime, setEndTime] = useState<string>('');
   const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'dates'>('details');
 
   // Get token info for selected token
   const selectedTokenInfo = getTokenInfo(formData.tokenAddress) || { symbol: 'TOKEN', name: 'Token', decimals: 18, address: '' };
-  
+
   const [supportedTokens, setSupportedTokens] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [bannerPreview, setBannerPreview] = useState<string>('');
@@ -99,7 +101,7 @@ export default function CreateCampaign() {
         console.error('Failed to load supported tokens:', err);
       }
     };
-    
+
     loadSupportedTokens();
   }, [getSupportedTokens]);
 
@@ -119,18 +121,30 @@ export default function CreateCampaign() {
     if (!formData.budget || parseFloat(formData.budget) < 0.0001) return 'Budget must be at least 0.0001';
     if (!formData.tokenAddress) return 'Token address is required';
     if (!startDate) return 'Start date is required';
+    if (!startTime) return 'Start time is required';
     if (!endDate) return 'End date is required';
-    if (new Date(startDate) > new Date(endDate)) return 'Start date must be before end date';
-    
-    // Validate URLs
-    try { new URL(formData.targetUrl); } catch { return 'Please enter a valid target URL'; }
-    
+    if (!endTime) return 'End time is required';
+    const startIso = `${startDate}T${startTime}`;
+    const endIso = `${endDate}T${endTime}`;
+    if (new Date(startIso) > new Date(endIso)) return 'Start date/time must be before end date/time';
+
+    // Validate URLs (accept hostnames like example.com by prepending https:// when needed)
+    try {
+      new URL(formData.targetUrl);
+    } catch {
+      try {
+        new URL(`https://${formData.targetUrl}`);
+      } catch {
+        return 'Please enter a valid target URL';
+      }
+    }
+
     return null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!address) {
       setSubmitError('Please connect your wallet');
       return;
@@ -148,37 +162,45 @@ export default function CreateCampaign() {
     try {
       // Generate unique campaign ID
       const campaignId = generateCampaignId();
-      
+
       // Prepare metadata for contract
+      const startIso = `${startDate}T${startTime}`;
+      const endIso = `${endDate}T${endTime}`;
+
+      // Normalize target URL: prefer provided scheme, otherwise default to https://
+      const normalizedTargetUrl = /^(https?:)?\/\//i.test(formData.targetUrl)
+        ? formData.targetUrl
+        : `https://${formData.targetUrl}`;
+
       const metadata = JSON.stringify({
         id: campaignId,
         name: formData.name,
         description: formData.description,
         bannerUrl: formData.bannerUrl,
-        targetUrl: formData.targetUrl,
+        targetUrl: normalizedTargetUrl,
         cpc: formData.cpc,
-        startDate,
-        endDate,
+        startDate: startIso,
+        endDate: endIso,
         createdAt: new Date().toISOString()
       });
 
       // Step 1: Create campaign on contract first
       console.log('Creating campaign on contract...');
-      const start = new Date(startDate).getTime();
-      const end = new Date(endDate).getTime();
+      const start = new Date(startIso).getTime();
+      const end = new Date(endIso).getTime();
       const durationSeconds = Math.max(1, Math.floor((end - start) / 1000));
-      const txHash = await createCampaign(
+      const { hash: txHash, id: onChainId } = await createCampaign(
         formData.tokenAddress,
         formData.budget,
         durationSeconds,
         metadata
       );
 
-      console.log('Campaign created on contract successfully');
+      console.log(`Campaign created on contract successfully. ID: ${onChainId}`);
 
       // Step 2: Save to database after successful contract interaction
       console.log('Saving campaign to database...');
-      
+
       const parsedTags = formData.tags
         .split(',')
         .map((tag) => tag.trim())
@@ -213,9 +235,11 @@ export default function CreateCampaign() {
             metadata: metadataObject,
           },
           transactionHash: txHash,
-          contractCampaignId: campaignId,
-          startDate,
-          endDate,
+          contractCampaignId: campaignId, // This is the string ID sovads-mm-dd-xx
+          onChainId: onChainId, // This is the numeric ID from contract
+          startDate: startIso,
+          endDate: endIso,
+          targetUrl: normalizedTargetUrl,
         }),
       })
       if (!resp.ok) {
@@ -226,9 +250,9 @@ export default function CreateCampaign() {
       }
       const result = await resp.json()
       console.log('Campaign saved to database:', result.campaign.id);
-      
+
       setSuccess(true);
-      
+
       // Reset form
       setFormData({
         name: '',
@@ -245,7 +269,9 @@ export default function CreateCampaign() {
         mediaType: 'image'
       });
       setStartDate('');
+      setStartTime('');
       setEndDate('');
+      setEndTime('');
       setBannerPreview('');
 
     } catch (err) {
@@ -313,7 +339,7 @@ export default function CreateCampaign() {
           Dates
         </button>
       </div>
-      
+
       <form onSubmit={handleSubmit} className="space-y-6">
         {activeTab === 'details' && (
           <>
@@ -413,10 +439,10 @@ export default function CreateCampaign() {
                     </div>
                   ) : (
                     <div className="relative">
-                      <img 
-                        src={bannerPreview} 
-                        alt="Media preview" 
-                        className="max-h-64 w-full rounded-md border border-border object-contain" 
+                      <img
+                        src={bannerPreview}
+                        alt="Media preview"
+                        className="max-h-64 w-full rounded-md border border-border object-contain"
                       />
                       <p className="text-xs text-foreground/60 mt-1">
                         {bannerPreview.toLowerCase().includes('.gif') ? 'GIF preview' : 'Image preview'}
@@ -570,21 +596,37 @@ export default function CreateCampaign() {
         {activeTab === 'dates' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground/80 mb-2">Start Date & Time *</label>
+              <label className="block text-sm font-medium text-foreground/80 mb-2">Start Date *</label>
               <input
-                type="datetime-local"
+                type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
                 className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />
+              <label className="block text-sm font-medium text-foreground/80 mt-2 mb-1">Start Time *</label>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                required
+              />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground/80 mb-2">End Date & Time *</label>
+              <label className="block text-sm font-medium text-foreground/80 mb-2">End Date *</label>
               <input
-                type="datetime-local"
+                type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
+                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                required
+              />
+              <label className="block text-sm font-medium text-foreground/80 mt-2 mb-1">End Time *</label>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
                 className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                 required
               />

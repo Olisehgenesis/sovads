@@ -10,6 +10,7 @@ export async function POST(request: NextRequest) {
       campaignData,
       transactionHash,
       contractCampaignId,
+      onChainId,
       startDate,
       endDate,
     } = body
@@ -61,18 +62,18 @@ export async function POST(request: NextRequest) {
       ? campaignData.tags
       : typeof campaignData.tags === 'string'
         ? campaignData.tags
-            .split(',')
-            .map((tag: string) => tag.trim())
-            .filter((tag: string) => tag.length > 0)
+          .split(',')
+          .map((tag: string) => tag.trim())
+          .filter((tag: string) => tag.length > 0)
         : []
 
     const targetLocations: string[] = Array.isArray(campaignData.targetLocations)
       ? campaignData.targetLocations
       : typeof campaignData.targetLocations === 'string'
         ? campaignData.targetLocations
-            .split(',')
-            .map((loc: string) => loc.trim())
-            .filter((loc: string) => loc.length > 0)
+          .split(',')
+          .map((loc: string) => loc.trim())
+          .filter((loc: string) => loc.length > 0)
         : []
 
     const metadata =
@@ -99,6 +100,7 @@ export async function POST(request: NextRequest) {
       cpc,
       active: true,
       tokenAddress: campaignData.tokenAddress || null,
+      onChainId: onChainId ? Number(onChainId) : undefined,
       metadataURI: JSON.stringify({
         contractCampaignId,
         transactionHash,
