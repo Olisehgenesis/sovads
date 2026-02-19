@@ -8,6 +8,60 @@ import { buildPublisherAuthMessage, isPublisherAuthTimestampValid } from '@/lib/
 const unauthorized = (message: string) =>
   NextResponse.json({ error: message }, { status: 401 })
 
+const normalizeHost = (value: string): string => {
+  let normalized = value.trim().toLowerCase()
+  normalized = normalized.replace(/^https?:\/\//, '')
+  normalized = normalized.split('/')[0] ?? normalized
+  if (normalized.startsWith('www.')) {
+    normalized = normalized.substring(4)
+  }
+  if (normalized.includes(':') && !normalized.includes('mongodb')) {
+    normalized = normalized.split(':')[0] ?? normalized
+  }
+  return normalized
+}
+
+const normalizePathPrefix = (value?: string): string => {
+  if (!value || !value.trim()) return '/'
+  let normalized = value.trim()
+  if (!normalized.startsWith('/')) {
+    normalized = `/${normalized}`
+  }
+  normalized = normalized.replace(/\/{2,}/g, '/')
+  if (normalized.length > 1 && normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1)
+  }
+  return normalized || '/'
+}
+
+const parseSiteInput = (domainOrUrl: string, explicitPathPrefix?: string): { host: string; pathPrefix: string } => {
+  const parsedUrl = new URL(domainOrUrl.includes('://') ? domainOrUrl : `https://${domainOrUrl}`)
+  const host = normalizeHost(parsedUrl.host)
+  const extractedPath = normalizePathPrefix(parsedUrl.pathname)
+  const pathPrefix = normalizePathPrefix(explicitPathPrefix ?? extractedPath)
+  return { host, pathPrefix }
+}
+
+const pathPrefixMatches = (pathPrefix: string, path: string): boolean => {
+  if (pathPrefix === '/') return true
+  return path === pathPrefix || path.startsWith(`${pathPrefix}/`)
+}
+
+const isPathOverlap = (left: string, right: string): boolean =>
+  pathPrefixMatches(left, right) || pathPrefixMatches(right, left)
+
+const toSiteView = (site: any) => ({
+  id: site._id,
+  domain: site.domain,
+  host: normalizeHost(String(site.host ?? site.domain ?? '')),
+  pathPrefix: normalizePathPrefix(String(site.pathPrefix ?? '/')),
+  matchType: site.matchType ?? 'PREFIX',
+  siteId: site.siteId,
+  apiKey: site.apiKey,
+  verified: site.verified,
+  createdAt: site.createdAt,
+})
+
 async function verifyPublisherRequest(request: NextRequest, wallet: string): Promise<NextResponse | null> {
   const headerWallet = request.headers.get('x-wallet-address')?.toLowerCase()
   const signature = request.headers.get('x-wallet-signature')
@@ -60,7 +114,7 @@ export async function GET(request: NextRequest) {
       publisherSitesCollection = await collections.publisherSites()
     } catch (dbError) {
       console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Database connection failed',
         details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
       }, { status: 500 })
@@ -77,20 +131,11 @@ export async function GET(request: NextRequest) {
       .sort({ createdAt: -1 })
       .toArray()
 
-    const normalizedSites = sites.map((site) => ({
-      id: site._id,
-      domain: site.domain,
-      siteId: site.siteId,
-      apiKey: site.apiKey,
-      verified: site.verified,
-      createdAt: site.createdAt,
-    }))
-
-    return NextResponse.json({ sites: normalizedSites })
+    return NextResponse.json({ sites: sites.map(toSiteView) })
   } catch (error) {
     console.error('Error fetching publisher sites:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Internal server error',
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     }, { status: 500 })
@@ -100,11 +145,30 @@ export async function GET(request: NextRequest) {
 // Add a new site
 export async function POST(request: NextRequest) {
   try {
-    const body = (await request.json()) as Partial<{ wallet: string; domain: string }>
-    const { wallet, domain } = body
+    const body = (await request.json()) as Partial<{
+      wallet: string
+      domain: string
+      domainOrUrl: string
+      pathPrefix: string
+    }>
+    const { wallet } = body
+    const domainInput = body.domainOrUrl ?? body.domain
 
-    if (!wallet || !domain) {
-      return NextResponse.json({ error: 'Wallet and domain are required' }, { status: 400 })
+    if (!wallet || !domainInput) {
+      return NextResponse.json({ error: 'Wallet and domainOrUrl are required' }, { status: 400 })
+    }
+
+    let host: string
+    let pathPrefix: string
+    try {
+      const parsed = parseSiteInput(domainInput, body.pathPrefix)
+      host = parsed.host
+      pathPrefix = parsed.pathPrefix
+    } catch {
+      return NextResponse.json({ error: 'Invalid domainOrUrl' }, { status: 400 })
+    }
+    if (!host) {
+      return NextResponse.json({ error: 'Invalid host in domainOrUrl' }, { status: 400 })
     }
 
     const authError = await verifyPublisherRequest(request, wallet)
@@ -116,22 +180,47 @@ export async function POST(request: NextRequest) {
       publisherSitesCollection = await collections.publisherSites()
     } catch (dbError) {
       console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: 'Database connection failed',
         details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
       }, { status: 500 })
     }
 
+    const [allSites, allPublishers] = await Promise.all([
+      publisherSitesCollection.find({}).toArray(),
+      publishersCollection.find({}).toArray(),
+    ])
+    const publisherById = new Map(allPublishers.map((publisher) => [publisher._id, publisher] as const))
     const existingPublisher = await publishersCollection.findOne({ wallet })
 
+    const overlappingSite = allSites.find((site) => {
+      const siteHost = normalizeHost(String((site as { host?: string }).host ?? site.domain ?? ''))
+      const sitePathPrefix = normalizePathPrefix(String((site as { pathPrefix?: string }).pathPrefix ?? '/'))
+      return siteHost === host && isPathOverlap(sitePathPrefix, pathPrefix)
+    })
+
+    if (overlappingSite && overlappingSite.publisherId !== existingPublisher?._id) {
+      const owner = publisherById.get(overlappingSite.publisherId)
+      return NextResponse.json({
+        error: 'Host/path already registered by another publisher',
+        existing: {
+          domain: overlappingSite.domain,
+          host: normalizeHost(String((overlappingSite as { host?: string }).host ?? overlappingSite.domain ?? '')),
+          pathPrefix: normalizePathPrefix(String((overlappingSite as { pathPrefix?: string }).pathPrefix ?? '/')),
+          siteId: overlappingSite.siteId,
+          publisherId: overlappingSite.publisherId,
+          publisherWallet: owner?.wallet ?? null,
+        }
+      }, { status: 409 })
+    }
+
     if (!existingPublisher) {
-      // Create publisher first
       const now = new Date()
       const publisherId = randomUUID()
       const newPublisher = {
         _id: publisherId,
         wallet,
-        domain,
+        domain: host,
         verified: false,
         totalEarned: 0,
         createdAt: now,
@@ -139,17 +228,18 @@ export async function POST(request: NextRequest) {
         sites: [],
       }
       await publishersCollection.insertOne(newPublisher)
-      
-      // Generate API credentials for SDK authentication
+
       const apiKey = generateApiKeyServer()
-      const apiSecret = generateSecretServer() // Store plain secret for decryption (secure this in production!)
-      
-      // Create first site  
+      const apiSecret = generateSecretServer()
+
       const siteId = randomUUID()
       const newSite = {
         _id: siteId,
         publisherId,
-        domain,
+        domain: host,
+        host,
+        pathPrefix,
+        matchType: 'PREFIX' as const,
         siteId: `site_${publisherId}_0`,
         apiKey,
         apiSecret,
@@ -158,74 +248,71 @@ export async function POST(request: NextRequest) {
         updatedAt: now,
       }
       await publisherSitesCollection.insertOne(newSite)
-      
-      return NextResponse.json({
-        success: true,
-        site: {
-          id: newSite._id,
-          domain: newSite.domain,
-          siteId: newSite.siteId,
-          apiKey: newSite.apiKey,
-          apiSecret: apiSecret, // Return secret once - frontend should store this securely
-          verified: newSite.verified,
-          createdAt: newSite.createdAt
-        }
-      })
-    } else {
-      const sites = await publisherSitesCollection
-        .find({ publisherId: existingPublisher._id })
-        .toArray()
-
-      // Check if site already exists
-      const existingSite = sites.find((site) => site.domain === domain)
-      if (existingSite) {
-        return NextResponse.json({
-          error: 'Site already registered',
-          site: {
-            id: existingSite._id,
-            domain: existingSite.domain,
-            siteId: existingSite.siteId,
-            verified: existingSite.verified
-          }
-        }, { status: 409 })
-      }
-
-      // Generate API credentials for SDK authentication
-      const apiKey = generateApiKeyServer()
-      const apiSecret = generateSecretServer() // Store plain secret for decryption (secure this in production!)
-      
-      // Add new site
-      const siteCount = sites.length
-      const newSite = {
-        _id: randomUUID(),
-        publisherId: existingPublisher._id,
-        domain,
-        siteId: `site_${existingPublisher._id}_${siteCount}`,
-        apiKey,
-        apiSecret,
-        verified: false,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      }
-      await publisherSitesCollection.insertOne(newSite)
 
       return NextResponse.json({
         success: true,
         site: {
-          id: newSite._id,
-          domain: newSite.domain,
-          siteId: newSite.siteId,
-          apiKey: newSite.apiKey,
-          apiSecret: apiSecret, // Return secret once - frontend should store this securely
-          verified: newSite.verified,
-          createdAt: newSite.createdAt
+          ...toSiteView(newSite),
+          apiSecret,
         }
       })
     }
+
+    const sites = await publisherSitesCollection
+      .find({ publisherId: existingPublisher._id })
+      .toArray()
+
+    const existingSite = sites.find((site) => {
+      const siteHost = normalizeHost(String((site as { host?: string }).host ?? site.domain ?? ''))
+      const sitePathPrefix = normalizePathPrefix(String((site as { pathPrefix?: string }).pathPrefix ?? '/'))
+      return siteHost === host && sitePathPrefix === pathPrefix
+    })
+
+    if (existingSite) {
+      return NextResponse.json({
+        error: 'Site already registered',
+        site: {
+          id: existingSite._id,
+          domain: existingSite.domain,
+          host: normalizeHost(String((existingSite as { host?: string }).host ?? existingSite.domain ?? '')),
+          pathPrefix: normalizePathPrefix(String((existingSite as { pathPrefix?: string }).pathPrefix ?? '/')),
+          siteId: existingSite.siteId,
+          verified: existingSite.verified
+        }
+      }, { status: 409 })
+    }
+
+    const apiKey = generateApiKeyServer()
+    const apiSecret = generateSecretServer()
+
+    const siteCount = sites.length
+    const newSite = {
+      _id: randomUUID(),
+      publisherId: existingPublisher._id,
+      domain: host,
+      host,
+      pathPrefix,
+      matchType: 'PREFIX' as const,
+      siteId: `site_${existingPublisher._id}_${siteCount}`,
+      apiKey,
+      apiSecret,
+      verified: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+    await publisherSitesCollection.insertOne(newSite)
+
+    return NextResponse.json({
+      success: true,
+      site: {
+        ...toSiteView(newSite),
+        apiSecret,
+      }
+    })
   } catch (error) {
     console.error('Error adding site:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Internal server error',
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     }, { status: 500 })
@@ -270,12 +357,9 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({
       success: true,
       site: {
-        id: site._id,
-        domain: site.domain,
-        siteId: site.siteId,
+        ...toSiteView(site),
         apiKey,
-        apiSecret, // Return secret once
-        verified: site.verified,
+        apiSecret,
       },
     })
   } catch (error) {

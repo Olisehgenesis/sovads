@@ -68,6 +68,9 @@ export interface PublisherSite {
   _id: string
   publisherId: string
   domain: string
+  host?: string
+  pathPrefix?: string
+  matchType?: 'PREFIX'
   siteId: string
   apiKey: string
   apiSecret: string

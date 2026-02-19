@@ -8,53 +8,53 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type',
 }
 
-/**
- * Normalize domain for consistent matching
- * - Convert to lowercase
- * - Remove www. prefix
- * - Remove protocol if present
- * - Remove trailing slash
- */
-function normalizeDomain(domain: string): string {
-  let normalized = domain.toLowerCase().trim()
-  
-  // Remove protocol
+type DetectRequest = {
+  domain?: string
+  pageUrl?: string
+  pathname?: string
+}
+
+function normalizeHost(value: string): string {
+  let normalized = value.toLowerCase().trim()
   normalized = normalized.replace(/^https?:\/\//, '')
-  
-  // Remove www. prefix
+  normalized = normalized.split('/')[0] ?? normalized
+
   if (normalized.startsWith('www.')) {
     normalized = normalized.substring(4)
   }
-  
-  // Remove trailing slash
-  normalized = normalized.replace(/\/$/, '')
-  
-  // Remove port if present (for localhost)
+
   if (normalized.includes(':') && !normalized.includes('mongodb')) {
-    normalized = normalized.split(':')[0]
+    normalized = normalized.split(':')[0] ?? normalized
   }
-  
+
   return normalized
 }
 
-/**
- * Generate domain variations for flexible matching
- */
-function getDomainVariations(domain: string): string[] {
-  const normalized = normalizeDomain(domain)
-  const variations = [normalized]
-  
-  // Add www version
-  if (!normalized.startsWith('www.')) {
-    variations.push(`www.${normalized}`)
+function normalizePathPrefix(value?: string): string {
+  if (!value || !value.trim()) return '/'
+  let normalized = value.trim()
+  if (!normalized.startsWith('/')) {
+    normalized = `/${normalized}`
   }
-  
-  // Remove www if present
-  if (normalized.startsWith('www.')) {
-    variations.push(normalized.substring(4))
+  normalized = normalized.replace(/\/{2,}/g, '/')
+  if (normalized.length > 1 && normalized.endsWith('/')) {
+    normalized = normalized.slice(0, -1)
   }
-  
-  return [...new Set(variations)] // Remove duplicates
+  return normalized || '/'
+}
+
+function pathPrefixMatches(pathPrefix: string, path: string): boolean {
+  if (pathPrefix === '/') return true
+  return path === pathPrefix || path.startsWith(`${pathPrefix}/`)
+}
+
+function parseIncomingHostPath(body: DetectRequest): { host: string; path: string } {
+  const fromPageUrl = body.pageUrl ? new URL(body.pageUrl) : null
+  const rawHost = body.domain ?? fromPageUrl?.host ?? ''
+  const host = normalizeHost(rawHost)
+  const rawPath = body.pathname ?? fromPageUrl?.pathname ?? '/'
+  const path = normalizePathPrefix(rawPath)
+  return { host, path }
 }
 
 export async function OPTIONS() {
@@ -66,42 +66,38 @@ export async function OPTIONS() {
 
 export async function POST(request: NextRequest) {
   try {
-    const { domain } = (await request.json()) as { domain?: string }
+    const body = (await request.json()) as DetectRequest
+    const { host, path } = parseIncomingHostPath(body)
 
-    if (!domain) {
-      return NextResponse.json({ 
-        error: 'Domain is required' 
+    if (!host) {
+      return NextResponse.json({
+        error: 'Domain is required'
       }, { status: 400, headers: corsHeaders })
     }
 
-    const normalizedDomain = normalizeDomain(domain)
-    const domainVariations = getDomainVariations(domain)
-
-    // Try to access MongoDB - handle connection errors gracefully
     let publisherSitesCollection, publishersCollection
     try {
       publisherSitesCollection = await collections.publisherSites()
       publishersCollection = await collections.publishers()
-      
-      // Test the connection by trying a simple query
+
       await publisherSitesCollection.findOne({}, { limit: 1 })
     } catch (dbError) {
       console.error('MongoDB connection error in site detection:', dbError)
       const errorDetails = dbError instanceof Error ? dbError.message : String(dbError)
       const errorStack = dbError instanceof Error ? dbError.stack : undefined
-      
-      // Log full error in development
+
       if (process.env.NODE_ENV === 'development') {
         console.error('Full MongoDB error:', { errorDetails, errorStack })
       }
-      
-      // If MongoDB is unavailable, return temp site ID anyway
-      const encodedDomain = Buffer.from(normalizedDomain).toString('base64')
+
+      const encodedDomain = Buffer.from(host).toString('base64')
       const tempSiteId = `temp_${encodedDomain.substring(0, 8)}_${Date.now()}`
-      
-      return NextResponse.json({ 
+
+      return NextResponse.json({
         siteId: tempSiteId,
-        domain: normalizedDomain,
+        domain: host,
+        host,
+        pathPrefix: path,
         verified: false,
         message: 'Database unavailable - using temporary site ID',
         error: process.env.NODE_ENV === 'development' ? errorDetails : undefined,
@@ -109,66 +105,67 @@ export async function POST(request: NextRequest) {
       }, { headers: corsHeaders })
     }
 
-    // Try to find publisher site with domain variations
-    let publisherSite = null
-    for (const domainVar of domainVariations) {
-      publisherSite = await publisherSitesCollection.findOne({ domain: domainVar })
-      if (publisherSite) break
-    }
+    const allSites = await publisherSitesCollection.find({}).toArray()
+    const matchingPublisherSites = allSites
+      .map((site) => ({
+        site,
+        host: normalizeHost(String((site as { host?: string }).host ?? site.domain ?? '')),
+        pathPrefix: normalizePathPrefix(String((site as { pathPrefix?: string }).pathPrefix ?? '/')),
+      }))
+      .filter((row) => row.host === host && pathPrefixMatches(row.pathPrefix, path))
+      .sort((a, b) => b.pathPrefix.length - a.pathPrefix.length)
 
-    if (publisherSite) {
-      const publisher = await publishersCollection.findOne({ _id: publisherSite.publisherId })
-      return NextResponse.json({ 
-        siteId: publisherSite.siteId,
-        domain: publisherSite.domain,
+    const selected = matchingPublisherSites[0]
+    if (selected) {
+      const publisher = await publishersCollection.findOne({ _id: selected.site.publisherId })
+      return NextResponse.json({
+        siteId: selected.site.siteId,
+        domain: selected.site.domain,
+        host: selected.host,
+        pathPrefix: selected.pathPrefix,
         verified: publisher?.verified || false
       }, { headers: corsHeaders })
     }
 
-    // Check if site already exists in Publisher (legacy) with domain variations
-    let site = null
-    for (const domainVar of domainVariations) {
-      site = await publishersCollection.findOne({ 
-        domain: domainVar,
-        verified: true 
-      })
-      if (site) break
-    }
+    const site = await publishersCollection.findOne({
+      domain: host,
+      verified: true
+    })
 
     if (site) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         siteId: site._id,
         domain: site.domain,
+        host,
+        pathPrefix: '/',
         verified: site.verified
       }, { headers: corsHeaders })
     }
 
-    // Check for unverified site with domain variations
-    let unverifiedSite = null
-    for (const domainVar of domainVariations) {
-      unverifiedSite = await publishersCollection.findOne({ 
-        domain: domainVar,
-        verified: false 
-      })
-      if (unverifiedSite) break
-    }
+    const unverifiedSite = await publishersCollection.findOne({
+      domain: host,
+      verified: false
+    })
 
     if (unverifiedSite) {
-      return NextResponse.json({ 
+      return NextResponse.json({
         siteId: unverifiedSite._id,
         domain: unverifiedSite.domain,
+        host,
+        pathPrefix: '/',
         verified: unverifiedSite.verified,
         message: 'Site exists but not verified'
       }, { headers: corsHeaders })
     }
 
-    // Generate a temporary site ID for new domains
-    const encodedDomain = Buffer.from(normalizedDomain).toString('base64')
+    const encodedDomain = Buffer.from(host).toString('base64')
     const tempSiteId = `temp_${encodedDomain.substring(0, 8)}_${Date.now()}`
-    
-    return NextResponse.json({ 
+
+    return NextResponse.json({
       siteId: tempSiteId,
-      domain: normalizedDomain,
+      domain: host,
+      host,
+      pathPrefix: path,
       verified: false,
       message: 'New site detected - please register to start earning'
     }, { headers: corsHeaders })
@@ -176,7 +173,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('Error detecting site:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Failed to detect site',
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     }, { status: 500, headers: corsHeaders })
@@ -189,14 +186,14 @@ export async function GET(request: NextRequest) {
     const domain = searchParams.get('domain')
 
     if (!domain) {
-      return NextResponse.json({ 
-        error: 'Domain parameter is required' 
+      return NextResponse.json({
+        error: 'Domain parameter is required'
       }, { status: 400, headers: corsHeaders })
     }
 
     const publishersCollection = await collections.publishers()
     const site = await publishersCollection.findOne(
-      { domain },
+      { domain: normalizeHost(domain) },
       {
         projection: {
           _id: 1,
@@ -209,12 +206,12 @@ export async function GET(request: NextRequest) {
     )
 
     if (!site) {
-      return NextResponse.json({ 
-        error: 'Site not found' 
+      return NextResponse.json({
+        error: 'Site not found'
       }, { status: 404, headers: corsHeaders })
     }
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       site: {
         id: site._id,
         domain: site.domain,
@@ -225,8 +222,8 @@ export async function GET(request: NextRequest) {
     }, { headers: corsHeaders })
   } catch (error) {
     console.error('Error fetching site:', error)
-    return NextResponse.json({ 
-      error: 'Failed to fetch site' 
+    return NextResponse.json({
+      error: 'Failed to fetch site'
     }, { status: 500, headers: corsHeaders })
   }
 }

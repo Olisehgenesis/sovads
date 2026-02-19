@@ -148,6 +148,7 @@ class SovAds {
       const domain = window.location.hostname
       const payload = {
         domain,
+        pathname: window.location.pathname,
         fingerprint: this.fingerprint,
         userAgent: navigator.userAgent,
         pageUrl: window.location.href,
@@ -978,6 +979,7 @@ export class Banner {
       max-width: 100%;
       width: 100%;
       box-sizing: border-box;
+      opacity: 0;
     `
 
       const handleVisibilityTracking = (
@@ -994,6 +996,7 @@ export class Banner {
       }
 
       const handleRenderSuccess = () => {
+        adElement.style.opacity = '1'
         const renderTime = Date.now() - this.renderStartTime
         handleVisibilityTracking({
           rendered: true,
@@ -1003,6 +1006,7 @@ export class Banner {
       }
 
       const handleRenderError = () => {
+        adElement.style.opacity = '1'
         if (this.sovads.getConfig().debug) {
           console.warn(`Failed to load ad media: ${this.currentAd!.bannerUrl}`)
         }
@@ -1327,6 +1331,8 @@ export class Popup {
       max-width: 360px;
       position: relative;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+      opacity: 0;
+      transition: opacity 0.2s ease;
     `
 
     // SovAds logo badge in small left corner
@@ -1434,6 +1440,9 @@ export class Popup {
     const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
 
     const handleMediaError = () => {
+      if (this.popupElement) {
+        this.popupElement.style.opacity = '1'
+      }
       if (this.sovads.getConfig().debug) {
         console.warn(`Failed to load popup ad media: ${this.currentAd!.bannerUrl}`)
       }
@@ -1452,6 +1461,9 @@ export class Popup {
       video.controls = true
       video.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;'
       video.addEventListener('loadeddata', () => {
+        if (this.popupElement) {
+          this.popupElement.style.opacity = '1'
+        }
         const renderTime = Date.now() - renderStartTime
         trackPopupImpression(true, renderTime)
         if (this.sovads.getConfig().debug) {
@@ -1467,6 +1479,9 @@ export class Popup {
       img.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;'
       
       img.addEventListener('load', () => {
+        if (this.popupElement) {
+          this.popupElement.style.opacity = '1'
+        }
         const renderTime = Date.now() - renderStartTime
         trackPopupImpression(true, renderTime)
         if (this.sovads.getConfig().debug) {
@@ -1697,6 +1712,7 @@ export class Sidebar {
       margin-bottom: 15px;
       cursor: ${mediaType === 'video' ? 'default' : 'pointer'};
       transition: all 0.2s ease;
+      opacity: 0;
     `
 
       const handleVisibilityTracking = (
@@ -1713,6 +1729,7 @@ export class Sidebar {
       }
 
       const handleRenderSuccess = () => {
+        adElement.style.opacity = '1'
         const renderTime = Date.now() - this.renderStartTime
         handleVisibilityTracking({
           rendered: true,
@@ -1722,6 +1739,7 @@ export class Sidebar {
       }
 
       const handleRenderError = () => {
+        adElement.style.opacity = '1'
         if (this.sovads.getConfig().debug) {
           console.warn(`Failed to load sidebar ad media: ${this.currentAd!.bannerUrl}`)
         }
