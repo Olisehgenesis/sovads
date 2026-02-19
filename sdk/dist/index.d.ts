@@ -8,6 +8,8 @@ export interface SovAdsConfig {
     refreshInterval?: number;
     lazyLoad?: boolean;
     rotationEnabled?: boolean;
+    popupMinIntervalMinutes?: number;
+    popupSessionMax?: number;
 }
 export interface AdComponent {
     id: string;
@@ -23,6 +25,18 @@ export interface AdComponent {
     startDate?: string | null;
     endDate?: string | null;
     mediaType?: 'image' | 'video';
+    trackingToken?: string;
+    placement?: string;
+    size?: string;
+}
+interface AdLoadOptions {
+    consumerId?: string;
+    placement?: string;
+    size?: string;
+}
+interface SlotConfig {
+    placementId?: string;
+    size?: string;
 }
 declare class SovAds {
     protected config: SovAdsConfig;
@@ -31,6 +45,7 @@ declare class SovAds {
     private siteId;
     private renderObservers;
     private debugLoggingEnabled;
+    private adTrackingTokens;
     constructor(config?: SovAdsConfig);
     private generateFingerprint;
     private detectSiteId;
@@ -56,7 +71,7 @@ declare class SovAds {
      * Fetch with retry logic
      */
     private fetchWithRetry;
-    loadAd(consumerId?: string): Promise<AdComponent | null>;
+    loadAd(options?: AdLoadOptions): Promise<AdComponent | null>;
     private toBase64;
     private signTrackingPayload;
     private sendTrackingEnvelope;
@@ -105,7 +120,8 @@ export declare class Banner {
     private lastAdId;
     private retryCount;
     private maxRetries;
-    constructor(sovads: SovAds, containerId: string);
+    private slotConfig;
+    constructor(sovads: SovAds, containerId: string, slotConfig?: SlotConfig);
     render(consumerId?: string, forceRefresh?: boolean): Promise<void>;
     private checkViewport;
     private setupLazyLoadObserver;
@@ -119,7 +135,11 @@ export declare class Popup {
     private isShowing;
     private retryCount;
     private maxRetries;
+    private storageKeyLastShown;
+    private storageKeySessionCount;
     constructor(sovads: SovAds);
+    private canShowByFrequencyCap;
+    private markShown;
     show(consumerId?: string, delay?: number): Promise<void>;
     private renderPopup;
     hide(): void;
@@ -135,7 +155,8 @@ export declare class Sidebar {
     private lastAdId;
     private retryCount;
     private maxRetries;
-    constructor(sovads: SovAds, containerId: string);
+    private slotConfig;
+    constructor(sovads: SovAds, containerId: string, slotConfig?: SlotConfig);
     render(consumerId?: string, forceRefresh?: boolean): Promise<void>;
     private checkViewport;
     private setupLazyLoadObserver;

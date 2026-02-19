@@ -6,6 +6,7 @@ class SovAds {
         this.siteId = null;
         this.renderObservers = new Map();
         this.debugLoggingEnabled = false;
+        this.adTrackingTokens = new Map();
         this.config = {
             apiUrl: typeof window !== 'undefined' && window.location.hostname === 'localhost'
                 ? 'http://localhost:3000'
@@ -14,6 +15,8 @@ class SovAds {
             refreshInterval: 0, // No auto-refresh by default
             lazyLoad: true,
             rotationEnabled: true,
+            popupMinIntervalMinutes: 30,
+            popupSessionMax: 1,
             ...config
         };
         this.debugLoggingEnabled = Boolean(this.config.debug);
@@ -240,13 +243,16 @@ class SovAds {
      * Normalize URL - add protocol if missing for localhost
      */
     normalizeUrl(url) {
-        if (!url.includes('://')) {
+        const trimmed = url.trim();
+        if (!trimmed.includes('://')) {
             // Allow localhost URLs without protocol for debugging
-            if (url.startsWith('localhost') || url.startsWith('127.0.0.1')) {
-                return `http://${url}`;
+            if (trimmed.startsWith('localhost') || trimmed.startsWith('127.0.0.1')) {
+                return `http://${trimmed}`;
             }
+            // Treat bare domains as https by default.
+            return `https://${trimmed}`;
         }
-        return url;
+        return trimmed;
     }
     /**
      * Validate URL format
@@ -287,13 +293,15 @@ class SovAds {
         }
         throw lastError || new Error('Fetch failed after retries');
     }
-    async loadAd(consumerId) {
+    async loadAd(options = {}) {
         const startTime = Date.now();
         try {
             const siteId = await this.detectSiteId();
             const params = new URLSearchParams({
                 siteId,
-                ...(consumerId && { consumerId })
+                ...(options.consumerId && { consumerId: options.consumerId }),
+                ...(options.placement && { placement: options.placement }),
+                ...(options.size && { size: options.size }),
             });
             const endpoint = `${this.config.apiUrl}/api/ads?${params}`;
             const response = await this.fetchWithRetry(endpoint);
@@ -308,7 +316,7 @@ class SovAds {
                 pageUrl: window.location.href,
                 userAgent: navigator.userAgent,
                 fingerprint: this.fingerprint,
-                requestBody: { siteId, consumerId },
+                requestBody: { siteId, ...options },
                 responseStatus: response.status,
                 duration,
             });
@@ -361,6 +369,9 @@ class SovAds {
                 targetUrl: this.normalizeUrl(rawAd.targetUrl),
                 mediaType: rawAd.mediaType === 'video' ? 'video' : 'image',
             };
+            if (normalizedAd.trackingToken) {
+                this.adTrackingTokens.set(normalizedAd.id, normalizedAd.trackingToken);
+            }
             if (this.config.debug) {
                 console.log('Ad loaded:', normalizedAd);
             }
@@ -420,6 +431,28 @@ class SovAds {
         }
     }
     async sendTrackingEnvelope(eventPayload, useBeacon) {
+        if (eventPayload.trackingToken) {
+            const tokenBody = JSON.stringify({
+                trackingToken: eventPayload.trackingToken,
+                payload: eventPayload,
+            });
+            const tokenWebhookUrl = `${this.config.apiUrl}/api/webhook/track`;
+            try {
+                if (useBeacon && navigator.sendBeacon) {
+                    return navigator.sendBeacon(tokenWebhookUrl, new Blob([tokenBody], { type: 'application/json' }));
+                }
+                const response = await fetch(tokenWebhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: tokenBody,
+                    keepalive: true,
+                });
+                return response.ok;
+            }
+            catch {
+                return false;
+            }
+        }
         if (!this.config.apiKey || !this.config.apiSecret) {
             if (this.config.debug) {
                 const devWebhookUrl = `${this.config.apiUrl}/api/webhook/beacon`;
@@ -490,7 +523,8 @@ class SovAds {
                 renderTime: renderInfo?.renderTime ?? Date.now(),
                 timestamp: metadata.timestamp,
                 pageUrl: metadata.pageUrl,
-                userAgent: metadata.userAgent
+                userAgent: metadata.userAgent,
+                trackingToken: this.adTrackingTokens.get(adId),
             };
             const ok = await this.sendTrackingEnvelope(payload, false);
             if (!ok) {
@@ -537,7 +571,8 @@ class SovAds {
                 renderTime: renderInfo?.renderTime ?? Date.now(),
                 timestamp: metadata.timestamp,
                 pageUrl: metadata.pageUrl,
-                userAgent: metadata.userAgent
+                userAgent: metadata.userAgent,
+                trackingToken: this.adTrackingTokens.get(adId),
             };
             if (typeof navigator.sendBeacon === 'function') {
                 const sent = await this.sendTrackingEnvelope(payload, true);
@@ -635,7 +670,7 @@ class SovAds {
 }
 // Banner Component
 export class Banner {
-    constructor(sovads, containerId) {
+    constructor(sovads, containerId, slotConfig = {}) {
         this.currentAd = null;
         this.renderStartTime = 0;
         this.hasTrackedImpression = false;
@@ -646,6 +681,7 @@ export class Banner {
         this.maxRetries = 3;
         this.sovads = sovads;
         this.containerId = containerId;
+        this.slotConfig = slotConfig;
     }
     async render(consumerId, forceRefresh = false) {
         // Prevent concurrent renders
@@ -674,7 +710,11 @@ export class Banner {
                 }
             }
             this.renderStartTime = Date.now();
-            this.currentAd = await this.sovads.loadAd(consumerId);
+            this.currentAd = await this.sovads.loadAd({
+                consumerId,
+                placement: this.slotConfig.placementId || 'banner',
+                size: this.slotConfig.size,
+            });
             this.hasTrackedImpression = false;
             // Skip if same ad (rotation disabled or same ad returned)
             if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
@@ -926,7 +966,37 @@ export class Popup {
         this.isShowing = false;
         this.retryCount = 0;
         this.maxRetries = 3;
+        this.storageKeyLastShown = 'sovads_popup_last_shown';
+        this.storageKeySessionCount = 'sovads_popup_session_count';
         this.sovads = sovads;
+    }
+    canShowByFrequencyCap() {
+        try {
+            const minIntervalMs = (this.sovads.getConfig().popupMinIntervalMinutes || 30) * 60 * 1000;
+            const sessionMax = this.sovads.getConfig().popupSessionMax || 1;
+            const now = Date.now();
+            const lastShown = Number(localStorage.getItem(this.storageKeyLastShown) || 0);
+            const sessionCount = Number(sessionStorage.getItem(this.storageKeySessionCount) || 0);
+            if (sessionCount >= sessionMax)
+                return false;
+            if (lastShown > 0 && now - lastShown < minIntervalMs)
+                return false;
+            return true;
+        }
+        catch {
+            return true;
+        }
+    }
+    markShown() {
+        try {
+            const now = Date.now();
+            const currentSessionCount = Number(sessionStorage.getItem(this.storageKeySessionCount) || 0);
+            localStorage.setItem(this.storageKeyLastShown, String(now));
+            sessionStorage.setItem(this.storageKeySessionCount, String(currentSessionCount + 1));
+        }
+        catch {
+            // Ignore storage access issues.
+        }
     }
     async show(consumerId, delay = 3000) {
         // Prevent concurrent shows
@@ -936,9 +1006,19 @@ export class Popup {
             }
             return;
         }
+        if (!this.canShowByFrequencyCap()) {
+            if (this.sovads.getConfig().debug) {
+                console.log('Popup skipped due to frequency cap');
+            }
+            return;
+        }
         this.isShowing = true;
         try {
-            this.currentAd = await this.sovads.loadAd(consumerId);
+            this.currentAd = await this.sovads.loadAd({
+                consumerId,
+                placement: 'popup',
+                size: window.innerWidth < 640 ? '320x100' : '360x120',
+            });
             if (!this.currentAd) {
                 if (this.retryCount < this.maxRetries) {
                     this.retryCount++;
@@ -957,6 +1037,7 @@ export class Popup {
             // Show popup after delay
             setTimeout(() => {
                 this.renderPopup();
+                this.markShown();
                 this.isShowing = false;
             }, delay);
         }
@@ -989,28 +1070,23 @@ export class Popup {
                 metadata: { renderTime, rendered },
             });
         };
-        // Create overlay
-        const overlay = document.createElement('div');
-        overlay.className = 'sovads-popup-overlay';
-        overlay.style.cssText = `
+        // Create non-blocking sticky container
+        const wrapper = document.createElement('div');
+        wrapper.className = 'sovads-popup-overlay';
+        wrapper.style.cssText = `
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.5);
+      right: 16px;
+      bottom: 16px;
+      width: min(360px, calc(100vw - 24px));
       z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     `;
         // Create popup
         this.popupElement = document.createElement('div');
         this.popupElement.style.cssText = `
       background: white;
       border-radius: 12px;
-      padding: 20px;
-      max-width: 400px;
+      padding: 14px;
+      max-width: 360px;
       position: relative;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
     `;
@@ -1097,8 +1173,8 @@ export class Popup {
             this.popupElement.appendChild(adLabel);
             this.popupElement.appendChild(closeBtn);
             this.popupElement.appendChild(dummyContent);
-            overlay.appendChild(this.popupElement);
-            document.body.appendChild(overlay);
+            wrapper.appendChild(this.popupElement);
+            document.body.appendChild(wrapper);
             // Auto close after 10 seconds
             setTimeout(() => {
                 this.hide();
@@ -1162,15 +1238,15 @@ export class Popup {
                 elementType: 'POPUP',
                 metadata: { renderTime: Date.now() - renderStartTime },
             });
-            window.open(this.currentAd.targetUrl, '_blank', 'noopener,noreferrer');
+            window.open(this.sovads.normalizeUrl(this.currentAd.targetUrl), '_blank', 'noopener,noreferrer');
             this.hide();
         });
         this.popupElement.appendChild(logoBadge);
         this.popupElement.appendChild(adLabel);
         this.popupElement.appendChild(closeBtn);
         this.popupElement.appendChild(mediaElement);
-        overlay.appendChild(this.popupElement);
-        document.body.appendChild(overlay);
+        wrapper.appendChild(this.popupElement);
+        document.body.appendChild(wrapper);
         // Auto close after 10 seconds
         setTimeout(() => {
             this.hide();
@@ -1200,7 +1276,7 @@ export class Popup {
 }
 // Sidebar Component
 export class Sidebar {
-    constructor(sovads, containerId) {
+    constructor(sovads, containerId, slotConfig = {}) {
         this.currentAd = null;
         this.renderStartTime = 0;
         this.hasTrackedImpression = false;
@@ -1211,6 +1287,7 @@ export class Sidebar {
         this.maxRetries = 3;
         this.sovads = sovads;
         this.containerId = containerId;
+        this.slotConfig = slotConfig;
     }
     async render(consumerId, forceRefresh = false) {
         // Prevent concurrent renders
@@ -1238,7 +1315,11 @@ export class Sidebar {
                 }
             }
             this.renderStartTime = Date.now();
-            this.currentAd = await this.sovads.loadAd(consumerId);
+            this.currentAd = await this.sovads.loadAd({
+                consumerId,
+                placement: this.slotConfig.placementId || 'sidebar',
+                size: this.slotConfig.size,
+            });
             this.hasTrackedImpression = false;
             // Skip if same ad (rotation disabled or same ad returned)
             if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {

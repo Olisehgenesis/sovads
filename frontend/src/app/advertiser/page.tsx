@@ -42,7 +42,6 @@ export default function AdvertiserDashboard() {
   const {
     topUpCampaign,
     toggleCampaignPause,
-    updateCampaignMetadata,
     extendCampaignDuration,
     isLoading: isContractLoading
   } = useAds()
@@ -60,9 +59,6 @@ export default function AdvertiserDashboard() {
   const [fundingAmount, setFundingAmount] = useState('')
   const [fundingCampaignId, setFundingCampaignId] = useState<string | null>(null)
   const [isTopUpModalOpen, setIsTopUpModalOpen] = useState(false)
-
-  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null)
-  const [editMetadata, setEditMetadata] = useState('')
 
   const [extendingCampaignId, setExtendingCampaignId] = useState<string | null>(null)
   const [extendAmount, setExtendAmount] = useState('') // in days
@@ -139,23 +135,6 @@ export default function AdvertiserDashboard() {
     }
   }
 
-  const handleUpdateMetadata = async (campaign: Campaign) => {
-    if (!editMetadata || (!campaign.onChainId && campaign.onChainId !== 0)) return
-    setIsProcessing(true)
-    setMsgError(null)
-    setMsgSuccess(null)
-    try {
-      await updateCampaignMetadata(Number(campaign.onChainId), editMetadata)
-      setMsgSuccess('Metadata updated!')
-      setEditingCampaignId(null)
-      if (address) loadCampaigns(address)
-    } catch (err) {
-      setMsgError(err instanceof Error ? err.message : 'Update failed')
-    } finally {
-      setIsProcessing(false)
-    }
-  }
-
   const handleExtendDuration = async (campaign: Campaign) => {
     if (!extendAmount || (!campaign.onChainId && campaign.onChainId !== 0)) return
     setIsProcessing(true)
@@ -182,7 +161,6 @@ export default function AdvertiserDashboard() {
 
   const clearModes = () => {
     setFundingCampaignId(null);
-    setEditingCampaignId(null);
     setExtendingCampaignId(null);
     setMsgError(null);
     setMsgSuccess(null);
@@ -300,11 +278,7 @@ export default function AdvertiserDashboard() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  clearModes()
-                                  if (editingCampaignId !== campaign.id) {
-                                    setEditingCampaignId(campaign.id)
-                                    setEditMetadata(campaign.description || '')
-                                  }
+                                  window.location.href = `/edit-campaign/${campaign.id}`
                                 }}
                                 className="btn btn-outline py-1 h-8 px-3"
                               >
@@ -325,31 +299,9 @@ export default function AdvertiserDashboard() {
                         </div>
 
                         {/* Mode Panels */}
-                        {(editingCampaignId === campaign.id || extendingCampaignId === campaign.id) && (
+                        {(extendingCampaignId === campaign.id) && (
                           <div className="mt-4 p-4 bg-secondary border border-primary/20 rounded-lg animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
                             {/** Inline fund panel removed in favor of modal */}
-
-                            {editingCampaignId === campaign.id && (
-                              <div className="space-y-3">
-                                <textarea
-                                  value={editMetadata}
-                                  onChange={(e) => setEditMetadata(e.target.value)}
-                                  placeholder="Update campaign description / metadata..."
-                                  className="w-full bg-input border border-border rounded-md px-3 py-2 text-xs min-h-[80px]"
-                                  autoFocus
-                                />
-                                <div className="flex justify-end gap-2">
-                                  <button onClick={clearModes} className="btn btn-outline px-4">Cancel</button>
-                                  <button
-                                    onClick={() => handleUpdateMetadata(campaign)}
-                                    disabled={isProcessing || !editMetadata}
-                                    className="btn btn-primary px-6"
-                                  >
-                                    {isProcessing ? 'Updating...' : 'Save Changes'}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
 
                             {extendingCampaignId === campaign.id && (
                               <div className="flex items-center gap-3">

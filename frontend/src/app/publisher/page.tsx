@@ -239,6 +239,9 @@ export default function PublisherDashboard() {
         : `https://${trimmedUrl}`
       const urlObj = new URL(urlToParse)
       let domain = urlObj.hostname.replace(/^www\./, '')
+      if (domain === 'localhost' || domain === '127.0.0.1') {
+        return { valid: true, domain, error: null }
+      }
       const domainRegex = /^([a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}$/
       if (!domainRegex.test(domain)) {
         return { valid: false, domain: null, error: 'Invalid domain format' }
@@ -372,6 +375,34 @@ export default function PublisherDashboard() {
     }
   }
 
+  const rotateSiteCredentials = async (site: PublisherSite) => {
+    if (!address) return
+    try {
+      const authHeaders = await getPublisherAuthHeaders(address)
+      const response = await fetch('/api/publishers/sites', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
+        body: JSON.stringify({ wallet: address, siteId: site.id }),
+      })
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}))
+        throw new Error(err.error || 'Failed to rotate credentials')
+      }
+
+      const data = await response.json()
+      if (data.site?.apiSecret) {
+        setNewApiSecrets((prev) => ({ ...prev, [site.id]: data.site.apiSecret }))
+        setShowApiSecret((prev) => ({ ...prev, [site.id]: true }))
+      }
+      await loadPublisherData(address)
+      setSelectedSite((prev) => (prev?.id === site.id ? { ...prev, apiKey: data.site?.apiKey } : prev))
+      setRegistrationSuccess(`Rotated API credentials for ${site.domain}`)
+    } catch (error) {
+      setRegistrationError(error instanceof Error ? error.message : 'Failed to rotate credentials')
+    }
+  }
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
   }
@@ -438,13 +469,28 @@ export default function PublisherDashboard() {
                   <div>
                     <div className="font-medium text-sm">{site.domain}</div>
                     <div className="text-[10px] text-[var(--text-secondary)]">ID: {site.siteId}</div>
+                    <div className="text-[10px] text-[var(--text-secondary)]">API Key: {site.apiKey || 'Not generated'}</div>
                   </div>
-                  <button
-                    onClick={() => removeSiteFromDB(site.id)}
-                    className="text-xs text-destructive hover:underline"
-                  >
-                    Remove
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setSelectedSite(site)}
+                      className="text-xs text-[var(--text-primary)] hover:underline"
+                    >
+                      Use
+                    </button>
+                    <button
+                      onClick={() => rotateSiteCredentials(site)}
+                      className="text-xs text-[var(--text-primary)] hover:underline"
+                    >
+                      Rotate Keys
+                    </button>
+                    <button
+                      onClick={() => removeSiteFromDB(site.id)}
+                      className="text-xs text-destructive hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ))}
               <div className="flex gap-2">
@@ -469,14 +515,63 @@ export default function PublisherDashboard() {
           {selectedSite && (
             <div className="glass-card rounded-lg p-4">
               <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Integration Code: {selectedSite.domain}</h2>
+              {(() => {
+                const selectedSecret =
+                  (showApiSecret[selectedSite.id]
+                    ? (newApiSecrets[selectedSite.id] || selectedSite.apiSecret || '')
+                    : '')
+                const envBlock = `NEXT_PUBLIC_SOVADS_API_URL=http://localhost:3000
+NEXT_PUBLIC_SOVADS_SITE_ID=${selectedSite.siteId}`
+                return (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <button
+                      onClick={() => copyToClipboard(selectedSite.siteId)}
+                      className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted/40"
+                    >
+                      Copy Site ID
+                    </button>
+                    <button
+                      onClick={() => copyToClipboard(selectedSite.apiKey || '')}
+                      className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted/40"
+                      disabled={!selectedSite.apiKey}
+                    >
+                      Copy API Key
+                    </button>
+                    <button
+                      onClick={() => copyToClipboard(selectedSecret)}
+                      className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted/40"
+                      disabled={!selectedSecret}
+                    >
+                      Copy API Secret
+                    </button>
+                    <button
+                      onClick={() => copyToClipboard(envBlock)}
+                      className="text-[10px] px-2 py-1 rounded border border-border hover:bg-muted/40"
+                    >
+                      Copy .env Block
+                    </button>
+                  </div>
+                )
+              })()}
+              <div className="mb-3 text-[11px] text-[var(--text-secondary)]">
+                <div>API Key: <span className="text-[var(--text-primary)]">{selectedSite.apiKey || 'Not generated'}</span></div>
+                <div>
+                  API Secret:
+                  <span className="text-[var(--text-primary)] ml-1">
+                    {showApiSecret[selectedSite.id]
+                      ? (newApiSecrets[selectedSite.id] || selectedSite.apiSecret || 'Not available')
+                      : '•••••••• (use Rotate Keys to issue a new secret)'}
+                  </span>
+                </div>
+                <div className="mt-1">Use API key/secret on your server only. Do not put secrets in `NEXT_PUBLIC_*` env.</div>
+              </div>
               <pre className="bg-neutral-950 text-neutral-100 text-[10px] p-4 rounded-lg overflow-x-auto">
                 <code>{`// Install: npm install @sovads/sdk
 import { SovAds, Banner } from '@sovads/sdk';
 
 const adsClient = new SovAds({
   siteId: '${selectedSite.siteId}',
-  apiKey: '${selectedSite.apiKey || 'YOUR_API_KEY'}',
-  apiSecret: '${selectedSite.apiSecret || newApiSecrets[selectedSite.id] || '••••••••'}'
+  apiUrl: 'https://ads.sovseas.xyz'
 });
 
 const banner = new Banner(adsClient, 'banner-id');

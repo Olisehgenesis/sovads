@@ -17,6 +17,10 @@ const resolveApiUrl = (): string => {
   )
 }
 
+const resolveSiteId = (): string | undefined => {
+  return process.env.NEXT_PUBLIC_SOVADS_SITE_ID || undefined
+}
+
 export const getSovAdsClient = (): SovAds | null => {
   if (typeof window === 'undefined') {
     return null
@@ -25,6 +29,7 @@ export const getSovAdsClient = (): SovAds | null => {
   if (!sovAdsClient) {
     sovAdsClient = new SovAds({
       apiUrl: resolveApiUrl(),
+      siteId: resolveSiteId(),
       debug: process.env.NODE_ENV !== 'production',
     })
   }

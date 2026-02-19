@@ -81,6 +81,7 @@ export async function GET(request: NextRequest) {
       id: site._id,
       domain: site.domain,
       siteId: site.siteId,
+      apiKey: site.apiKey,
       verified: site.verified,
       createdAt: site.createdAt,
     }))
@@ -164,6 +165,8 @@ export async function POST(request: NextRequest) {
           id: newSite._id,
           domain: newSite.domain,
           siteId: newSite.siteId,
+          apiKey: newSite.apiKey,
+          apiSecret: apiSecret, // Return secret once - frontend should store this securely
           verified: newSite.verified,
           createdAt: newSite.createdAt
         }
@@ -226,6 +229,58 @@ export async function POST(request: NextRequest) {
       error: 'Internal server error',
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     }, { status: 500 })
+  }
+}
+
+// Rotate API credentials for a site
+export async function PATCH(request: NextRequest) {
+  try {
+    const body = (await request.json()) as Partial<{ wallet: string; siteId: string }>
+    const { wallet, siteId } = body
+
+    if (!wallet || !siteId) {
+      return NextResponse.json({ error: 'Wallet and siteId are required' }, { status: 400 })
+    }
+
+    const authError = await verifyPublisherRequest(request, wallet)
+    if (authError) return authError
+
+    const [publisherSitesCollection, publishersCollection] = await Promise.all([
+      collections.publisherSites(),
+      collections.publishers(),
+    ])
+
+    const publisher = await publishersCollection.findOne({ wallet })
+    if (!publisher) {
+      return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
+    }
+
+    const site = await publisherSitesCollection.findOne({ _id: siteId, publisherId: publisher._id })
+    if (!site) {
+      return NextResponse.json({ error: 'Site not found' }, { status: 404 })
+    }
+
+    const apiKey = generateApiKeyServer()
+    const apiSecret = generateSecretServer()
+    await publisherSitesCollection.updateOne(
+      { _id: siteId, publisherId: publisher._id },
+      { $set: { apiKey, apiSecret, updatedAt: new Date() } }
+    )
+
+    return NextResponse.json({
+      success: true,
+      site: {
+        id: site._id,
+        domain: site.domain,
+        siteId: site.siteId,
+        apiKey,
+        apiSecret, // Return secret once
+        verified: site.verified,
+      },
+    })
+  } catch (error) {
+    console.error('Error rotating site credentials:', error)
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 

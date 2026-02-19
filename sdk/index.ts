@@ -11,6 +11,8 @@ export interface SovAdsConfig {
   refreshInterval?: number // Ad refresh interval in seconds (default: 0 = no refresh)
   lazyLoad?: boolean // Enable lazy loading (default: true)
   rotationEnabled?: boolean // Enable ad rotation (default: true)
+  popupMinIntervalMinutes?: number // Minimum interval between popup impressions
+  popupSessionMax?: number // Max popup impressions per browser session
 }
 
 export interface AdComponent {
@@ -27,6 +29,9 @@ export interface AdComponent {
   startDate?: string | null
   endDate?: string | null
   mediaType?: 'image' | 'video'
+  trackingToken?: string
+  placement?: string
+  size?: string
 }
 
 interface TrackingPayload {
@@ -42,6 +47,18 @@ interface TrackingPayload {
   timestamp: number
   pageUrl: string
   userAgent: string
+  trackingToken?: string
+}
+
+interface AdLoadOptions {
+  consumerId?: string
+  placement?: string
+  size?: string
+}
+
+interface SlotConfig {
+  placementId?: string
+  size?: string
 }
 
 class SovAds {
@@ -51,6 +68,7 @@ class SovAds {
   private siteId: string | null = null
   private renderObservers: Map<string, IntersectionObserver> = new Map()
   private debugLoggingEnabled: boolean = false
+  private adTrackingTokens: Map<string, string> = new Map()
 
   constructor(config: SovAdsConfig = {}) {
     this.config = {
@@ -61,6 +79,8 @@ class SovAds {
       refreshInterval: 0, // No auto-refresh by default
       lazyLoad: true,
       rotationEnabled: true,
+      popupMinIntervalMinutes: 30,
+      popupSessionMax: 1,
       ...config
     }
 
@@ -317,13 +337,16 @@ class SovAds {
    * Normalize URL - add protocol if missing for localhost
    */
   public normalizeUrl(url: string): string {
-    if (!url.includes('://')) {
+    const trimmed = url.trim()
+    if (!trimmed.includes('://')) {
       // Allow localhost URLs without protocol for debugging
-      if (url.startsWith('localhost') || url.startsWith('127.0.0.1')) {
-        return `http://${url}`
+      if (trimmed.startsWith('localhost') || trimmed.startsWith('127.0.0.1')) {
+        return `http://${trimmed}`
       }
+      // Treat bare domains as https by default.
+      return `https://${trimmed}`
     }
-    return url
+    return trimmed
   }
 
   /**
@@ -371,14 +394,16 @@ class SovAds {
     throw lastError || new Error('Fetch failed after retries')
   }
 
-  async loadAd(consumerId?: string): Promise<AdComponent | null> {
+  async loadAd(options: AdLoadOptions = {}): Promise<AdComponent | null> {
     const startTime = Date.now()
     try {
       const siteId = await this.detectSiteId()
       
       const params = new URLSearchParams({
         siteId,
-        ...(consumerId && { consumerId })
+        ...(options.consumerId && { consumerId: options.consumerId }),
+        ...(options.placement && { placement: options.placement }),
+        ...(options.size && { size: options.size }),
       })
 
       const endpoint = `${this.config.apiUrl}/api/ads?${params}`
@@ -395,7 +420,7 @@ class SovAds {
         pageUrl: window.location.href,
         userAgent: navigator.userAgent,
         fingerprint: this.fingerprint,
-        requestBody: { siteId, consumerId },
+        requestBody: { siteId, ...options },
         responseStatus: response.status,
         duration,
       })
@@ -454,6 +479,10 @@ class SovAds {
         bannerUrl: this.normalizeUrl(rawAd.bannerUrl),
         targetUrl: this.normalizeUrl(rawAd.targetUrl),
         mediaType: rawAd.mediaType === 'video' ? 'video' : 'image',
+      }
+
+      if (normalizedAd.trackingToken) {
+        this.adTrackingTokens.set(normalizedAd.id, normalizedAd.trackingToken)
       }
       
       if (this.config.debug) {
@@ -529,6 +558,28 @@ class SovAds {
     eventPayload: TrackingPayload,
     useBeacon: boolean
   ): Promise<boolean> {
+    if (eventPayload.trackingToken) {
+      const tokenBody = JSON.stringify({
+        trackingToken: eventPayload.trackingToken,
+        payload: eventPayload,
+      })
+      const tokenWebhookUrl = `${this.config.apiUrl}/api/webhook/track`
+      try {
+        if (useBeacon && navigator.sendBeacon) {
+          return navigator.sendBeacon(tokenWebhookUrl, new Blob([tokenBody], { type: 'application/json' }))
+        }
+        const response = await fetch(tokenWebhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: tokenBody,
+          keepalive: true,
+        })
+        return response.ok
+      } catch {
+        return false
+      }
+    }
+
     if (!this.config.apiKey || !this.config.apiSecret) {
       if (this.config.debug) {
         const devWebhookUrl = `${this.config.apiUrl}/api/webhook/beacon`
@@ -610,7 +661,8 @@ class SovAds {
         renderTime: renderInfo?.renderTime ?? Date.now(),
         timestamp: metadata.timestamp,
         pageUrl: metadata.pageUrl,
-        userAgent: metadata.userAgent
+        userAgent: metadata.userAgent,
+        trackingToken: this.adTrackingTokens.get(adId),
       }
       const ok = await this.sendTrackingEnvelope(payload, false)
       if (!ok) {
@@ -662,7 +714,8 @@ class SovAds {
         renderTime: renderInfo?.renderTime ?? Date.now(),
         timestamp: metadata.timestamp,
         pageUrl: metadata.pageUrl,
-        userAgent: metadata.userAgent
+        userAgent: metadata.userAgent,
+        trackingToken: this.adTrackingTokens.get(adId),
       }
 
       if (typeof navigator.sendBeacon === 'function') {
@@ -784,10 +837,12 @@ export class Banner {
   private lastAdId: string | null = null
   private retryCount: number = 0
   private maxRetries: number = 3
+  private slotConfig: SlotConfig
 
-  constructor(sovads: SovAds, containerId: string) {
+  constructor(sovads: SovAds, containerId: string, slotConfig: SlotConfig = {}) {
     this.sovads = sovads
     this.containerId = containerId
+    this.slotConfig = slotConfig
   }
 
   async render(consumerId?: string, forceRefresh: boolean = false): Promise<void> {
@@ -820,7 +875,11 @@ export class Banner {
       }
 
       this.renderStartTime = Date.now()
-      this.currentAd = await this.sovads.loadAd(consumerId)
+      this.currentAd = await this.sovads.loadAd({
+        consumerId,
+        placement: this.slotConfig.placementId || 'banner',
+        size: this.slotConfig.size,
+      })
       this.hasTrackedImpression = false
       
       // Skip if same ad (rotation disabled or same ad returned)
@@ -1111,9 +1170,38 @@ export class Popup {
   private isShowing: boolean = false
   private retryCount: number = 0
   private maxRetries: number = 3
+  private storageKeyLastShown = 'sovads_popup_last_shown'
+  private storageKeySessionCount = 'sovads_popup_session_count'
 
   constructor(sovads: SovAds) {
     this.sovads = sovads
+  }
+
+  private canShowByFrequencyCap(): boolean {
+    try {
+      const minIntervalMs = (this.sovads.getConfig().popupMinIntervalMinutes || 30) * 60 * 1000
+      const sessionMax = this.sovads.getConfig().popupSessionMax || 1
+      const now = Date.now()
+      const lastShown = Number(localStorage.getItem(this.storageKeyLastShown) || 0)
+      const sessionCount = Number(sessionStorage.getItem(this.storageKeySessionCount) || 0)
+
+      if (sessionCount >= sessionMax) return false
+      if (lastShown > 0 && now - lastShown < minIntervalMs) return false
+      return true
+    } catch {
+      return true
+    }
+  }
+
+  private markShown(): void {
+    try {
+      const now = Date.now()
+      const currentSessionCount = Number(sessionStorage.getItem(this.storageKeySessionCount) || 0)
+      localStorage.setItem(this.storageKeyLastShown, String(now))
+      sessionStorage.setItem(this.storageKeySessionCount, String(currentSessionCount + 1))
+    } catch {
+      // Ignore storage access issues.
+    }
   }
 
   async show(consumerId?: string, delay: number = 3000): Promise<void> {
@@ -1125,9 +1213,20 @@ export class Popup {
       return
     }
 
+    if (!this.canShowByFrequencyCap()) {
+      if (this.sovads.getConfig().debug) {
+        console.log('Popup skipped due to frequency cap')
+      }
+      return
+    }
+
     this.isShowing = true
     try {
-      this.currentAd = await this.sovads.loadAd(consumerId)
+      this.currentAd = await this.sovads.loadAd({
+        consumerId,
+        placement: 'popup',
+        size: window.innerWidth < 640 ? '320x100' : '360x120',
+      })
       
       if (!this.currentAd) {
         if (this.retryCount < this.maxRetries) {
@@ -1149,6 +1248,7 @@ export class Popup {
       // Show popup after delay
       setTimeout(() => {
         this.renderPopup()
+        this.markShown()
         this.isShowing = false
       }, delay)
     } catch (error) {
@@ -1181,20 +1281,15 @@ export class Popup {
       })
     }
 
-    // Create overlay
-    const overlay = document.createElement('div')
-    overlay.className = 'sovads-popup-overlay'
-    overlay.style.cssText = `
+    // Create non-blocking sticky container
+    const wrapper = document.createElement('div')
+    wrapper.className = 'sovads-popup-overlay'
+    wrapper.style.cssText = `
       position: fixed;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: rgba(0, 0, 0, 0.5);
+      right: 16px;
+      bottom: 16px;
+      width: min(360px, calc(100vw - 24px));
       z-index: 10000;
-      display: flex;
-      align-items: center;
-      justify-content: center;
     `
 
     // Create popup
@@ -1202,8 +1297,8 @@ export class Popup {
     this.popupElement.style.cssText = `
       background: white;
       border-radius: 12px;
-      padding: 20px;
-      max-width: 400px;
+      padding: 14px;
+      max-width: 360px;
       position: relative;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
     `
@@ -1300,8 +1395,8 @@ export class Popup {
       this.popupElement.appendChild(adLabel)
       this.popupElement.appendChild(closeBtn)
       this.popupElement.appendChild(dummyContent)
-      overlay.appendChild(this.popupElement)
-      document.body.appendChild(overlay)
+      wrapper.appendChild(this.popupElement)
+      document.body.appendChild(wrapper)
 
       // Auto close after 10 seconds
       setTimeout(() => {
@@ -1373,7 +1468,7 @@ export class Popup {
         metadata: { renderTime: Date.now() - renderStartTime },
       })
       
-      window.open(this.currentAd!.targetUrl, '_blank', 'noopener,noreferrer')
+      window.open(this.sovads.normalizeUrl(this.currentAd!.targetUrl), '_blank', 'noopener,noreferrer')
       this.hide()
     })
 
@@ -1381,8 +1476,8 @@ export class Popup {
     this.popupElement.appendChild(adLabel)
     this.popupElement.appendChild(closeBtn)
     this.popupElement.appendChild(mediaElement)
-    overlay.appendChild(this.popupElement)
-    document.body.appendChild(overlay)
+    wrapper.appendChild(this.popupElement)
+    document.body.appendChild(wrapper)
 
     // Auto close after 10 seconds
     setTimeout(() => {
@@ -1424,10 +1519,12 @@ export class Sidebar {
   private lastAdId: string | null = null
   private retryCount: number = 0
   private maxRetries: number = 3
+  private slotConfig: SlotConfig
 
-  constructor(sovads: SovAds, containerId: string) {
+  constructor(sovads: SovAds, containerId: string, slotConfig: SlotConfig = {}) {
     this.sovads = sovads
     this.containerId = containerId
+    this.slotConfig = slotConfig
   }
 
   async render(consumerId?: string, forceRefresh: boolean = false): Promise<void> {
@@ -1459,7 +1556,11 @@ export class Sidebar {
       }
 
       this.renderStartTime = Date.now()
-      this.currentAd = await this.sovads.loadAd(consumerId)
+      this.currentAd = await this.sovads.loadAd({
+        consumerId,
+        placement: this.slotConfig.placementId || 'sidebar',
+        size: this.slotConfig.size,
+      })
       this.hasTrackedImpression = false
       
       // Skip if same ad (rotation disabled or same ad returned)

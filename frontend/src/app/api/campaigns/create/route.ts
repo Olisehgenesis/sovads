@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { collections } from '@/lib/db'
+import {
+  detectMediaTypeFromUrl,
+  getAllowedCreativeFormatLabel,
+  hasAllowedCreativeExtension,
+} from '@/lib/creative-validation'
 
 export async function POST(request: NextRequest) {
   try {
@@ -58,6 +63,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid CPC amount' }, { status: 400 })
     }
 
+    if (!campaignData.bannerUrl || typeof campaignData.bannerUrl !== 'string') {
+      return NextResponse.json({ error: 'Creative URL is required' }, { status: 400 })
+    }
+
+    if (!hasAllowedCreativeExtension(campaignData.bannerUrl)) {
+      return NextResponse.json(
+        { error: `Unsupported creative format. ${getAllowedCreativeFormatLabel()}` },
+        { status: 400 }
+      )
+    }
+
     const tags: string[] = Array.isArray(campaignData.tags)
       ? campaignData.tags
       : typeof campaignData.tags === 'string'
@@ -81,8 +97,9 @@ export async function POST(request: NextRequest) {
         ? campaignData.metadata
         : undefined
 
+    const detectedMediaType = detectMediaTypeFromUrl(campaignData.bannerUrl)
     const mediaType: 'image' | 'video' =
-      campaignData.mediaType === 'video' ? 'video' : 'image'
+      campaignData.mediaType === 'video' || detectedMediaType === 'video' ? 'video' : 'image'
 
     const campaignId = randomUUID()
     const startDateValue = startDate ? new Date(startDate) : undefined

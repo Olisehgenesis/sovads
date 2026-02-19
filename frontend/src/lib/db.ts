@@ -18,6 +18,7 @@ import type {
   CallbackLog,
   ViewerPoints,
   ViewerReward,
+  PricingConfig,
 } from './models'
 
 export const collections = {
@@ -38,8 +39,9 @@ export const collections = {
   callbackLogs: () => getCollection<CallbackLog>('callback_logs'),
   viewerPoints: () => getCollection<ViewerPoints>('viewer_points'),
   viewerRewards: () => getCollection<ViewerReward>('viewer_rewards'),
+  pricingConfig: () => getCollection<PricingConfig>('pricing_config'),
 }
 
 export type Collections = typeof collections
 
-export type { Advertiser, Publisher, PublisherSite, Campaign, Event, AnalyticsHash, Asset, Payout, Topup, Exchange, Withdrawal, SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog, ViewerPoints, ViewerReward }
+export type { Advertiser, Publisher, PublisherSite, Campaign, Event, AnalyticsHash, Asset, Payout, Topup, Exchange, Withdrawal, SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog, ViewerPoints, ViewerReward, PricingConfig }

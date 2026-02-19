@@ -231,3 +231,9 @@ export interface ViewerReward {
   timestamp: Date
 }
 
+export interface PricingConfig {
+  _id: string
+  impressionUsd: number
+  tokenOverrides?: Record<string, number>
+  updatedAt: Date
+}

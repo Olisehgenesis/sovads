@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { collections } from '@/lib/db'
 import { decryptPayloadServer, verifySignatureServer } from '@/lib/crypto-server'
+import { verifyTrackingToken } from '@/lib/tracking-token'
 import type { Event } from '@/lib/models'
 
 const EVENT_TYPES = ['IMPRESSION', 'CLICK'] as const
@@ -18,10 +19,11 @@ type EncryptedRequest = {
 
 type SignedPayloadRequest = {
   apiKey?: string
-  payload?: string
+  payload?: string | EventPayload
   signature?: string
   timestamp?: number
   siteId?: string
+  trackingToken?: string
 }
 
 type EventPayload = {
@@ -45,7 +47,7 @@ const getIp = (request: NextRequest): string =>
 
 const parseEventPayload = async (body: unknown, apiSecret: string): Promise<EventPayload | null> => {
   const signedBody = body as SignedPayloadRequest
-  if (signedBody.payload && signedBody.signature && signedBody.timestamp) {
+  if (typeof signedBody.payload === 'string' && signedBody.signature && signedBody.timestamp) {
     const isValid = await verifySignatureServer(
       signedBody.payload,
       signedBody.signature,
@@ -78,13 +80,16 @@ const parseEventPayload = async (body: unknown, apiSecret: string): Promise<Even
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
+    const tokenClaims = typeof (body as SignedPayloadRequest).trackingToken === 'string'
+      ? verifyTrackingToken((body as SignedPayloadRequest).trackingToken as string)
+      : null
     const {
       apiKey,
       timestamp,
       siteId: requestSiteId,
     } = body as SignedPayloadRequest
 
-    if (!apiKey || !timestamp || !requestSiteId) {
+    if (!tokenClaims && (!apiKey || !timestamp || !requestSiteId)) {
       return NextResponse.json(
         { error: 'Missing required fields: apiKey, timestamp, siteId' },
         { status: 400 }
@@ -92,7 +97,7 @@ export async function POST(request: NextRequest) {
     }
 
     const now = Date.now()
-    if (Math.abs(now - Number(timestamp)) > 5 * 60 * 1000) {
+    if (!tokenClaims && Math.abs(now - Number(timestamp)) > 5 * 60 * 1000) {
       return NextResponse.json({ error: 'Request timestamp too old or too far in future' }, { status: 400 })
     }
 
@@ -103,17 +108,33 @@ export async function POST(request: NextRequest) {
       collections.events(),
     ])
 
-    const site = await publisherSitesCollection.findOne({ apiKey })
+    const site = tokenClaims
+      ? await publisherSitesCollection.findOne({ siteId: tokenClaims.siteId })
+      : await publisherSitesCollection.findOne({ apiKey })
+
     if (!site) {
-      return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
+      return NextResponse.json({ error: tokenClaims ? 'Invalid tracking token site' : 'Invalid API key' }, { status: 401 })
     }
-    if (site.siteId !== requestSiteId) {
+    if (!tokenClaims && site.siteId !== requestSiteId) {
       return NextResponse.json({ error: 'Site ID mismatch' }, { status: 401 })
     }
 
-    const eventPayload = await parseEventPayload(body, site.apiSecret)
-    if (!eventPayload) {
-      return NextResponse.json({ error: 'Invalid signature or payload' }, { status: 401 })
+    let eventPayload: EventPayload | null = null
+    if (tokenClaims) {
+      const rawPayload = (body as SignedPayloadRequest).payload
+      if (typeof rawPayload === 'string') {
+        eventPayload = JSON.parse(rawPayload) as EventPayload
+      } else if (rawPayload && typeof rawPayload === 'object') {
+        eventPayload = rawPayload as EventPayload
+      }
+      if (!eventPayload) {
+        return NextResponse.json({ error: 'Missing payload for tracking token flow' }, { status: 400 })
+      }
+    } else {
+      eventPayload = await parseEventPayload(body, site.apiSecret)
+      if (!eventPayload) {
+        return NextResponse.json({ error: 'Invalid signature or payload' }, { status: 401 })
+      }
     }
 
     const {
@@ -135,6 +156,11 @@ export async function POST(request: NextRequest) {
     }
     if (siteId !== site.siteId) {
       return NextResponse.json({ error: 'Payload site ID mismatch' }, { status: 401 })
+    }
+    if (tokenClaims) {
+      if (tokenClaims.siteId !== siteId || tokenClaims.campaignId !== campaignId || tokenClaims.adId !== adId) {
+        return NextResponse.json({ error: 'Tracking token claims mismatch' }, { status: 401 })
+      }
     }
 
     const campaign = await campaignsCollection.findOne({ _id: campaignId })

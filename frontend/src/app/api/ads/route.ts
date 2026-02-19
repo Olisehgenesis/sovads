@@ -1,11 +1,27 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { collections } from '@/lib/db'
+import { createTrackingToken } from '@/lib/tracking-token'
 
 // CORS headers helper
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
+}
+
+function normalizeHttpUrl(value: string): string {
+  const trimmed = (value || '').trim()
+  if (!trimmed) return trimmed
+  if (trimmed.includes('://')) return trimmed
+  if (trimmed.startsWith('localhost') || trimmed.startsWith('127.0.0.1')) {
+    return `http://${trimmed}`
+  }
+  return `https://${trimmed}`
+}
+
+function getStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((entry): entry is string => typeof entry === 'string')
 }
 
 export async function OPTIONS() {
@@ -21,14 +37,16 @@ export async function GET(request: NextRequest) {
     const siteId = searchParams.get('siteId')
     const location = searchParams.get('location')?.toLowerCase()
     const consumerId = searchParams.get('consumerId')?.trim()
+    const placement = searchParams.get('placement')?.trim().toLowerCase()
+    const size = searchParams.get('size')?.trim()
 
     if (!siteId) {
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400, headers: corsHeaders })
     }
 
-    // Handle unregistered sites (temp_ prefix) FIRST - before MongoDB access
+    // Handle unregistered temporary sites (temp_ prefix) FIRST - before MongoDB access
     // This prevents crashes when MongoDB is unavailable
-    if (siteId.startsWith('temp_') || siteId.startsWith('site_')) {
+    if (siteId.startsWith('temp_')) {
       // Return dummy ad for unregistered sites to prevent crashes
       const dummyAd = {
         id: 'dummy_ad_unregistered',
@@ -139,6 +157,18 @@ export async function GET(request: NextRequest) {
     const candidateCampaigns = await candidatesCursor.toArray()
     const campaigns = candidateCampaigns
       .filter((campaign) => campaign.budget > campaign.spent)
+      .filter((campaign: any) => {
+        if (!placement) return true
+        const placements = getStringArray(campaign?.metadata?.placements)
+        if (placements.length === 0) return true
+        return placements.includes(placement)
+      })
+      .filter((campaign: any) => {
+        if (!size) return true
+        const sizes = getStringArray(campaign?.metadata?.sizes)
+        if (sizes.length === 0) return true
+        return sizes.includes(size)
+      })
       .filter((campaign) => {
         if (!location) return true
         if (!campaign.targetLocations || campaign.targetLocations.length === 0) return true
@@ -192,8 +222,8 @@ export async function GET(request: NextRequest) {
       campaignId: randomCampaign._id,
       name: randomCampaign.name,
       description: randomCampaign.description ?? '',
-      bannerUrl: randomCampaign.bannerUrl,
-      targetUrl: randomCampaign.targetUrl,
+      bannerUrl: normalizeHttpUrl(randomCampaign.bannerUrl),
+      targetUrl: normalizeHttpUrl(randomCampaign.targetUrl),
       cpc: randomCampaign.cpc.toString(),
       tags: randomCampaign.tags ?? [],
       targetLocations: randomCampaign.targetLocations ?? [],
@@ -201,6 +231,16 @@ export async function GET(request: NextRequest) {
       startDate: randomCampaign.startDate ?? null,
       endDate: randomCampaign.endDate ?? null,
       mediaType: randomCampaign.mediaType ?? 'image',
+      placement: placement || undefined,
+      size: size || undefined,
+      trackingToken: createTrackingToken({
+        adId: `ad_${randomCampaign._id}`,
+        campaignId: randomCampaign._id,
+        siteId,
+        exp: Date.now() + 15 * 60 * 1000,
+        placement: placement || undefined,
+        size: size || undefined,
+      }),
     }
 
     return NextResponse.json(ad, { headers: corsHeaders })
