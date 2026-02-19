@@ -362,6 +362,12 @@ class SovAds {
     }
   }
 
+  private inferMediaTypeFromUrl(url: string): 'image' | 'video' {
+    const value = (url || '').toLowerCase()
+    const videoExts = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.m3u8']
+    return videoExts.some((ext) => value.includes(ext)) ? 'video' : 'image'
+  }
+
   /**
    * Fetch with retry logic
    */
@@ -478,7 +484,10 @@ class SovAds {
         ...rawAd,
         bannerUrl: this.normalizeUrl(rawAd.bannerUrl),
         targetUrl: this.normalizeUrl(rawAd.targetUrl),
-        mediaType: rawAd.mediaType === 'video' ? 'video' : 'image',
+        mediaType:
+          rawAd.mediaType === 'video'
+            ? 'video'
+            : this.inferMediaTypeFromUrl(this.normalizeUrl(rawAd.bannerUrl)),
       }
 
       if (normalizedAd.trackingToken) {
@@ -958,19 +967,18 @@ export class Banner {
       const adElement = document.createElement('div')
       container.innerHTML = ''
       adElement.className = 'sovads-banner'
-    adElement.setAttribute('data-ad-id', this.currentAd.id)
-    adElement.style.cssText = `
+      adElement.setAttribute('data-ad-id', this.currentAd.id)
+      const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
+      adElement.style.cssText = `
       border: 1px solid #333;
       border-radius: 8px;
       overflow: hidden;
-      cursor: pointer;
+      cursor: ${mediaType === 'video' ? 'default' : 'pointer'};
       transition: transform 0.2s ease;
       max-width: 100%;
       width: 100%;
       box-sizing: border-box;
     `
-
-      const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
 
       const handleVisibilityTracking = (
         renderInfo: { rendered: boolean; viewportVisible: boolean; renderTime: number }
@@ -1027,27 +1035,46 @@ export class Banner {
         img.addEventListener('error', handleRenderError, { once: true })
         mediaElement = img
       }
-      mediaElement.style.cursor = 'pointer'
+      mediaElement.style.cursor = mediaType === 'video' ? 'default' : 'pointer'
       mediaElement.style.maxWidth = '100%'
 
-      // Add click handler
-      adElement.addEventListener('click', () => {
+      const handleClickThrough = () => {
         this.sovads._trackEvent('CLICK', this.currentAd!.id, this.currentAd!.campaignId, {
           rendered: true,
           viewportVisible: true,
           renderTime: Date.now() - this.renderStartTime
         })
-        
-        // Log interaction
         this.sovads.logInteraction('CLICK', {
           adId: this.currentAd!.id,
           campaignId: this.currentAd!.campaignId,
           elementType: 'BANNER',
           metadata: { renderTime: Date.now() - this.renderStartTime },
         })
-        
         window.open(this.sovads.normalizeUrl(this.currentAd!.targetUrl), '_blank', 'noopener,noreferrer')
-      })
+      }
+
+      if (mediaType === 'video') {
+        const ctaButton = document.createElement('button')
+        ctaButton.type = 'button'
+        ctaButton.textContent = 'Learn more'
+        ctaButton.style.cssText = `
+          width: 100%;
+          border: none;
+          border-top: 1px solid #333;
+          background: #111;
+          color: #fff;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 8px 12px;
+          cursor: pointer;
+        `
+        ctaButton.addEventListener('click', handleClickThrough)
+        adElement.appendChild(mediaElement)
+        adElement.appendChild(ctaButton)
+      } else {
+        adElement.addEventListener('click', handleClickThrough)
+        adElement.appendChild(mediaElement)
+      }
 
       // Add hover effect
       adElement.addEventListener('mouseenter', () => {
@@ -1058,7 +1085,6 @@ export class Banner {
         adElement.style.transform = 'scale(1)'
       })
 
-      adElement.appendChild(mediaElement)
       container.appendChild(adElement)
       
       // Set up auto-refresh if enabled
@@ -1451,31 +1477,52 @@ export class Popup {
       mediaElement = img
     }
 
-    mediaElement.style.cursor = 'pointer'
-
-    mediaElement.addEventListener('click', () => {
+    const handleClickThrough = () => {
       this.sovads._trackEvent('CLICK', this.currentAd!.id, this.currentAd!.campaignId, {
         rendered: true,
         viewportVisible: true,
         renderTime: Date.now() - renderStartTime
       })
-      
-      // Log interaction
       this.sovads.logInteraction('CLICK', {
         adId: this.currentAd!.id,
         campaignId: this.currentAd!.campaignId,
         elementType: 'POPUP',
         metadata: { renderTime: Date.now() - renderStartTime },
       })
-      
       window.open(this.sovads.normalizeUrl(this.currentAd!.targetUrl), '_blank', 'noopener,noreferrer')
       this.hide()
-    })
+    }
+
+    if (mediaType === 'video') {
+      mediaElement.style.cursor = 'default'
+    } else {
+      mediaElement.style.cursor = 'pointer'
+      mediaElement.addEventListener('click', handleClickThrough)
+    }
 
     this.popupElement.appendChild(logoBadge)
     this.popupElement.appendChild(adLabel)
     this.popupElement.appendChild(closeBtn)
     this.popupElement.appendChild(mediaElement)
+    if (mediaType === 'video') {
+      const ctaButton = document.createElement('button')
+      ctaButton.type = 'button'
+      ctaButton.textContent = 'Learn more'
+      ctaButton.style.cssText = `
+        width: 100%;
+        margin-top: 10px;
+        border: none;
+        border-radius: 6px;
+        background: #111;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 600;
+        padding: 10px 12px;
+        cursor: pointer;
+      `
+      ctaButton.addEventListener('click', handleClickThrough)
+      this.popupElement.appendChild(ctaButton)
+    }
     wrapper.appendChild(this.popupElement)
     document.body.appendChild(wrapper)
 
@@ -1640,18 +1687,17 @@ export class Sidebar {
       const adElement = document.createElement('div')
       container.innerHTML = ''
       adElement.className = 'sovads-sidebar'
-    adElement.setAttribute('data-ad-id', this.currentAd.id)
-    adElement.style.cssText = `
+      adElement.setAttribute('data-ad-id', this.currentAd.id)
+      const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
+      adElement.style.cssText = `
       background: #f8f9fa;
       border: 1px solid #e9ecef;
       border-radius: 8px;
       padding: 15px;
       margin-bottom: 15px;
-      cursor: pointer;
+      cursor: ${mediaType === 'video' ? 'default' : 'pointer'};
       transition: all 0.2s ease;
     `
-
-      const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
 
       const handleVisibilityTracking = (
         renderInfo: { rendered: boolean; viewportVisible: boolean; renderTime: number }
@@ -1709,24 +1755,20 @@ export class Sidebar {
         mediaElement = img
       }
 
-      // Add click handler
-      adElement.addEventListener('click', () => {
+      const handleClickThrough = () => {
         this.sovads._trackEvent('CLICK', this.currentAd!.id, this.currentAd!.campaignId, {
           rendered: true,
           viewportVisible: true,
           renderTime: Date.now() - this.renderStartTime
         })
-        
-        // Log interaction
         this.sovads.logInteraction('CLICK', {
           adId: this.currentAd!.id,
           campaignId: this.currentAd!.campaignId,
           elementType: 'SIDEBAR',
           metadata: { renderTime: Date.now() - this.renderStartTime },
         })
-        
         window.open(this.sovads.normalizeUrl(this.currentAd!.targetUrl), '_blank', 'noopener,noreferrer')
-      })
+      }
 
       // Add hover effect
       adElement.addEventListener('mouseenter', () => {
@@ -1739,8 +1781,30 @@ export class Sidebar {
         adElement.style.transform = 'translateY(0)'
       })
 
-      mediaElement.style.cursor = 'pointer'
-      adElement.appendChild(mediaElement)
+      mediaElement.style.cursor = mediaType === 'video' ? 'default' : 'pointer'
+      if (mediaType === 'video') {
+        const ctaButton = document.createElement('button')
+        ctaButton.type = 'button'
+        ctaButton.textContent = 'Learn more'
+        ctaButton.style.cssText = `
+          width: 100%;
+          border: none;
+          margin-top: 8px;
+          background: #111;
+          color: #fff;
+          font-size: 12px;
+          font-weight: 600;
+          padding: 8px 12px;
+          border-radius: 6px;
+          cursor: pointer;
+        `
+        ctaButton.addEventListener('click', handleClickThrough)
+        adElement.appendChild(mediaElement)
+        adElement.appendChild(ctaButton)
+      } else {
+        adElement.addEventListener('click', handleClickThrough)
+        adElement.appendChild(mediaElement)
+      }
       container.appendChild(adElement)
       
       // Set up auto-refresh if enabled

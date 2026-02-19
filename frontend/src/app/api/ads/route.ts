@@ -24,6 +24,12 @@ function getStringArray(value: unknown): string[] {
   return value.filter((entry): entry is string => typeof entry === 'string')
 }
 
+function inferMediaTypeFromUrl(url: string): 'image' | 'video' {
+  const value = (url || '').toLowerCase()
+  const videoExts = ['.mp4', '.webm', '.ogg', '.ogv', '.mov', '.m3u8']
+  return videoExts.some((ext) => value.includes(ext)) ? 'video' : 'image'
+}
+
 export async function OPTIONS() {
   return new NextResponse(null, {
     status: 200,
@@ -230,7 +236,7 @@ export async function GET(request: NextRequest) {
       metadata: randomCampaign.metadata ?? null,
       startDate: randomCampaign.startDate ?? null,
       endDate: randomCampaign.endDate ?? null,
-      mediaType: randomCampaign.mediaType ?? 'image',
+      mediaType: randomCampaign.mediaType ?? inferMediaTypeFromUrl(randomCampaign.bannerUrl),
       placement: placement || undefined,
       size: size || undefined,
       trackingToken: createTrackingToken({

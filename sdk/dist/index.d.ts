@@ -67,6 +67,7 @@ declare class SovAds {
      * Validate URL format
      */
     private isValidUrl;
+    private inferMediaTypeFromUrl;
     /**
      * Fetch with retry logic
      */
