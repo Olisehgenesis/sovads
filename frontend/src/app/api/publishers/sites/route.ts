@@ -2,6 +2,44 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { collections } from '@/lib/db'
 import { generateApiKeyServer, generateSecretServer } from '@/lib/crypto-server'
+import { verifyMessage } from 'viem'
+import { buildPublisherAuthMessage, isPublisherAuthTimestampValid } from '@/lib/publisher-auth'
+
+const unauthorized = (message: string) =>
+  NextResponse.json({ error: message }, { status: 401 })
+
+async function verifyPublisherRequest(request: NextRequest, wallet: string): Promise<NextResponse | null> {
+  const headerWallet = request.headers.get('x-wallet-address')?.toLowerCase()
+  const signature = request.headers.get('x-wallet-signature')
+  const timestampRaw = request.headers.get('x-wallet-timestamp')
+  const normalizedWallet = wallet.toLowerCase()
+
+  if (!headerWallet || !signature || !timestampRaw) {
+    return unauthorized('Missing wallet auth headers')
+  }
+
+  if (headerWallet !== normalizedWallet) {
+    return unauthorized('Wallet header mismatch')
+  }
+
+  const timestamp = Number(timestampRaw)
+  if (!isPublisherAuthTimestampValid(timestamp)) {
+    return unauthorized('Auth signature expired')
+  }
+
+  const message = buildPublisherAuthMessage(normalizedWallet, timestamp)
+  const isValid = await verifyMessage({
+    address: normalizedWallet as `0x${string}`,
+    message,
+    signature: signature as `0x${string}`,
+  })
+
+  if (!isValid) {
+    return unauthorized('Invalid wallet signature')
+  }
+
+  return null
+}
 
 // Get all sites for a publisher
 export async function GET(request: NextRequest) {
@@ -12,6 +50,9 @@ export async function GET(request: NextRequest) {
     if (!wallet) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
     }
+
+    const authError = await verifyPublisherRequest(request, wallet)
+    if (authError) return authError
 
     let publishersCollection, publisherSitesCollection
     try {
@@ -40,7 +81,6 @@ export async function GET(request: NextRequest) {
       id: site._id,
       domain: site.domain,
       siteId: site.siteId,
-      apiKey: site.apiKey,
       verified: site.verified,
       createdAt: site.createdAt,
     }))
@@ -65,6 +105,9 @@ export async function POST(request: NextRequest) {
     if (!wallet || !domain) {
       return NextResponse.json({ error: 'Wallet and domain are required' }, { status: 400 })
     }
+
+    const authError = await verifyPublisherRequest(request, wallet)
+    if (authError) return authError
 
     let publishersCollection, publisherSitesCollection
     try {
@@ -191,13 +234,26 @@ export async function DELETE(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const siteId = searchParams.get('siteId')
+    const wallet = searchParams.get('wallet')
 
-    if (!siteId) {
-      return NextResponse.json({ error: 'Site ID is required' }, { status: 400 })
+    if (!siteId || !wallet) {
+      return NextResponse.json({ error: 'Site ID and wallet are required' }, { status: 400 })
     }
 
-    const publisherSitesCollection = await collections.publisherSites()
-    const site = await publisherSitesCollection.findOne({ _id: siteId })
+    const authError = await verifyPublisherRequest(request, wallet)
+    if (authError) return authError
+
+    const [publisherSitesCollection, publishersCollection] = await Promise.all([
+      collections.publisherSites(),
+      collections.publishers(),
+    ])
+
+    const publisher = await publishersCollection.findOne({ wallet })
+    if (!publisher) {
+      return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
+    }
+
+    const site = await publisherSitesCollection.findOne({ _id: siteId, publisherId: publisher._id })
 
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 })
@@ -211,4 +267,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
-

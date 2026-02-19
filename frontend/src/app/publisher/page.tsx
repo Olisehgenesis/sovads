@@ -2,13 +2,14 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import { useState, useEffect } from 'react'
-import { useAccount, useWriteContract } from 'wagmi'
+import { useAccount, useSignMessage, useWriteContract } from 'wagmi'
 import { parseUnits } from 'viem'
 import WalletButton from '@/components/WalletButton'
 import { BannerAd, SidebarAd } from '@/components/ads/AdSlots'
 import { useAds } from '@/hooks/useAds'
 import { TREASURY_ADDRESS, SUPPORTED_EXCHANGE_TOKENS, ERC20_TRANSFER_ABI, GS_RATES } from '@/lib/treasury-tokens'
 import { getTokenInfo } from '@/lib/tokens'
+import { buildPublisherAuthMessage } from '@/lib/publisher-auth'
 // Good Dollar (G$) token address (Celo mainnet)
 const GOOD_DOLLAR_ADDRESS = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
 
@@ -31,6 +32,7 @@ interface PublisherSite {
 
 export default function PublisherDashboard() {
   const { address, isConnected } = useAccount()
+  const { signMessageAsync } = useSignMessage()
   const { subscribePublisher, addSite, isPublisher, isLoading: contractLoading, topUpCampaign, campaignCount, getCampaignVault } = useAds()
 
   const [stats, setStats] = useState<PublisherStats>({
@@ -99,6 +101,31 @@ export default function PublisherDashboard() {
   const isChecking = Boolean(domainCheckStatus?.checking)
   const [isUrlValid, setIsUrlValid] = useState(false)
   const [urlError, setUrlError] = useState<string | null>(null)
+  const [authCache, setAuthCache] = useState<{ wallet: string; signature: string; timestamp: number } | null>(null)
+
+  const getPublisherAuthHeaders = async (walletAddress: string): Promise<Record<string, string>> => {
+    const now = Date.now()
+    const normalizedWallet = walletAddress.toLowerCase()
+    if (authCache && authCache.wallet === normalizedWallet && now - authCache.timestamp < 4 * 60 * 1000) {
+      return {
+        'x-wallet-address': authCache.wallet,
+        'x-wallet-signature': authCache.signature,
+        'x-wallet-timestamp': String(authCache.timestamp),
+      }
+    }
+
+    const timestamp = Date.now()
+    const message = buildPublisherAuthMessage(normalizedWallet, timestamp)
+    const signature = await signMessageAsync({ message })
+    const nextCache = { wallet: normalizedWallet, signature, timestamp }
+    setAuthCache(nextCache)
+
+    return {
+      'x-wallet-address': nextCache.wallet,
+      'x-wallet-signature': nextCache.signature,
+      'x-wallet-timestamp': String(nextCache.timestamp),
+    }
+  }
 
   useEffect(() => {
     if (isConnected && address) {
@@ -128,9 +155,10 @@ export default function PublisherDashboard() {
 
   const loadPublisherData = async (walletAddress: string) => {
     try {
+      const authHeaders = await getPublisherAuthHeaders(walletAddress)
       const [publisherResponse, sitesResponse] = await Promise.all([
         fetch(`/api/publishers/register?wallet=${walletAddress}`),
-        fetch(`/api/publishers/sites?wallet=${walletAddress}`)
+        fetch(`/api/publishers/sites?wallet=${walletAddress}`, { headers: authHeaders })
       ])
 
       if (publisherResponse.ok) {
@@ -224,7 +252,8 @@ export default function PublisherDashboard() {
   const checkDomainRegistration = async (domain: string): Promise<{ registeredInDB: boolean }> => {
     if (!domain || !address) return { registeredInDB: false }
     try {
-      const response = await fetch(`/api/publishers/sites?wallet=${address}`)
+      const authHeaders = await getPublisherAuthHeaders(address)
+      const response = await fetch(`/api/publishers/sites?wallet=${address}`, { headers: authHeaders })
       if (response.ok) {
         const data = await response.json()
         const dbRegistered = (data.sites || []).some((site: PublisherSite) => site.domain === domain)
@@ -258,9 +287,10 @@ export default function PublisherDashboard() {
       }
 
       // Register in DB
+      const authHeaders = await getPublisherAuthHeaders(address)
       const response = await fetch('/api/publishers/sites', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ wallet: address, domain: domainToRegister })
       })
 
@@ -299,9 +329,10 @@ export default function PublisherDashboard() {
       if (isRegisteredOnChain) {
         await addSite(domainToAdd)
       }
+      const authHeaders = await getPublisherAuthHeaders(address)
       const response = await fetch('/api/publishers/sites', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders },
         body: JSON.stringify({ wallet: address, domain: domainToAdd })
       })
       if (response.ok) {
@@ -327,7 +358,11 @@ export default function PublisherDashboard() {
   const removeSiteFromDB = async (siteId: string) => {
     if (!address) return
     try {
-      const response = await fetch(`/api/publishers/sites?siteId=${siteId}`, { method: 'DELETE' })
+      const authHeaders = await getPublisherAuthHeaders(address)
+      const response = await fetch(`/api/publishers/sites?siteId=${siteId}&wallet=${address}`, {
+        method: 'DELETE',
+        headers: authHeaders,
+      })
       if (response.ok) {
         await loadPublisherData(address)
         if (selectedSite?.id === siteId) setSelectedSite(null)

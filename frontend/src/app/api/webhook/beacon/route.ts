@@ -15,6 +15,13 @@ type EventType = (typeof EVENT_TYPES)[number]
  * - Better fraud prevention
  */
 export async function POST(request: NextRequest) {
+  if (process.env.NODE_ENV !== 'development') {
+    return NextResponse.json(
+      { error: 'Deprecated endpoint. Use signed /api/webhook/track.' },
+      { status: 410 }
+    )
+  }
+
   try {
     // Extract IP address from request headers (server-side IP detection)
     const ipAddress = getIpAddress(request) || 'unknown'
@@ -340,4 +347,3 @@ export async function GET() {
     error: 'Method not allowed. Use POST instead.' 
   }, { status: 405 })
 }
-

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Banner, Popup, Sidebar } from 'sovads-sdk'
+import { Banner, Popup, Sidebar } from '@/lib/sdk'
 import { getSovAdsClient } from '@/lib/sovads-client'
 
 type SharedAdProps = {
@@ -262,4 +262,3 @@ export function PopupAd({ consumerId, delay = 3000, enabled = true }: PopupAdPro
 
   return null
 }
-

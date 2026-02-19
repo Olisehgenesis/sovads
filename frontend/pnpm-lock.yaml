@@ -57,8 +57,8 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0(@types/react@19.2.2)(react-dom@19.1.0(react@19.1.0))(react-is@16.13.1)(react@19.1.0)(redux@5.0.1)
       sovads-sdk:
-        specifier: ^1.0.3
-        version: 1.0.3
+        specifier: link:../sdk
+        version: link:../sdk
       tw-animate-css:
         specifier: ^1.4.0
         version: 1.4.0
@@ -4230,9 +4230,6 @@ packages:
   source-map-js@1.2.1:
     resolution: {integrity: sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA==}
     engines: {node: '>=0.10.0'}
-
-  sovads-sdk@1.0.3:
-    resolution: {integrity: sha512-2/gwcEpOblXw2h6qS+JrFqWsDaTtYbAI2gPo8l34pKw2FLYcxFvMBtzjcp5iX79eX06seyR0TVuItnNtD2Hciw==}
 
   sparse-bitfield@3.0.3:
     resolution: {integrity: sha512-kvzhi7vqKTfkh0PZU+2D2PIllw2ymqJKujUcyPMd9Y75Nv4nPbGJZXNhxsgdQab2BmlDct1YnfQCguEvHr7VsQ==}
@@ -10762,8 +10759,6 @@ snapshots:
       atomic-sleep: 1.0.0
 
   source-map-js@1.2.1: {}
-
-  sovads-sdk@1.0.3: {}
 
   sparse-bitfield@3.0.3:
     dependencies:

@@ -49,15 +49,20 @@ export async function verifySignatureServer(
   secret: string,
   timestamp: number
 ): Promise<boolean> {
-  const message = `${timestamp}:${payload}`
-  const hmac = crypto.createHmac('sha256', secret)
-  hmac.update(message)
-  const expectedSignature = hmac.digest('base64')
-  
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expectedSignature)
-  )
+  try {
+    const message = `${timestamp}:${payload}`
+    const hmac = crypto.createHmac('sha256', secret)
+    hmac.update(message)
+    const expectedSignature = hmac.digest('base64')
+    const actual = Buffer.from(signature)
+    const expected = Buffer.from(expectedSignature)
+    if (actual.length !== expected.length) {
+      return false
+    }
+    return crypto.timingSafeEqual(actual, expected)
+  } catch {
+    return false
+  }
 }
 
 /**
@@ -80,4 +85,3 @@ export function generateApiKeyServer(): string {
 export function generateSecretServer(): string {
   return crypto.randomBytes(32).toString('hex')
 }
-

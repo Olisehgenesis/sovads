@@ -1,6 +1,6 @@
 'use client'
 
-import { SovAds } from 'sovads-sdk'
+import { SovAds } from '@/lib/sdk'
 
 let sovAdsClient: SovAds | null = null
 
@@ -38,4 +38,3 @@ export const destroySovAdsClient = (): void => {
     sovAdsClient = null
   }
 }
-

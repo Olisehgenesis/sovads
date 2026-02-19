@@ -1,26 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { collections } from '@/lib/db'
 
-// Simple in-memory cache for ad requests (5 minute TTL)
-const adCache = new Map<string, { data: any; expires: number }>()
-const CACHE_TTL = 5 * 60 * 1000 // 5 minutes
-
 // CORS headers helper
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 }
-
-// Clean up expired cache entries periodically
-setInterval(() => {
-  const now = Date.now()
-  for (const [key, value] of adCache.entries()) {
-    if (value.expires < now) {
-      adCache.delete(key)
-    }
-  }
-}, 60000) // Clean every minute
 
 export async function OPTIONS() {
   return new NextResponse(null, {
@@ -34,16 +20,10 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const siteId = searchParams.get('siteId')
     const location = searchParams.get('location')?.toLowerCase()
+    const consumerId = searchParams.get('consumerId')?.trim()
 
     if (!siteId) {
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400, headers: corsHeaders })
-    }
-
-    // Check cache first
-    const cacheKey = `${siteId}:${location || 'all'}`
-    const cached = adCache.get(cacheKey)
-    if (cached && cached.expires > Date.now()) {
-      return NextResponse.json(cached.data, { headers: corsHeaders })
     }
 
     // Handle unregistered sites (temp_ prefix) FIRST - before MongoDB access
@@ -69,12 +49,6 @@ export async function GET(request: NextRequest) {
         mediaType: 'image' as const,
         isDummy: true,
       }
-      
-      // Cache the dummy ad response
-      adCache.set(cacheKey, {
-        data: dummyAd,
-        expires: Date.now() + CACHE_TTL
-      })
       
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
@@ -107,11 +81,6 @@ export async function GET(request: NextRequest) {
         mediaType: 'image' as const,
         isDummy: true,
       }
-      
-      adCache.set(cacheKey, {
-        data: dummyAd,
-        expires: Date.now() + (60 * 1000) // Cache for 1 minute on error
-      })
       
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
@@ -158,11 +127,6 @@ export async function GET(request: NextRequest) {
         isDummy: true,
       }
       
-      adCache.set(cacheKey, {
-        data: dummyAd,
-        expires: Date.now() + CACHE_TTL
-      })
-      
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
@@ -181,6 +145,16 @@ export async function GET(request: NextRequest) {
         return campaign.targetLocations.some(
           (loc) => typeof loc === 'string' && loc.toLowerCase() === location
         )
+      })
+      .filter((campaign: any) => {
+        if (!consumerId) return true
+        const directConsumer = typeof campaign.consumerId === 'string' ? campaign.consumerId : null
+        const metaConsumer = campaign.metadata && typeof campaign.metadata === 'object'
+          ? (campaign.metadata as Record<string, unknown>).consumerId
+          : null
+        const targetedConsumer = typeof metaConsumer === 'string' ? metaConsumer : directConsumer
+        if (!targetedConsumer) return true
+        return targetedConsumer === consumerId
       })
       .slice(0, 10)
 
@@ -206,11 +180,6 @@ export async function GET(request: NextRequest) {
         isDummy: true,
       }
       
-      adCache.set(cacheKey, {
-        data: dummyAd,
-        expires: Date.now() + CACHE_TTL
-      })
-      
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
@@ -233,12 +202,6 @@ export async function GET(request: NextRequest) {
       endDate: randomCampaign.endDate ?? null,
       mediaType: randomCampaign.mediaType ?? 'image',
     }
-
-    // Cache the response
-    adCache.set(cacheKey, {
-      data: ad,
-      expires: Date.now() + CACHE_TTL
-    })
 
     return NextResponse.json(ad, { headers: corsHeaders })
   } catch (error) {

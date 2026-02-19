@@ -1,6 +1,8 @@
 export interface SovAdsConfig {
     siteId?: string;
     apiUrl?: string;
+    apiKey?: string;
+    apiSecret?: string;
     debug?: boolean;
     consumerId?: string;
     refreshInterval?: number;
@@ -55,6 +57,9 @@ declare class SovAds {
      */
     private fetchWithRetry;
     loadAd(consumerId?: string): Promise<AdComponent | null>;
+    private toBase64;
+    private signTrackingPayload;
+    private sendTrackingEnvelope;
     /**
      * Track event with retry logic (internal helper)
      */

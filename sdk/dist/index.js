@@ -5,7 +5,7 @@ class SovAds {
         this.components = new Map();
         this.siteId = null;
         this.renderObservers = new Map();
-        this.debugLoggingEnabled = true;
+        this.debugLoggingEnabled = false;
         this.config = {
             apiUrl: typeof window !== 'undefined' && window.location.hostname === 'localhost'
                 ? 'http://localhost:3000'
@@ -16,23 +16,44 @@ class SovAds {
             rotationEnabled: true,
             ...config
         };
+        this.debugLoggingEnabled = Boolean(this.config.debug);
         this.fingerprint = this.generateFingerprint();
         if (this.config.debug) {
             console.log('SovAds SDK initialized:', this.config);
         }
     }
     generateFingerprint() {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        ctx?.fillText('SovAds fingerprint', 10, 10);
-        const fingerprint = [
-            navigator.userAgent,
-            navigator.language,
-            screen.width + 'x' + screen.height,
-            new Date().getTimezoneOffset(),
-            canvas.toDataURL()
-        ].join('|');
-        return btoa(fingerprint).substring(0, 16);
+        const storageKey = 'sovads_fingerprint_v1';
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                const existing = window.localStorage.getItem(storageKey);
+                if (existing) {
+                    return existing;
+                }
+            }
+        }
+        catch {
+            // Ignore storage access errors and fall back to generated value.
+        }
+        const browserParts = [
+            typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown-ua',
+            typeof navigator !== 'undefined' ? navigator.language : 'unknown-lang',
+            typeof screen !== 'undefined' ? `${screen.width}x${screen.height}` : 'unknown-screen',
+            String(new Date().getTimezoneOffset()),
+            typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+                ? crypto.randomUUID()
+                : `${Date.now()}-${Math.random()}`,
+        ];
+        const value = btoa(browserParts.join('|')).replace(/=+$/g, '');
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                window.localStorage.setItem(storageKey, value);
+            }
+        }
+        catch {
+            // Ignore storage write failures.
+        }
+        return value;
     }
     async detectSiteId() {
         if (this.siteId) {
@@ -373,6 +394,83 @@ class SovAds {
             return null;
         }
     }
+    toBase64(bytes) {
+        let binary = '';
+        for (const b of bytes) {
+            binary += String.fromCharCode(b);
+        }
+        return btoa(binary);
+    }
+    async signTrackingPayload(payload, timestamp) {
+        if (!this.config.apiSecret || typeof crypto === 'undefined' || !crypto.subtle) {
+            return null;
+        }
+        try {
+            const encoder = new TextEncoder();
+            const key = await crypto.subtle.importKey('raw', encoder.encode(this.config.apiSecret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+            const message = `${timestamp}:${payload}`;
+            const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(message));
+            return this.toBase64(new Uint8Array(signature));
+        }
+        catch (error) {
+            if (this.config.debug) {
+                console.error('Failed to sign tracking payload:', error);
+            }
+            return null;
+        }
+    }
+    async sendTrackingEnvelope(eventPayload, useBeacon) {
+        if (!this.config.apiKey || !this.config.apiSecret) {
+            if (this.config.debug) {
+                const devWebhookUrl = `${this.config.apiUrl}/api/webhook/beacon`;
+                const body = JSON.stringify(eventPayload);
+                try {
+                    if (useBeacon && navigator.sendBeacon) {
+                        return navigator.sendBeacon(devWebhookUrl, new Blob([body], { type: 'application/json' }));
+                    }
+                    const response = await fetch(devWebhookUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body,
+                        keepalive: true,
+                    });
+                    return response.ok;
+                }
+                catch {
+                    return false;
+                }
+            }
+            else {
+                console.warn('SovAds: Missing apiKey/apiSecret, skipping signed tracking event');
+            }
+            return false;
+        }
+        const timestamp = Date.now();
+        const payload = JSON.stringify(eventPayload);
+        const signature = await this.signTrackingPayload(payload, timestamp);
+        if (!signature) {
+            return false;
+        }
+        const envelope = JSON.stringify({
+            apiKey: this.config.apiKey,
+            siteId: eventPayload.siteId,
+            payload,
+            signature,
+            timestamp,
+        });
+        const webhookUrl = `${this.config.apiUrl}/api/webhook/track`;
+        if (useBeacon && navigator.sendBeacon) {
+            const blob = new Blob([envelope], { type: 'application/json' });
+            return navigator.sendBeacon(webhookUrl, blob);
+        }
+        const response = await fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: envelope,
+            keepalive: true,
+        });
+        return response.ok;
+    }
     /**
      * Track event with retry logic (internal helper)
      */
@@ -394,22 +492,12 @@ class SovAds {
                 pageUrl: metadata.pageUrl,
                 userAgent: metadata.userAgent
             };
-            const webhookUrl = `${this.config.apiUrl}/api/webhook/beacon`;
-            const response = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(payload),
-                keepalive: true // Similar behavior to beacon
-            });
-            if (response.ok) {
-                if (this.config.debug) {
-                    console.log(`SovAds: Tracked ${type} event via fetch (attempt ${attempt})`, payload);
-                }
+            const ok = await this.sendTrackingEnvelope(payload, false);
+            if (!ok) {
+                throw new Error('Tracking endpoint rejected event');
             }
-            else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            if (this.config.debug) {
+                console.log(`SovAds: Tracked ${type} event via signed fetch (attempt ${attempt})`, payload);
             }
         }
         catch (error) {
@@ -451,33 +539,22 @@ class SovAds {
                 pageUrl: metadata.pageUrl,
                 userAgent: metadata.userAgent
             };
-            // Use sendBeacon for reliable delivery (better for tracking impressions)
-            // Beacon API ensures events are sent even if user navigates away
-            if (navigator.sendBeacon) {
-                const blob = new Blob([JSON.stringify(payload)], {
-                    type: 'application/json'
-                });
-                // Send to dedicated webhook endpoint for beamer interactions
-                const webhookUrl = `${this.config.apiUrl}/api/webhook/beacon`;
-                const sent = navigator.sendBeacon(webhookUrl, blob);
-                if (!sent) {
-                    // Beacon failed, fallback to fetch with retry
+            if (typeof navigator.sendBeacon === 'function') {
+                const sent = await this.sendTrackingEnvelope(payload, true);
+                if (sent) {
                     if (this.config.debug) {
-                        console.warn(`SovAds: Beacon failed for ${type}, falling back to fetch`);
+                        console.log(`SovAds: Tracked ${type} event via signed beacon`, {
+                            payload: { ...payload, fingerprint: payload.fingerprint.substring(0, 8) + '...' }
+                        });
                     }
-                    await this.trackEventWithRetry(type, adId, campaignId, renderInfo, 1);
-                }
-                else if (this.config.debug) {
-                    console.log(`SovAds: Tracked ${type} event via beacon`, {
-                        sent,
-                        payload: { ...payload, fingerprint: payload.fingerprint.substring(0, 8) + '...' }
-                    });
+                    return;
                 }
             }
-            else {
-                // Fallback to fetch for older browsers
-                await this.trackEventWithRetry(type, adId, campaignId, renderInfo, 1);
+            // Fallback to signed fetch for older browsers and beacon failures
+            if (this.config.debug) {
+                console.warn(`SovAds: Beacon unavailable/failed for ${type}, falling back to signed fetch`);
             }
+            await this.trackEventWithRetry(type, adId, campaignId, renderInfo, 1);
         }
         catch (error) {
             if (this.config.debug) {
@@ -598,6 +675,7 @@ export class Banner {
             }
             this.renderStartTime = Date.now();
             this.currentAd = await this.sovads.loadAd(consumerId);
+            this.hasTrackedImpression = false;
             // Skip if same ad (rotation disabled or same ad returned)
             if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
                 if (this.sovads.getConfig().debug) {
@@ -615,6 +693,7 @@ export class Banner {
             }
             // Handle dummy ads for unregistered sites
             if (this.currentAd.isDummy) {
+                container.innerHTML = '';
                 const dummyElement = document.createElement('div');
                 dummyElement.className = 'sovads-banner-dummy';
                 dummyElement.setAttribute('data-ad-id', this.currentAd.id);
@@ -660,6 +739,7 @@ export class Banner {
                 return;
             }
             const adElement = document.createElement('div');
+            container.innerHTML = '';
             adElement.className = 'sovads-banner';
             adElement.setAttribute('data-ad-id', this.currentAd.id);
             adElement.style.cssText = `
@@ -892,23 +972,23 @@ export class Popup {
         if (!this.currentAd)
             return;
         const renderStartTime = Date.now();
-        // Don't track impressions for dummy ads
-        if (!this.currentAd.isDummy) {
-            // Track impression immediately when popup is rendered (not waiting for image load)
-            // This ensures impression is tracked even if user closes popup quickly
+        let impressionTracked = false;
+        const trackPopupImpression = (rendered, renderTime) => {
+            if (impressionTracked || !this.currentAd || this.currentAd.isDummy)
+                return;
+            impressionTracked = true;
             this.sovads._trackEvent('IMPRESSION', this.currentAd.id, this.currentAd.campaignId, {
-                rendered: true,
+                rendered,
                 viewportVisible: true,
-                renderTime: 0 // Will be updated when image loads
+                renderTime,
             });
-            // Log interaction
             this.sovads.logInteraction('IMPRESSION', {
                 adId: this.currentAd.id,
                 campaignId: this.currentAd.campaignId,
                 elementType: 'POPUP',
-                metadata: { renderTime: 0 },
+                metadata: { renderTime, rendered },
             });
-        }
+        };
         // Create overlay
         const overlay = document.createElement('div');
         overlay.className = 'sovads-popup-overlay';
@@ -1031,11 +1111,7 @@ export class Popup {
                 console.warn(`Failed to load popup ad media: ${this.currentAd.bannerUrl}`);
             }
             const renderTime = Date.now() - renderStartTime;
-            this.sovads._trackEvent('IMPRESSION', this.currentAd.id, this.currentAd.campaignId, {
-                rendered: false,
-                viewportVisible: true,
-                renderTime
-            });
+            trackPopupImpression(false, renderTime);
         };
         let mediaElement;
         if (mediaType === 'video') {
@@ -1049,6 +1125,7 @@ export class Popup {
             video.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;';
             video.addEventListener('loadeddata', () => {
                 const renderTime = Date.now() - renderStartTime;
+                trackPopupImpression(true, renderTime);
                 if (this.sovads.getConfig().debug) {
                     console.log(`Popup ad video loaded in ${renderTime}ms`);
                 }
@@ -1063,6 +1140,7 @@ export class Popup {
             img.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;';
             img.addEventListener('load', () => {
                 const renderTime = Date.now() - renderStartTime;
+                trackPopupImpression(true, renderTime);
                 if (this.sovads.getConfig().debug) {
                     console.log(`Popup ad image loaded in ${renderTime}ms`);
                 }
@@ -1161,6 +1239,7 @@ export class Sidebar {
             }
             this.renderStartTime = Date.now();
             this.currentAd = await this.sovads.loadAd(consumerId);
+            this.hasTrackedImpression = false;
             // Skip if same ad (rotation disabled or same ad returned)
             if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
                 if (this.sovads.getConfig().debug) {
@@ -1178,6 +1257,7 @@ export class Sidebar {
             }
             // Handle dummy ads for unregistered sites
             if (this.currentAd.isDummy) {
+                container.innerHTML = '';
                 const dummyElement = document.createElement('div');
                 dummyElement.className = 'sovads-sidebar-dummy';
                 dummyElement.setAttribute('data-ad-id', this.currentAd.id);
@@ -1224,6 +1304,7 @@ export class Sidebar {
                 return;
             }
             const adElement = document.createElement('div');
+            container.innerHTML = '';
             adElement.className = 'sovads-sidebar';
             adElement.setAttribute('data-ad-id', this.currentAd.id);
             adElement.style.cssText = `
