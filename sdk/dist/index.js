@@ -74,6 +74,7 @@ class SovAds {
             const domain = window.location.hostname;
             const payload = {
                 domain,
+                pathname: window.location.pathname,
                 fingerprint: this.fingerprint,
                 userAgent: navigator.userAgent,
                 pageUrl: window.location.href,
