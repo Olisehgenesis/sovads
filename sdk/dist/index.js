@@ -1340,6 +1340,143 @@ export class Popup {
         this.currentAd = null;
     }
 }
+
+// BottomBar Component
+export class BottomBar {
+    constructor(sovads) {
+        this.sovads = sovads;
+        this.barElement = null;
+        this.currentAd = null;
+        this.isVisible = false;
+        this.retryCount = 0;
+        this.maxRetries = 3;
+    }
+    async show(consumerId) {
+        if (this.isVisible) {
+            if (this.sovads.getConfig().debug) {
+                console.warn('BottomBar already visible');
+            }
+            return;
+        }
+        try {
+            this.currentAd = await this.sovads.loadAd({
+                consumerId,
+                placement: 'bottom-bar',
+                size: 'full-width',
+            });
+            if (!this.currentAd) {
+                if (this.retryCount < this.maxRetries) {
+                    this.retryCount++;
+                    await new Promise(resolve => setTimeout(resolve, 1000 * this.retryCount));
+                    return this.show(consumerId);
+                }
+                if (this.sovads.getConfig().debug) {
+                    console.log('No bottom‑bar ad available after retries');
+                }
+                this.retryCount = 0;
+                return;
+            }
+            this.retryCount = 0;
+            this.renderBar();
+            this.isVisible = true;
+        }
+        catch (error) {
+            if (this.sovads.getConfig().debug) {
+                console.error('Error loading bottom bar ad:', error);
+            }
+        }
+    }
+    renderBar() {
+        if (!this.currentAd)
+            return;
+        const renderStart = Date.now();
+        let impressionTracked = false;
+        const trackImp = (rendered, renderTime) => {
+            if (impressionTracked || !this.currentAd || this.currentAd.isDummy)
+                return;
+            impressionTracked = true;
+            this.sovads._trackEvent('IMPRESSION', this.currentAd.id, this.currentAd.campaignId, {
+                rendered,
+                viewportVisible: true,
+                renderTime,
+            });
+        };
+        const wrapper = document.createElement('div');
+        wrapper.className = 'sovads-bottom-bar';
+        wrapper.style.cssText = "\n      position: fixed;\n      left: 0;\n      bottom: 0;\n      width: 100%;\n      z-index: 10000;\n      display: flex;\n      justify-content: center;\n      background: rgba(255,255,255,0.95);\n      box-shadow: 0 -2px 6px rgba(0,0,0,0.2);\n    ";
+        const bar = document.createElement('div');
+        bar.style.cssText = "\n      max-width: 720px;\n      width: 100%;\n      position: relative;\n      padding: 8px;\n      cursor: pointer;\n    ";
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '×';
+        closeBtn.style.cssText = "\n      position: absolute;\n      right: 8px;\n      top: 8px;\n      background: none;\n      border: none;\n      font-size: 20px;\n      cursor: pointer;\n      color: #666;\n    ";
+        closeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            this.hide();
+        });
+        const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image';
+        let mediaEl;
+        if (mediaType === 'video') {
+            const video = document.createElement('video');
+            video.src = this.currentAd.bannerUrl;
+            video.muted = true;
+            video.autoplay = true;
+            video.loop = true;
+            video.playsInline = true;
+            video.controls = true;
+            video.style.cssText = 'width:100%;height:auto;';
+            video.addEventListener('loadeddata', () => {
+                const rt = Date.now() - renderStart;
+                trackImp(true, rt);
+            }, { once: true });
+            video.addEventListener('error', () => {
+                const rt = Date.now() - renderStart;
+                trackImp(false, rt);
+            }, { once: true });
+            mediaEl = video;
+        }
+        else {
+            const img = document.createElement('img');
+            img.src = this.currentAd.bannerUrl;
+            img.alt = this.currentAd.description;
+            img.style.cssText = 'width:100%;height:auto;';
+            img.addEventListener('load', () => {
+                const rt = Date.now() - renderStart;
+                trackImp(true, rt);
+            });
+            img.addEventListener('error', () => {
+                const rt = Date.now() - renderStart;
+                trackImp(false, rt);
+            });
+            mediaEl = img;
+        }
+        const handleClick = () => {
+            if (!this.currentAd)
+                return;
+            this.sovads._trackEvent('CLICK', this.currentAd.id, this.currentAd.campaignId, {
+                rendered: true,
+                viewportVisible: true,
+                renderTime: Date.now() - renderStart,
+            });
+            window.open(this.sovads.normalizeUrl(this.currentAd.targetUrl), '_blank', 'noopener,noreferrer');
+            this.hide();
+        };
+        bar.appendChild(closeBtn);
+        bar.appendChild(mediaEl);
+        bar.addEventListener('click', handleClick);
+        wrapper.appendChild(bar);
+        document.body.appendChild(wrapper);
+        this.barElement = wrapper;
+    }
+    hide() {
+        if (this.barElement && this.barElement.isConnected) {
+            this.barElement.remove();
+        }
+        this.barElement = null;
+        this.currentAd = null;
+        this.isVisible = false;
+    }
+}
+
 // Sidebar Component
 export class Sidebar {
     constructor(sovads, containerId, slotConfig = {}) {

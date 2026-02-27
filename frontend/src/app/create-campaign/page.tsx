@@ -303,37 +303,37 @@ export default function CreateCampaign() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-card border border-border rounded-xl shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
+    <div className="max-w-xl mx-auto p-8 card">
+      <div className="mb-6 flex items-center justify-between">
         <button
           type="button"
           onClick={() => { if (typeof window !== 'undefined') window.history.back(); }}
-          className="btn btn-outline px-4 py-2"
+          className="btn btn-outline text-xs"
         >
           Back
         </button>
       </div>
-      <h1 className="text-3xl font-bold text-foreground mb-4">Create New Campaign</h1>
+      <h1 className="text-3xl font-heading mb-8 uppercase">New Campaign</h1>
 
       {/* Tabs */}
-      <div className="mb-6 flex gap-2">
+      <div className="mb-8 flex gap-3">
         <button
           type="button"
-          className={`px-4 py-2 rounded-full text-sm font-medium ${activeTab === 'details' ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all ${activeTab === 'details' ? 'bg-black text-white' : 'bg-white text-black'}`}
           onClick={() => setActiveTab('details')}
         >
           Details
         </button>
         <button
           type="button"
-          className={`px-4 py-2 rounded-full text-sm font-medium ${activeTab === 'budget' ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all ${activeTab === 'budget' ? 'bg-black text-white' : 'bg-white text-black'}`}
           onClick={() => setActiveTab('budget')}
         >
           Budget
         </button>
         <button
           type="button"
-          className={`px-4 py-2 rounded-full text-sm font-medium ${activeTab === 'dates' ? 'bg-primary text-primary-foreground' : 'bg-secondary'}`}
+          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all ${activeTab === 'dates' ? 'bg-black text-white' : 'bg-white text-black'}`}
           onClick={() => setActiveTab('dates')}
         >
           Dates
@@ -345,8 +345,8 @@ export default function CreateCampaign() {
           <>
             {/* Campaign Name */}
             <div>
-              <label htmlFor="name" className="block text-sm font-medium text-foreground/80 mb-2">
-                Campaign Name *
+              <label htmlFor="name" className="block text-xs font-bold uppercase mb-2">
+                Name *
               </label>
               <input
                 type="text"
@@ -354,15 +354,15 @@ export default function CreateCampaign() {
                 name="name"
                 value={formData.name}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="Enter campaign name"
+                className="w-full"
+                placeholder="Campaign name"
                 required
               />
             </div>
 
             {/* Description */}
             <div>
-              <label htmlFor="description" className="block text-sm font-medium text-foreground/80 mb-2">
+              <label htmlFor="description" className="block text-xs font-bold uppercase mb-2">
                 Description *
               </label>
               <textarea
@@ -370,8 +370,8 @@ export default function CreateCampaign() {
                 name="description"
                 value={formData.description}
                 onChange={handleInputChange}
-                rows={3}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                rows={2}
+                className="w-full"
                 placeholder="Describe your campaign"
                 required
               />
@@ -425,29 +425,21 @@ export default function CreateCampaign() {
                 </div>
               )}
               {bannerPreview && !uploading && (
-                <div className="mt-3">
+                <div className="mt-4 border-4 border-black bg-white overflow-hidden shadow-[4px_4px_0px_0px_black]">
                   {formData.mediaType === 'video' ? (
-                    <div className="relative">
-                      <video
-                        src={bannerPreview}
-                        className="max-h-64 w-full rounded-md border border-border object-contain"
-                        controls
-                        playsInline
-                        muted
-                      />
-                      <p className="text-xs text-foreground/60 mt-1">Video preview</p>
-                    </div>
+                    <video
+                      src={bannerPreview}
+                      className="max-h-48 w-full object-contain bg-black"
+                      controls
+                      playsInline
+                      muted
+                    />
                   ) : (
-                    <div className="relative">
-                      <img
-                        src={bannerPreview}
-                        alt="Media preview"
-                        className="max-h-64 w-full rounded-md border border-border object-contain"
-                      />
-                      <p className="text-xs text-foreground/60 mt-1">
-                        {bannerPreview.toLowerCase().includes('.gif') ? 'GIF preview' : 'Image preview'}
-                      </p>
-                    </div>
+                    <img
+                      src={bannerPreview}
+                      alt="Preview"
+                      className="max-h-48 w-full object-contain bg-black"
+                    />
                   )}
                 </div>
               )}
@@ -455,8 +447,8 @@ export default function CreateCampaign() {
 
             {/* Target URL */}
             <div>
-              <label htmlFor="targetUrl" className="block text-sm font-medium text-foreground/80 mb-2">
-                Target URL *
+              <label htmlFor="targetUrl" className="block text-xs font-bold uppercase mb-2">
+                URL *
               </label>
               <input
                 type="url"
@@ -464,8 +456,8 @@ export default function CreateCampaign() {
                 name="targetUrl"
                 value={formData.targetUrl}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="https://example.com/landing-page"
+                className="w-full"
+                placeholder="https://example.com"
                 required
               />
             </div>
@@ -491,8 +483,8 @@ export default function CreateCampaign() {
 
             {/* Target Locations */}
             <div>
-              <label htmlFor="targetLocations" className="block text-sm font-medium text-foreground/80 mb-2">
-                Target Locations (comma separated)
+              <label htmlFor="targetLocations" className="block text-xs font-bold uppercase mb-2">
+                Geo
               </label>
               <input
                 type="text"
@@ -500,12 +492,9 @@ export default function CreateCampaign() {
                 name="targetLocations"
                 value={formData.targetLocations}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                placeholder="United States, Canada, Nigeria"
+                className="w-full"
+                placeholder="Global, US, UK"
               />
-              <p className="mt-1 text-xs text-foreground/60">
-                Specify the primary countries or regions you want to reach.
-              </p>
             </div>
 
             {/* Metadata */}
@@ -636,39 +625,39 @@ export default function CreateCampaign() {
 
         {/* Error Messages */}
         {(error || submitError) && (
-          <div className="bg-red-100 border border-red-300 rounded-md p-4">
-            <p className="text-red-700">{error || submitError}</p>
+          <div className="border-2 border-black bg-red-100 p-4 font-bold text-xs uppercase text-red-700">
+            {error || submitError}
           </div>
         )}
 
         {/* Wizard Controls */}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-4 pt-4">
           <button
             type="button"
-            className="btn btn-outline px-4 py-2"
+            className="btn btn-outline text-xs"
             onClick={() => {
               if (activeTab === 'budget') setActiveTab('details')
               else if (activeTab === 'dates') setActiveTab('budget')
             }}
             disabled={activeTab === 'details'}
-          >&lt; Back</button>
+          >Back</button>
 
           {activeTab !== 'dates' ? (
             <button
               type="button"
-              className="btn btn-primary px-6 py-2"
+              className="btn btn-primary text-xs"
               onClick={() => {
                 if (activeTab === 'details') setActiveTab('budget')
                 else if (activeTab === 'budget') setActiveTab('dates')
               }}
-            >Next &gt;</button>
+            >Next</button>
           ) : (
             <button
               type="submit"
               disabled={isSubmitting || isLoading || !address}
-              className="btn btn-primary px-6 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="btn btn-primary text-xs"
             >
-              {isSubmitting ? 'Creating Campaign...' : 'Create Campaign'}
+              {isSubmitting ? '...' : 'Create'}
             </button>
           )}
         </div>

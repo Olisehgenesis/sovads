@@ -34,6 +34,10 @@ await banner.render()
 const popup = new Popup(sovads)
 await popup.show() // Shows after 3 seconds by default
 
+// Bottom bar (floating banner at bottom with close button)
+const bottomBar = new BottomBar(sovads)
+await bottomBar.show()
+
 // Sidebar Ad
 const sidebar = new Sidebar(sovads, 'sidebar-container')
 await sidebar.render()
@@ -108,6 +112,16 @@ await popup.show(consumerId?: string, delay?: number)
 popup.hide()
 ```
 
+### BottomBar
+
+Floating bottom bar ad with a built-in close (`×`) button. Designed to sit fixed at the bottom of the viewport; click the `×` or the ad itself to dismiss. You can style the bar by targeting the `.sovads-bottom-bar` class in your CSS.
+
+```typescript
+const bottomBar = new BottomBar(sovads: SovAds)
+await bottomBar.show(consumerId?: string)
+bottomBar.hide()
+```
+
 ### Sidebar
 
 Sidebar ad component.
@@ -127,6 +141,7 @@ await sidebar.render(consumerId?: string)
 - ✅ CORS support
 - ✅ TypeScript support
 - ✅ Debug logging
+- 🎨 Customizable styling via CSS classes (e.g. `.sovads-banner`, `.sovads-sidebar`, `.sovads-popup-overlay`, `.sovads-bottom-bar`)
 
 ## License
 

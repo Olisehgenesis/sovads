@@ -3,52 +3,53 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Universal Checkout–inspired theme: dark, glass, blue accent */
+/* Neubrutalist Theme: light cream background, black accents, thick borders, hard shadows */
 :root {
   /* Base colors */
-  --background: #000000;
-  --foreground: #ffffff;
-
-  /* Glass effects */
-  --glass-bg: rgba(255, 255, 255, 0.03);
-  --glass-bg-hover: rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.1);
-  --glass-border-hover: rgba(255, 255, 255, 0.2);
+  --background: #F5F3F0;
+  --foreground: #141414;
 
   /* Accent colors */
-  --accent-primary: rgba(59, 130, 246, 0.6);
-  --accent-primary-solid: #3b82f6;
-  --accent-success: rgba(16, 185, 129, 0.6);
-  --accent-success-solid: #10b981;
+  --accent-primary: #000000;
+  --accent-primary-solid: #000000;
+  --accent-success: #22c55e;
+  --accent-success-solid: #22c55e;
 
   /* Text colors */
-  --text-primary: rgba(255, 255, 255, 0.95);
-  --text-secondary: rgba(255, 255, 255, 0.6);
-  --text-tertiary: rgba(255, 255, 255, 0.4);
+  --text-primary: #141414;
+  --text-secondary: #666666;
+  --text-tertiary: #999999;
+
+  /* Neubrutalist details */
+  --border-width: 2px;
+  --hard-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
+  --hard-shadow-hover: 6px 6px 0px 0px rgba(0, 0, 0, 1);
+  --hard-shadow-active: 2px 2px 0px 0px rgba(0, 0, 0, 1);
 
   /* Theme mapping for Tailwind */
-  --card: rgba(255, 255, 255, 0.03);
-  --card-foreground: rgba(255, 255, 255, 0.95);
-  --primary: #3b82f6;
+  --card: #ffffff;
+  --card-foreground: #141414;
+  --primary: #000000;
   --primary-foreground: #ffffff;
-  --secondary: rgba(255, 255, 255, 0.05);
-  --secondary-foreground: rgba(255, 255, 255, 0.95);
-  --muted: rgba(255, 255, 255, 0.05);
-  --muted-foreground: rgba(255, 255, 255, 0.5);
-  --accent: rgba(59, 130, 246, 0.6);
+  --secondary: #ffffff;
+  --secondary-foreground: #141414;
+  --muted: #f3f4f6;
+  --muted-foreground: #6b7280;
+  --accent: #000000;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
-  --border: rgba(255, 255, 255, 0.1);
-  --input: rgba(255, 255, 255, 0.1);
-  --ring: rgba(59, 130, 246, 0.5);
-  --radius: 0.5rem;
+  --border: #000000;
+  --input: #ffffff;
+  --ring: #000000;
+  --radius: 0px;
+  /* Neubrutalist often uses sharp corners or minimal radius */
 }
 
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -65,16 +66,49 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-  --font-family-sans: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-heading), sans-serif;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-    "Liberation Mono", "Courier New", monospace;
-  font-size: 11px;
-  line-height: 1.6;
+  font-family: var(--font-body), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 16px;
+  /* Increased from 14px */
+  line-height: 1.5;
+}
+
+.font-body {
+  font-family: var(--font-body), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.font-heading {
+  font-family: var(--font-heading), sans-serif !important;
+}
+
+/* Force heading font on all headers and specific classes */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.anton {
+  font-family: var(--font-heading) !important;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+}
+
+/* Neubrutalist utility for text strokes or heavy look */
+.brutal-title {
+  font-family: var(--font-heading);
+  font-size: 4rem;
+  text-transform: uppercase;
+  letter-spacing: -2px;
+  line-height: 0.9;
+  margin-bottom: 1rem;
 }
 
 /* Interactive elements cursor */
@@ -89,77 +123,109 @@ label[for],
   cursor: pointer;
 }
 
-/* Glass card utility */
-.glass-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius);
-  transition: background 0.15s, border-color 0.15s;
+/* Neubrutalist card utility - overriding glass-card for backward compatibility */
+.glass-card,
+.card,
+.neubrutalist-card {
+  background: white !important;
+  border: var(--border-width) solid black !important;
+  box-shadow: var(--hard-shadow) !important;
+  border-radius: 0px !important;
+  transition: transform 0.1s, box-shadow 0.1s;
+  backdrop-filter: none !important;
 }
 
-.glass-card:hover {
-  background: var(--glass-bg-hover);
-  border-color: var(--glass-border-hover);
+.glass-card:hover,
+.card:hover,
+.neubrutalist-card:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: var(--hard-shadow-hover) !important;
 }
 
 /* Button utilities */
 .btn {
-  @apply inline-flex items-center justify-center whitespace-nowrap font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
-  font-size: 11px;
+  @apply inline-flex items-center justify-center whitespace-nowrap font-bold transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
+  font-family: var(--font-sans);
+  border: var(--border-width) solid black;
+  border-radius: 0px;
+  text-transform: uppercase;
 }
 
 .btn-primary {
-  background: var(--background);
-  /* Dark background as requested */
+  background: black;
   color: white;
-  border: 3px double var(--accent-primary-solid);
-  @apply rounded-md px-4 py-1.5 hover:bg-[var(--glass-bg-hover)] transition-all;
-  font-weight: 600;
-  letter-spacing: 0.025em;
-  text-transform: uppercase;
+  box-shadow: var(--hard-shadow);
+  @apply px-6 py-3;
+}
+
+.btn-primary:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: var(--hard-shadow-hover);
+}
+
+.btn-primary:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--hard-shadow-active);
 }
 
 .btn-outline {
-  background: var(--background);
-  border: 3px double var(--glass-border-hover);
-  color: var(--text-primary);
-  @apply rounded-md px-4 py-1.5 hover:bg-[var(--glass-bg-hover)] transition-all;
-  text-transform: uppercase;
-  font-weight: 600;
+  background: white;
+  color: black;
+  box-shadow: var(--hard-shadow);
+  @apply px-6 py-3;
+}
+
+.btn-outline:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: var(--hard-shadow-hover);
+}
+
+.btn-outline:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--hard-shadow-active);
 }
 
 /* Input styling */
 input,
 textarea,
 select {
-  background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  padding: 6px 8px;
-  font-family: inherit;
-  font-size: 11px;
-  color: var(--text-primary);
+  background: white;
+  border: var(--border-width) solid black;
+  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 16px;
+  color: black;
   outline: none;
-  transition: border-color 0.15s;
-  border-radius: var(--radius);
+  box-shadow: var(--hard-shadow);
+  border-radius: 0px;
 }
 
 input:focus,
 textarea:focus,
 select:focus {
-  border-color: rgba(255, 255, 255, 0.5);
+  transform: translate(-2px, -2px);
+  box-shadow: var(--hard-shadow-hover);
 }
 
 input::placeholder,
 textarea::placeholder {
-  color: var(--text-tertiary);
+  color: #999;
 }
 
-a {
-  color: var(--accent-primary-solid);
+/* Neubrutalist Links (ahfers) */
+a:not(.btn) {
+  color: black;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+  font-weight: 700;
+  transition: all 0.1s;
 }
 
-a:hover {
-  color: rgba(59, 130, 246, 0.8);
+a:not(.btn):hover {
+  background: black;
+  color: white;
+  text-decoration: none;
 }
 
 /* SovAds banner sizing */
@@ -170,4 +236,6 @@ a:hover {
   width: 100% !important;
   height: auto !important;
   box-sizing: border-box;
+  border: var(--border-width) solid var(--accent-primary);
+  box-shadow: var(--hard-shadow);
 }

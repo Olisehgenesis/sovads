@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAccount } from 'wagmi'
+import Link from 'next/link'
 import WalletButton from '@/components/WalletButton'
 
 interface ViewerPoints {
@@ -128,13 +129,13 @@ export default function RewardsPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-6">
-      <h1 className="text-base font-bold text-[var(--text-primary)] mb-6 uppercase tracking-wider">SOV Points Rewards</h1>
+    <div className="max-w-4xl mx-auto px-4 py-12">
+      <h1 className="text-3xl font-heading mb-8 uppercase tracking-tighter">My Rewards</h1>
 
       {!isConnected && (
-        <div className="glass-card rounded-lg p-4 mb-4">
-          <h2 className="text-sm font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Connect Your Wallet</h2>
-          <p className="text-[var(--text-secondary)] text-[11px] mb-4">
+        <div className="card p-8 mb-8 bg-[#F5F3F0]">
+          <h2 className="text-xl font-heading mb-4 uppercase tracking-wider">Connect Your Wallet</h2>
+          <p className="text-black font-bold text-xs mb-6 uppercase">
             Connect your wallet to claim SOV tokens. You can still earn points anonymously, but you'll need to connect to claim them.
           </p>
           <WalletButton className="w-full" />
@@ -142,47 +143,47 @@ export default function RewardsPage() {
       )}
 
       {loading ? (
-        <div className="glass-card rounded-lg p-4">
-          <p className="text-[var(--text-secondary)] text-[11px]">Loading your points...</p>
+        <div className="card p-8 text-center">
+          <p className="font-bold text-xs uppercase animate-pulse">Syncing with SovNodes...</p>
         </div>
       ) : points ? (
-        <div className="space-y-6">
+        <div className="space-y-8">
           {/* Points Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
-            <div className="glass-card rounded-lg p-4">
-              <div className="text-lg font-bold text-[var(--text-primary)]">{points.totalPoints.toLocaleString()}</div>
-              <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Total Points Earned</div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="card p-6">
+              <div className="text-3xl font-heading">{points.totalPoints.toLocaleString()}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mt-2">Total Points</div>
             </div>
-            <div className="glass-card rounded-lg p-4">
-              <div className="text-lg font-bold text-[var(--accent-primary-solid)]">{points.pendingPoints.toLocaleString()}</div>
-              <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Available to Claim</div>
+            <div className="card p-6 bg-[#F5F3F0]">
+              <div className="text-3xl font-heading text-black">{points.pendingPoints.toLocaleString()}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mt-2">Available</div>
             </div>
-            <div className="glass-card rounded-lg p-4">
-              <div className="text-lg font-bold text-blue-500">{points.claimedPoints.toLocaleString()}</div>
-              <div className="text-[var(--text-secondary)] text-[10px] uppercase tracking-tight">Points Claimed</div>
+            <div className="card p-6">
+              <div className="text-3xl font-heading text-black/40">{points.claimedPoints.toLocaleString()}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mt-2">Claimed</div>
             </div>
           </div>
 
           {/* Claim Section */}
-          <div className="glass-card rounded-lg p-4 mb-6">
-            <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">Claim Your Points</h2>
+          <div className="card p-8">
+            <h2 className="text-sm font-heading mb-6 uppercase tracking-widest">Claim Your Points</h2>
 
             {points.pendingPoints > 0 ? (
-              <div className="space-y-4">
-                <p className="text-[var(--text-secondary)] text-[11px]">
-                  You have <span className="font-semibold text-[var(--text-primary)]">{points.pendingPoints.toLocaleString()}</span> SOV points available to claim.
+              <div className="space-y-6">
+                <p className="text-sm font-bold uppercase">
+                  You have <span className="bg-black text-white px-2 py-1">{points.pendingPoints.toLocaleString()}</span> points ready for conversion.
                 </p>
 
                 {!isConnected && (
-                  <div className="bg-yellow-500/20 border border-yellow-500/50 rounded-md p-3 text-yellow-700 dark:text-yellow-400 text-sm">
-                    ⚠️ Connect your wallet to claim your points as SOV tokens.
+                  <div className="border-2 border-black bg-yellow-100 p-4 text-xs font-bold uppercase">
+                    ⚠️ Wallet connection required for on-chain claiming.
                   </div>
                 )}
 
                 {message && (
-                  <div className={`rounded-md p-3 text-sm ${message.type === 'success'
-                    ? 'bg-green-500/20 border border-green-500/50 text-green-700 dark:text-green-400'
-                    : 'bg-red-500/20 border border-red-500/50 text-red-700 dark:text-red-400'
+                  <div className={`p-4 border-2 border-black font-bold text-xs uppercase ${message.type === 'success'
+                    ? 'bg-green-100 text-green-800'
+                    : 'bg-red-100 text-red-800'
                     }`}>
                     {message.text}
                   </div>
@@ -191,49 +192,50 @@ export default function RewardsPage() {
                 <button
                   onClick={claimPoints}
                   disabled={claiming || !isConnected || points.pendingPoints === 0}
-                  className="w-full btn btn-primary px-4 py-1.5"
+                  className="w-full btn btn-primary py-4 text-sm"
                 >
-                  {claiming ? 'Claiming...' : `Claim ${points.pendingPoints.toLocaleString()} SOV Points`}
+                  {claiming ? '...' : `Claim ${points.pendingPoints.toLocaleString()} SOV Points`}
                 </button>
               </div>
             ) : (
-              <p className="text-[var(--text-secondary)]">
-                No points available to claim. Interact with ads to earn SOV points!
+              <p className="text-xs font-bold uppercase text-black/50 italic">
+                No points available. Start viewing ads to earn.
               </p>
             )}
           </div>
 
           {/* How It Works */}
-          <div className="glass-card rounded-lg p-4 mb-6">
-            <h2 className="text-xs font-semibold text-[var(--text-primary)] mb-3 uppercase tracking-wider">How It Works</h2>
-            <div className="space-y-3 text-[var(--text-secondary)] text-[11px]">
-              <div className="flex items-start gap-3">
-                <span className="text-primary font-bold">1.</span>
+          <div className="card p-8 bg-white border-dashed">
+            <h2 className="text-sm font-heading mb-6 uppercase tracking-widest">How It Works</h2>
+            <div className="space-y-6">
+              <div className="flex items-start gap-4">
+                <span className="bg-black text-white w-6 h-6 flex items-center justify-center font-heading text-xs">1</span>
                 <div>
-                  <p className="font-medium text-[var(--text-primary)]">View Ads</p>
-                  <p>Earn 1 SOV point for each ad impression</p>
+                  <p className="font-heading text-sm uppercase">View Ads</p>
+                  <p className="text-[10px] font-bold uppercase text-black/60">Earn 1 SOV point per impression</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3">
-                <span className="text-primary font-bold">2.</span>
+              <div className="flex items-start gap-4">
+                <span className="bg-black text-white w-6 h-6 flex items-center justify-center font-heading text-xs">2</span>
                 <div>
-                  <p className="font-medium text-[var(--text-primary)]">Click Ads</p>
-                  <p>Earn 5 SOV points for each ad click</p>
+                  <p className="font-heading text-sm uppercase">Click Ads</p>
+                  <p className="text-[10px] font-bold uppercase text-black/60">Earn 5 SOV points per click</p>
                 </div>
               </div>
-              <div className="flex items-start gap-3">
-                <span className="text-primary font-bold">3.</span>
+              <div className="flex items-start gap-4">
+                <span className="bg-black text-white w-6 h-6 flex items-center justify-center font-heading text-xs">3</span>
                 <div>
-                  <p className="font-medium text-[var(--text-primary)]">Claim Anytime</p>
-                  <p>Connect your wallet and claim your SOV tokens whenever you want</p>
+                  <p className="font-heading text-sm uppercase">Claim Anytime</p>
+                  <p className="text-[10px] font-bold uppercase text-black/60">Convert points to SOV tokens on-chain</p>
                 </div>
               </div>
             </div>
           </div>
         </div>
       ) : (
-        <div className="glass-card rounded-lg p-4">
-          <p className="text-[var(--text-secondary)] text-[11px] uppercase">Start interacting with ads to earn SOV points!</p>
+        <div className="card p-12 text-center">
+          <p className="font-heading text-lg uppercase mb-4">You have 0 points</p>
+          <Link href="/" className="btn btn-outline inline-block">Start Viewing Ads</Link>
         </div>
       )}
     </div>

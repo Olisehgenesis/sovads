@@ -80,11 +80,11 @@ export default function WalletButton({ className = '', onConnect, onDisconnect }
     allowFailure: true,
     contracts: address
       ? tokensToShow.map((token) => ({
-          address: token.address as `0x${string}`,
-          abi: ERC20_BALANCE_OF_ABI,
-          functionName: 'balanceOf',
-          args: [address as `0x${string}`],
-        }))
+        address: token.address as `0x${string}`,
+        abi: ERC20_BALANCE_OF_ABI,
+        functionName: 'balanceOf',
+        args: [address as `0x${string}`],
+      }))
       : [],
     query: {
       enabled: Boolean(address && showBalances),
@@ -103,51 +103,51 @@ export default function WalletButton({ className = '', onConnect, onDisconnect }
       <div className={`flex items-center space-x-2 ${className}`}>
         <button
           onClick={() => setShowBalances(true)}
-          className="px-2 py-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-[11px] rounded-md hover:bg-[var(--glass-bg-hover)] hover:border-[var(--glass-border-hover)] transition-colors"
+          className="btn btn-outline px-3 py-1 text-xs"
           title="Open wallet balances"
         >
           {address.slice(0, 6)}...{address.slice(-4)}
         </button>
         <button
           onClick={handleDisconnect}
-          className="px-2 py-1 bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--text-primary)] text-[11px] rounded-md hover:bg-[var(--glass-bg-hover)] hover:border-[var(--glass-border-hover)] transition-colors"
+          className="btn btn-primary px-3 py-1 text-xs"
         >
           Disconnect
         </button>
 
         {showBalances && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/50" onClick={() => setShowBalances(false)} />
-            <div className="relative z-10 w-full max-w-sm rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] backdrop-blur-xl p-4">
-              <div className="flex items-center justify-between mb-3">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setShowBalances(false)} />
+            <div className="relative z-10 w-full max-w-sm border-2 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6">
+              <div className="flex items-center justify-between mb-4 border-b-2 border-black pb-2">
                 <div>
-                  <h3 className="text-sm font-semibold text-[var(--text-primary)]">Wallet Balances</h3>
-                  <p className="text-[10px] text-[var(--text-secondary)]">
-                    {address.slice(0, 6)}...{address.slice(-4)}
+                  <h3 className="text-lg font-heading uppercase text-black">Wallet</h3>
+                  <p className="font-mono text-[10px] text-gray-600">
+                    {address}
                   </p>
                 </div>
                 <button
                   onClick={() => setShowBalances(false)}
-                  className="px-2 py-1 text-[11px] rounded-md border border-[var(--glass-border)] hover:bg-[var(--glass-bg-hover)]"
+                  className="btn btn-outline px-2 py-1 text-[10px]"
                 >
                   Close
                 </button>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-3">
                 {tokensToShow.map((token, index) => {
                   const raw = balancesData?.[index]?.result as bigint | undefined
                   const amount = raw !== undefined ? formatBalance(raw, token.decimals) : '0'
                   return (
                     <div
                       key={token.symbol}
-                      className="flex items-center justify-between rounded-md border border-[var(--glass-border)] px-3 py-2"
+                      className="flex items-center justify-between border-2 border-black bg-[#F5F3F0] px-4 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
                     >
                       <div>
-                        <div className="text-xs font-medium text-[var(--text-primary)]">{token.symbol}</div>
-                        <div className="text-[10px] text-[var(--text-secondary)]">{token.name}</div>
+                        <div className="text-xs font-bold text-black">{token.symbol}</div>
+                        <div className="text-[10px] uppercase text-gray-600 font-heading">{token.name}</div>
                       </div>
-                      <div className="text-xs font-semibold text-[var(--text-primary)]">
+                      <div className="text-sm font-bold text-black">
                         {balancesLoading ? '...' : amount}
                       </div>
                     </div>

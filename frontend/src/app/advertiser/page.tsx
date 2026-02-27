@@ -168,9 +168,9 @@ export default function AdvertiserDashboard() {
 
   return (
     <div className="min-h-screen bg-transparent">
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-base font-bold uppercase tracking-wider">Advertiser Dashboard</h1>
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <h1 className="text-2xl font-heading uppercase tracking-wider">Advertiser</h1>
           {isConnected ? (
             <Link href="/create-campaign" className="btn btn-primary">
               Create Campaign
@@ -178,31 +178,31 @@ export default function AdvertiserDashboard() {
           ) : null}
         </div>
 
-        <div className="glass-card rounded-xl p-4 mb-6">
-          <h2 className="text-xs font-semibold mb-3 uppercase tracking-wider">Preview Live Banner Placement</h2>
-          <BannerAd className="min-h-[120px] rounded-lg border border-dashed border-[var(--glass-border)]" />
+        <div className="card p-6 mb-8">
+          <h2 className="text-sm font-heading mb-4 uppercase tracking-wider">Preview Live Banner</h2>
+          <BannerAd className="min-h-[100px] border-2 border-dashed border-black" />
         </div>
 
         {!isConnected ? (
-          <div className="glass-card rounded-xl p-6 text-center">
-            <h2 className="text-sm font-semibold mb-3 uppercase tracking-wider">Connect Your Wallet</h2>
-            <p className="text-[var(--text-secondary)] text-[11px] mb-4">Connect your wallet to create and manage advertising campaigns</p>
+          <div className="card p-8 text-center bg-[#F5F3F0]">
+            <h2 className="text-xl font-heading mb-4 uppercase tracking-wider">Connect Wallet</h2>
+            <p className="text-black font-bold text-xs mb-6 uppercase">Manage your advertising campaigns</p>
             <WalletButton />
           </div>
         ) : (
           <div className="space-y-8">
             {/* Campaigns List */}
-            <div className="glass-card rounded-xl p-4">
-              <h2 className="text-xs font-semibold mb-3 uppercase tracking-wider">Your Campaigns</h2>
+            <div className="card p-6">
+              <h2 className="text-sm font-heading mb-6 uppercase tracking-wider">Your Campaigns</h2>
               <div className="space-y-4">
                 {campaigns.length === 0 ? (
                   <div className="text-[var(--text-tertiary)] text-[11px]">No campaigns yet. Create your first campaign.</div>
                 ) : campaigns.map((campaign) => (
                   <div
                     key={campaign.id}
-                    className={`border rounded-lg p-4 cursor-pointer transition-colors ${selectedCampaign?.id === campaign.id
-                      ? 'border-primary bg-secondary'
-                      : 'border-[var(--glass-border)] hover:border-[var(--glass-border-hover)]'
+                    className={`border-2 border-black p-5 cursor-pointer transition-all hover:translate-x-1 hover:translate-y-1 ${selectedCampaign?.id === campaign.id
+                      ? 'bg-[#F5F3F0] shadow-sm'
+                      : 'bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                       }`}
                     onClick={() => {
                       setSelectedCampaign(campaign)
@@ -238,8 +238,8 @@ export default function AdvertiserDashboard() {
                             )
                           })()}
                         </div>
-                        <div className="mt-1.5 text-[10px] text-[var(--text-tertiary)] uppercase">
-                          Media: {campaign.mediaType === 'video' ? 'Video' : 'Image / GIF'} | ID: {campaign.onChainId ?? 'Syncing...'}
+                        <div className="mt-2 text-[10px] font-bold text-black uppercase">
+                          Media: {campaign.mediaType === 'video' ? 'Video' : 'Image'} | ID: {campaign.onChainId ?? '...'}
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-3">
@@ -300,31 +300,28 @@ export default function AdvertiserDashboard() {
 
                         {/* Mode Panels */}
                         {(extendingCampaignId === campaign.id) && (
-                          <div className="mt-4 p-4 bg-secondary border border-primary/20 rounded-lg animate-in fade-in slide-in-from-top-2" onClick={(e) => e.stopPropagation()}>
-                            {/** Inline fund panel removed in favor of modal */}
-
+                          <div className="mt-4 p-4 border-2 border-black bg-[#F5F3F0] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]" onClick={(e) => e.stopPropagation()}>
                             {extendingCampaignId === campaign.id && (
                               <div className="flex items-center gap-3">
                                 <input
                                   type="number"
                                   value={extendAmount}
                                   onChange={(e) => setExtendAmount(e.target.value)}
-                                  placeholder="Additional Days"
-                                  className="flex-1 bg-input border border-border rounded-md px-3 py-2 text-xs"
+                                  placeholder="Days"
                                   autoFocus
                                 />
                                 <button
                                   onClick={() => handleExtendDuration(campaign)}
                                   disabled={isProcessing || !extendAmount}
-                                  className="btn btn-primary px-6"
+                                  className="btn btn-primary text-xs"
                                 >
-                                  {isProcessing ? 'Extending...' : 'Extend'}
+                                  {isProcessing ? '...' : 'Extend'}
                                 </button>
                               </div>
                             )}
 
-                            {msgError && <div className="mt-2 text-[10px] text-destructive px-1">{msgError}</div>}
-                            {msgSuccess && <div className="mt-2 text-[10px] text-[var(--accent-primary-solid)] px-1">{msgSuccess}</div>}
+                            {msgError && <div className="mt-2 text-[10px] font-bold text-red-600 uppercase">{msgError}</div>}
+                            {msgSuccess && <div className="mt-2 text-[10px] font-bold text-green-600 uppercase">{msgSuccess}</div>}
                           </div>
                         )}
                       </div>
@@ -336,15 +333,15 @@ export default function AdvertiserDashboard() {
 
             {/* Campaign Stats */}
             {selectedCampaign && (
-              <div className="glass-card rounded-xl p-4">
-                <h2 className="text-xs font-semibold mb-3 uppercase tracking-wider">
-                  Campaign Stats: {selectedCampaign.name}
+              <div className="card p-6">
+                <h2 className="text-sm font-heading mb-6 uppercase tracking-wider">
+                  Stats: {selectedCampaign.name}
                 </h2>
-                <div className="mb-6">
+                <div className="mb-8 border-4 border-black bg-white overflow-hidden shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
                   {selectedCampaign.mediaType === 'video' ? (
                     <video
                       src={selectedCampaign.bannerUrl}
-                      className="w-full max-h-64 rounded-lg border border-[var(--glass-border)]"
+                      className="w-full aspect-video object-contain bg-black"
                       controls
                       playsInline
                       muted
@@ -353,26 +350,26 @@ export default function AdvertiserDashboard() {
                     <img
                       src={selectedCampaign.bannerUrl}
                       alt={selectedCampaign.description}
-                      className="w-full max-h-64 object-contain rounded-lg border border-[var(--glass-border)]"
+                      className="w-full aspect-video object-contain bg-black"
                     />
                   )}
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  <div className="glass-card rounded-lg p-3 text-center">
-                    <div className="text-lg font-bold">{campaignStats.impressions.toLocaleString()}</div>
-                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">Impressions</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="card p-4 text-center">
+                    <div className="text-2xl font-heading">{campaignStats.impressions.toLocaleString()}</div>
+                    <div className="text-[10px] font-bold uppercase">Impressions</div>
                   </div>
-                  <div className="glass-card rounded-lg p-3 text-center">
-                    <div className="text-lg font-bold">{campaignStats.clicks.toLocaleString()}</div>
-                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">Clicks</div>
+                  <div className="card p-4 text-center">
+                    <div className="text-2xl font-heading">{campaignStats.clicks.toLocaleString()}</div>
+                    <div className="text-[10px] font-bold uppercase">Clicks</div>
                   </div>
-                  <div className="glass-card rounded-lg p-3 text-center">
-                    <div className="text-lg font-bold">{campaignStats.ctr.toFixed(2)}%</div>
-                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase">CTR</div>
+                  <div className="card p-4 text-center">
+                    <div className="text-2xl font-heading">{campaignStats.ctr.toFixed(2)}%</div>
+                    <div className="text-[10px] font-bold uppercase">CTR</div>
                   </div>
-                  <div className="glass-card rounded-lg p-3 text-center">
-                    <div className="text-lg font-bold">{campaignStats.totalSpent.toFixed(6)}</div>
-                    <div className="text-[var(--text-tertiary)] text-[10px] uppercase whitespace-nowrap">
+                  <div className="card p-4 text-center">
+                    <div className="text-2xl font-heading">{campaignStats.totalSpent.toFixed(4)}</div>
+                    <div className="text-[10px] font-bold uppercase whitespace-nowrap">
                       Spent ({getTokenSymbol(selectedCampaign.tokenAddress)})
                     </div>
                   </div>

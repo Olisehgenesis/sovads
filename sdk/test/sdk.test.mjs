@@ -27,7 +27,7 @@ Object.defineProperty(globalThis, 'btoa', {
   configurable: true,
 })
 
-const { SovAds } = await import('../dist/index.js')
+const { SovAds, BottomBar } = await import('../dist/index.js')
 
 test('normalizeUrl adds protocol for localhost', () => {
   const sdk = new SovAds({ apiUrl: 'http://localhost:3000' })
@@ -37,4 +37,12 @@ test('normalizeUrl adds protocol for localhost', () => {
 test('normalizeUrl keeps valid https URL', () => {
   const sdk = new SovAds({ apiUrl: 'http://localhost:3000' })
   assert.equal(sdk.normalizeUrl('https://example.com/ad'), 'https://example.com/ad')
+})
+
+test('BottomBar class exists and can be instantiated', () => {
+  const sdk = new SovAds({ apiUrl: 'http://localhost:3000' })
+  // eslint-disable-next-line no-new
+  new BottomBar(sdk)
+  assert.equal(typeof BottomBar.prototype.show, 'function')
+  assert.equal(typeof BottomBar.prototype.hide, 'function')
 })
