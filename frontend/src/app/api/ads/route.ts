@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
         mediaType: 'image' as const,
         isDummy: true,
       }
-      
+
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
         mediaType: 'image' as const,
         isDummy: true,
       }
-      
+
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
@@ -126,6 +126,29 @@ export async function GET(request: NextRequest) {
 
     // Check if publisher exists (already handled temp_ above, so this is for other cases)
     if (!publisher && !publisherSite) {
+      if (process.env.NODE_ENV === 'development') {
+        const dummyAd = {
+          id: 'dummy_ad_development',
+          campaignId: 'dummy_campaign',
+          name: 'Development Mode Ad',
+          description: 'This is a placeholder ad shown because no matching publisher site was found in the database.',
+          bannerUrl: 'https://sovseas.xyz/logo.png',
+          targetUrl: 'https://ads.sovseas.xyz',
+          cpc: '0',
+          tags: ['development', 'sovads'],
+          targetLocations: [],
+          metadata: {
+            message: 'Publisher not found. Showing development dummy ad.',
+            isDevelopment: true,
+            isDummy: true,
+          },
+          startDate: null,
+          endDate: null,
+          mediaType: 'image' as const,
+          isDummy: true,
+        }
+        return NextResponse.json(dummyAd, { headers: corsHeaders })
+      }
       return NextResponse.json({ error: 'Publisher not found or not verified' }, { status: 404, headers: corsHeaders })
     }
 
@@ -150,7 +173,7 @@ export async function GET(request: NextRequest) {
         mediaType: 'image' as const,
         isDummy: true,
       }
-      
+
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
@@ -215,7 +238,7 @@ export async function GET(request: NextRequest) {
         mediaType: 'image' as const,
         isDummy: true,
       }
-      
+
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
@@ -253,7 +276,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error('Error fetching ad:', error)
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    return NextResponse.json({ 
+    return NextResponse.json({
       error: 'Internal server error',
       details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
     }, { status: 500, headers: corsHeaders })
