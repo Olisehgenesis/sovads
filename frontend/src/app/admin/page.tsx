@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useAds } from '@/hooks/useAds'
+import { useAccount } from 'wagmi'
 import { GLOBAL_TREASURY_CAMPAIGN_ID } from '@/lib/sovadgs'
 import { CELO_TOKENS } from '@/lib/tokens'
 
@@ -13,6 +14,7 @@ interface SystemStats {
 }
 
 export default function AdminDashboard() {
+  const { address } = useAccount()
   const { topUpCampaign, isLoading: contractLoading } = useAds()
   const [systemStats, setSystemStats] = useState<SystemStats>({
     totalAds: 0,
@@ -24,12 +26,21 @@ export default function AdminDashboard() {
   const [treasuryAmount, setTreasuryAmount] = useState('')
   const [isToppingUp, setIsToppingUp] = useState(false)
 
+  const [pendingCampaigns, setPendingCampaigns] = useState<any[]>([])
+  const [isVerifying, setIsVerifying] = useState<string | null>(null)
+
   // Find G$ token address from configuration
   const gsTokenAddress = Object.values(CELO_TOKENS).find(t => t.symbol === 'G$')?.address || ''
 
   useEffect(() => {
     loadData()
   }, [])
+
+  useEffect(() => {
+    if (address) {
+      loadPendingCampaigns()
+    }
+  }, [address])
 
   const loadData = async () => {
     try {
@@ -48,6 +59,45 @@ export default function AdminDashboard() {
     } catch (error) {
       console.error('Error loading admin data:', error)
       setIsLoading(false)
+    }
+  }
+
+  const loadPendingCampaigns = async () => {
+    if (!address) return
+    try {
+      const response = await fetch(`/api/admin/campaigns/pending?adminWallet=${address}`)
+      if (response.ok) {
+        const data = await response.json()
+        setPendingCampaigns(data.campaigns || [])
+      }
+    } catch (error) {
+      console.error('Error loading pending campaigns:', error)
+    }
+  }
+
+  const handleVerifyCampaign = async (campaignId: string, status: 'approved' | 'rejected') => {
+    if (!address) return
+    setIsVerifying(campaignId)
+    try {
+      const response = await fetch('/api/admin/campaigns/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ campaignId, status, adminWallet: address })
+      })
+
+      if (response.ok) {
+        alert(`Campaign ${status} successfully`)
+        loadPendingCampaigns()
+        loadData() // Refresh stats
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to verify: ${errorData.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error verifying campaign:', error)
+      alert('Error verifying campaign')
+    } finally {
+      setIsVerifying(null)
     }
   }
 
@@ -174,6 +224,73 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+
+        {/* Ad Verification Management */}
+        {address && (
+          <div className="glass-card rounded-lg p-6 mb-6">
+            <h2 className="text-sm font-bold text-[var(--accent-primary-solid)] mb-4 uppercase tracking-widest border-b border-[var(--glass-border)] pb-2 flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></span>
+              Campaign Approvals ({pendingCampaigns.length})
+            </h2>
+
+            {pendingCampaigns.length === 0 ? (
+              <p className="text-[10px] text-[var(--text-tertiary)] uppercase text-center py-8 bg-[var(--glass-bg-subtle)] rounded border border-dashed border-[var(--glass-border)]">
+                No campaigns pending verification
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-[var(--glass-border)] text-[10px] uppercase text-[var(--text-secondary)] tracking-tighter">
+                      <th className="py-2 px-2 font-medium">Campaign</th>
+                      <th className="py-2 px-2 font-medium">Advertiser</th>
+                      <th className="py-2 px-2 font-medium text-right">Budget</th>
+                      <th className="py-2 px-2 font-medium text-center">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pendingCampaigns.map((camp) => (
+                      <tr key={camp.id} className="border-b border-[var(--glass-border)] hover:bg-[var(--glass-bg-hover)] transition-colors group">
+                        <td className="py-3 px-2">
+                          <div className="flex flex-col">
+                            <span className="text-[11px] font-bold text-[var(--text-primary)] mb-0.5">{camp.name}</span>
+                            <span className="text-[9px] text-[var(--text-tertiary)] truncate max-w-[200px]">{camp.bannerUrl}</span>
+                          </div>
+                        </td>
+                        <td className="py-3 px-2">
+                          <span className="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--glass-bg-subtle)] px-2 py-0.5 rounded">
+                            {camp.advertiserWallet.slice(0, 6)}...{camp.advertiserWallet.slice(-4)}
+                          </span>
+                        </td>
+                        <td className="py-3 px-2 text-right">
+                          <span className="text-[11px] font-bold text-[var(--accent-primary-solid)]">{camp.budget} G$</span>
+                        </td>
+                        <td className="py-3 px-2">
+                          <div className="flex justify-center gap-2">
+                            <button
+                              onClick={() => handleVerifyCampaign(camp.id, 'approved')}
+                              disabled={isVerifying === camp.id}
+                              className="px-3 py-1 bg-green-500/20 hover:bg-green-500/40 text-green-400 text-[9px] font-bold uppercase rounded border border-green-500/30 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                              {isVerifying === camp.id ? '...' : 'Approve'}
+                            </button>
+                            <button
+                              onClick={() => handleVerifyCampaign(camp.id, 'rejected')}
+                              disabled={isVerifying === camp.id}
+                              className="px-3 py-1 bg-red-500/20 hover:bg-red-500/40 text-red-400 text-[9px] font-bold uppercase rounded border border-red-500/30 transition-all active:scale-95 disabled:opacity-50"
+                            >
+                              {isVerifying === camp.id ? '...' : 'Reject'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Recent Activity */}
         <div className="glass-card rounded-lg p-4">

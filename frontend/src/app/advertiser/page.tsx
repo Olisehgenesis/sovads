@@ -28,6 +28,7 @@ interface Campaign {
   metadata?: Record<string, unknown>
   startDate?: string | null
   endDate?: string | null
+  verificationStatus?: 'pending' | 'approved' | 'rejected'
 }
 
 interface CampaignStats {
@@ -234,6 +235,11 @@ export default function AdvertiserDashboard() {
                                 <span className={campaign.active && !campaign.paused ? 'text-[var(--accent-primary-solid)]' : 'text-red-500'}>
                                   {campaign.active ? (campaign.paused ? 'Paused' : 'Active') : 'Inactive'}
                                 </span>
+                                {campaign.verificationStatus && campaign.verificationStatus !== 'approved' && (
+                                  <span className={`font-bold ${campaign.verificationStatus === 'pending' ? 'text-yellow-500' : 'text-red-600'}`}>
+                                    • {campaign.verificationStatus.toUpperCase()}
+                                  </span>
+                                )}
                               </>
                             )
                           })()}

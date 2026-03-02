@@ -134,11 +134,12 @@ export async function POST(request: NextRequest) {
       startDate: startDateValue,
       endDate: endDateValue,
       mediaType,
+      verificationStatus: 'pending',
       createdAt: now,
       updatedAt: now,
     }
 
-    await campaignsCollection.insertOne(campaignDoc)
+    await campaignsCollection.insertOne(campaignDoc as any)
 
     return NextResponse.json(
       {

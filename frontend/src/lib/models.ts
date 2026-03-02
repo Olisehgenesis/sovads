@@ -97,6 +97,7 @@ export interface Campaign {
   tags: string[]
   targetLocations: string[]
   metadata?: Record<string, unknown>
+  verificationStatus?: 'pending' | 'approved' | 'rejected'
   startDate?: Date
   endDate?: Date
   createdAt: Date

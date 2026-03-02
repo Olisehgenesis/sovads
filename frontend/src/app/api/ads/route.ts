@@ -178,9 +178,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(dummyAd, { headers: corsHeaders })
     }
 
-    // Get active campaigns with budget remaining
+    // Get active campaigns with budget remaining and approved verification status
     const candidatesCursor = campaignsCollection
-      .find({ active: true })
+      .find({
+        active: true,
+        $or: [
+          { verificationStatus: 'approved' },
+          { verificationStatus: { $exists: false } } // Handle legacy ads
+        ]
+      })
       .sort({ createdAt: -1 })
       .limit(50)
 

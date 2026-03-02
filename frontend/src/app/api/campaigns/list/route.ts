@@ -42,6 +42,7 @@ export async function GET(request: NextRequest) {
         endDate: campaign.endDate ?? null,
         mediaType: campaign.mediaType ?? 'image',
         onChainId: campaign.onChainId ?? undefined,
+        verificationStatus: campaign.verificationStatus ?? 'approved', // Legacy ads are approved
       }))
       .toArray()
 
