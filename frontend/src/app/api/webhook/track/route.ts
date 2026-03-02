@@ -36,6 +36,7 @@ type EventPayload = {
   viewportVisible?: boolean
   renderTime?: number
   userAgent?: string
+  walletAddress?: string
 }
 
 const getIp = (request: NextRequest): string =>
@@ -146,10 +147,51 @@ export async function POST(request: NextRequest) {
       rendered,
       viewportVisible,
       userAgent: payloadUserAgent,
+      walletAddress: payloadWallet,
     } = eventPayload
 
     if (!type || !campaignId || !adId || !siteId) {
       return NextResponse.json({ error: 'Missing required event fields' }, { status: 400 })
+    }
+
+    // Resolve Identity
+    const explicitWallet = payloadWallet || tokenClaims?.walletAddress
+    let attributedWallet = explicitWallet
+    const viewerPointsCollection = await collections.viewerPoints()
+
+    if (!attributedWallet && fingerprint) {
+      // Fallback: Check if device is linked to a wallet
+      const mapping = await viewerPointsCollection.findOne({
+        fingerprint: fingerprint as string,
+        wallet: { $ne: null }
+      })
+      if (mapping) {
+        attributedWallet = mapping.wallet as string
+      }
+    }
+
+    // Security: Linkage Cooldown and Limits
+    if (explicitWallet && fingerprint) {
+      const existingMapping = await viewerPointsCollection.findOne({
+        fingerprint: fingerprint as string,
+        wallet: { $ne: null }
+      })
+      const nowTs = new Date()
+
+      if (existingMapping && existingMapping.wallet !== explicitWallet) {
+        const cooldownMs = 13 * 60 * 60 * 1000 // 13 hours
+        const lastChange = existingMapping.lastWalletChange ? new Date(existingMapping.lastWalletChange).getTime() : 0
+        if (nowTs.getTime() - lastChange < cooldownMs) {
+          // Block rotating wallets too fast on one device
+          return NextResponse.json({ error: 'Device linkage cooldown in effect' }, { status: 403 })
+        }
+      }
+
+      // Check wallet device quota (max 10)
+      const linkedDevicesCount = await viewerPointsCollection.countDocuments({ wallet: explicitWallet })
+      if (linkedDevicesCount >= 10 && (!existingMapping || existingMapping.wallet !== explicitWallet)) {
+        return NextResponse.json({ error: 'Wallet device quota exceeded' }, { status: 403 })
+      }
     }
     if (!EVENT_TYPES.includes(type)) {
       return NextResponse.json({ error: 'Invalid event type' }, { status: 400 })
@@ -193,6 +235,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
     }
 
+    // High-Granularity Velocity Limits (Anti-Farming)
+    if (fingerprint) {
+      const perDeviceWindow = type === 'IMPRESSION' ? 60 * 1000 : 24 * 60 * 60 * 1000
+      const maxPerDevice = type === 'IMPRESSION' ? 1 : 100
+      const deviceRecentEvents = await eventsCollection.countDocuments({
+        fingerprint,
+        type,
+        timestamp: { $gte: new Date(Date.now() - perDeviceWindow) }
+      })
+      if (deviceRecentEvents >= maxPerDevice) {
+        return NextResponse.json({ error: `Velocity limit exceeded for this device (${type})` }, { status: 429 })
+      }
+    }
+
     const publisher = await publishersCollection.findOne({ _id: site.publisherId })
     const eventDoc: Event = {
       _id: randomUUID(),
@@ -204,6 +260,7 @@ export async function POST(request: NextRequest) {
       ipAddress: getIp(request),
       userAgent: payloadUserAgent ?? (request.headers.get('user-agent') || 'unknown'),
       ...(fingerprint ? { fingerprint } : {}),
+      viewerWallet: attributedWallet || undefined,
       verified: rendered === true && viewportVisible !== false,
       publisherSiteId: site._id,
       timestamp: new Date(),
@@ -218,39 +275,58 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    ;(async () => {
+    ; (async () => {
       try {
-        if (!fingerprint) return
-        const [viewerPointsCollection, viewerRewardsCollection] = await Promise.all([
+        if (!fingerprint && !attributedWallet) return
+        const [vPointsCollection, viewerRewardsCollection] = await Promise.all([
           collections.viewerPoints(),
           collections.viewerRewards(),
         ])
         const points = type === 'CLICK' ? 5 : 1
         const nowTs = new Date()
-        let viewer = await viewerPointsCollection.findOne({ fingerprint, wallet: null })
+
+        // 1. Update/Create Identity Mapping
+        let viewer = attributedWallet
+          ? await vPointsCollection.findOne({ wallet: attributedWallet as string })
+          : await vPointsCollection.findOne({
+            fingerprint: fingerprint as string,
+            wallet: { $eq: null }
+          } as any)
+
         if (!viewer) {
           viewer = {
             _id: randomUUID(),
-            wallet: null,
-            fingerprint,
+            wallet: attributedWallet || null,
+            fingerprint: fingerprint || 'unknown',
             totalPoints: points,
             claimedPoints: 0,
             pendingPoints: points,
             lastInteraction: nowTs,
+            linkedDevices: fingerprint ? [fingerprint] : [],
             createdAt: nowTs,
             updatedAt: nowTs,
           }
-          await viewerPointsCollection.insertOne(viewer)
+          await vPointsCollection.insertOne(viewer)
         } else {
-          await viewerPointsCollection.updateOne(
-            { _id: viewer._id },
-            { $inc: { totalPoints: points, pendingPoints: points }, $set: { lastInteraction: nowTs, updatedAt: nowTs } }
-          )
+          const update: any = {
+            $inc: { totalPoints: points, pendingPoints: points },
+            $set: { lastInteraction: nowTs, updatedAt: nowTs }
+          }
+
+          if (explicitWallet) {
+            update.$set.wallet = explicitWallet
+            update.$set.lastWalletChange = nowTs
+            update.$addToSet = { linkedDevices: fingerprint }
+          }
+
+          await vPointsCollection.updateOne({ _id: viewer._id }, update)
         }
+
+        // 2. Insert Reward Record
         await viewerRewardsCollection.insertOne({
           _id: randomUUID(),
           viewerId: viewer._id,
-          wallet: undefined,
+          wallet: attributedWallet || undefined,
           fingerprint,
           type,
           campaignId,

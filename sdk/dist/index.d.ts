@@ -10,6 +10,7 @@ export interface SovAdsConfig {
     rotationEnabled?: boolean;
     popupMinIntervalMinutes?: number;
     popupSessionMax?: number;
+    walletAddress?: string;
 }
 export interface AdComponent {
     id: string;
@@ -33,6 +34,7 @@ interface AdLoadOptions {
     consumerId?: string;
     placement?: string;
     size?: string;
+    walletAddress?: string;
 }
 interface SlotConfig {
     placementId?: string;
@@ -46,7 +48,14 @@ declare class SovAds {
     private renderObservers;
     private debugLoggingEnabled;
     private adTrackingTokens;
+    private walletAddress;
     constructor(config?: SovAdsConfig);
+    /**
+     * Identifies the current viewer with a wallet address.
+     * This links the device fingerprint to the wallet on the backend.
+     */
+    identify(walletAddress: string): void;
+    private loadPersistedIdentity;
     private generateFingerprint;
     private detectSiteId;
     /**
@@ -145,6 +154,18 @@ export declare class Popup {
     private renderPopup;
     hide(): void;
 }
+export declare class BottomBar {
+    private sovads;
+    private barElement;
+    private currentAd;
+    private isVisible;
+    private retryCount;
+    private maxRetries;
+    constructor(sovads: SovAds);
+    show(consumerId?: string): Promise<void>;
+    private renderBar;
+    hide(): void;
+}
 export declare class Sidebar {
     private sovads;
     private containerId;
@@ -164,6 +185,5 @@ export declare class Sidebar {
     private setupAutoRefresh;
     destroy(): void;
 }
-export { SovAds };
 export default SovAds;
 //# sourceMappingURL=index.d.ts.map

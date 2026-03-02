@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
     const consumerId = searchParams.get('consumerId')?.trim()
     const placement = searchParams.get('placement')?.trim().toLowerCase()
     const size = searchParams.get('size')?.trim()
+    const wallet = searchParams.get('wallet')?.trim().toLowerCase()
 
     if (!siteId) {
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400, headers: corsHeaders })
@@ -269,6 +270,7 @@ export async function GET(request: NextRequest) {
         exp: Date.now() + 15 * 60 * 1000,
         placement: placement || undefined,
         size: size || undefined,
+        walletAddress: wallet || undefined,
       }),
     }
 

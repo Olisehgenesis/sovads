@@ -7,6 +7,7 @@ class SovAds {
         this.renderObservers = new Map();
         this.debugLoggingEnabled = false;
         this.adTrackingTokens = new Map();
+        this.walletAddress = null;
         this.config = {
             apiUrl: typeof window !== 'undefined' && window.location.hostname === 'localhost'
                 ? 'http://localhost:3000'
@@ -21,8 +22,46 @@ class SovAds {
         };
         this.debugLoggingEnabled = Boolean(this.config.debug);
         this.fingerprint = this.generateFingerprint();
+        // Load persisted wallet address if available
+        this.loadPersistedIdentity();
+        if (this.config.walletAddress) {
+            this.identify(this.config.walletAddress);
+        }
         if (this.config.debug) {
             console.log('SovAds SDK initialized:', this.config);
+        }
+    }
+    /**
+     * Identifies the current viewer with a wallet address.
+     * This links the device fingerprint to the wallet on the backend.
+     */
+    identify(walletAddress) {
+        if (!walletAddress || typeof walletAddress !== 'string')
+            return;
+        this.walletAddress = walletAddress.toLowerCase();
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                localStorage.setItem('sovads_wallet_address', this.walletAddress);
+            }
+        }
+        catch (e) {
+            // Ignore storage errors
+        }
+        if (this.config.debug) {
+            console.log('SovAds Identity set:', this.walletAddress);
+        }
+    }
+    loadPersistedIdentity() {
+        try {
+            if (typeof window !== 'undefined' && window.localStorage) {
+                const saved = localStorage.getItem('sovads_wallet_address');
+                if (saved) {
+                    this.walletAddress = saved.toLowerCase();
+                }
+            }
+        }
+        catch (e) {
+            // Ignore storage errors
         }
     }
     generateFingerprint() {
@@ -303,13 +342,23 @@ class SovAds {
         const startTime = Date.now();
         try {
             const siteId = await this.detectSiteId();
-            const params = new URLSearchParams({
-                siteId,
-                ...(options.consumerId && { consumerId: options.consumerId }),
-                ...(options.placement && { placement: options.placement }),
-                ...(options.size && { size: options.size }),
-            });
-            const endpoint = `${this.config.apiUrl}/api/ads?${params}`;
+            const url = new URL(`${this.config.apiUrl}/api/ads`);
+            url.searchParams.append('siteId', siteId);
+            if (options.consumerId || this.config.consumerId) {
+                url.searchParams.append('consumerId', (options.consumerId || this.config.consumerId));
+            }
+            if (options.placement) {
+                url.searchParams.append('placement', options.placement);
+            }
+            if (options.size) {
+                url.searchParams.append('size', options.size);
+            }
+            // Add wallet address for targeting and attribution
+            const wallet = options.walletAddress || this.walletAddress;
+            if (wallet) {
+                url.searchParams.append('wallet', wallet);
+            }
+            const endpoint = url.toString();
             const response = await this.fetchWithRetry(endpoint);
             const duration = Date.now() - startTime;
             // Log SDK request
@@ -581,6 +630,7 @@ class SovAds {
                 pageUrl: metadata.pageUrl,
                 userAgent: metadata.userAgent,
                 trackingToken: this.adTrackingTokens.get(adId),
+                walletAddress: this.walletAddress || undefined
             };
             if (typeof navigator.sendBeacon === 'function') {
                 const sent = await this.sendTrackingEnvelope(payload, true);
@@ -1340,16 +1390,15 @@ export class Popup {
         this.currentAd = null;
     }
 }
-
 // BottomBar Component
 export class BottomBar {
     constructor(sovads) {
-        this.sovads = sovads;
         this.barElement = null;
         this.currentAd = null;
         this.isVisible = false;
         this.retryCount = 0;
         this.maxRetries = 3;
+        this.sovads = sovads;
     }
     async show(consumerId) {
         if (this.isVisible) {
@@ -1401,18 +1450,46 @@ export class BottomBar {
                 renderTime,
             });
         };
+        // wrapper fixed bottom
         const wrapper = document.createElement('div');
         wrapper.className = 'sovads-bottom-bar';
-        wrapper.style.cssText = "\n      position: fixed;\n      left: 0;\n      bottom: 0;\n      width: 100%;\n      z-index: 10000;\n      display: flex;\n      justify-content: center;\n      background: rgba(255,255,255,0.95);\n      box-shadow: 0 -2px 6px rgba(0,0,0,0.2);\n    ";
+        wrapper.style.cssText = `
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      width: 100%;
+      z-index: 10000;
+      display: flex;
+      justify-content: center;
+      background: rgba(255,255,255,0.95);
+      box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
+    `;
         const bar = document.createElement('div');
-        bar.style.cssText = "\n      max-width: 720px;\n      width: 100%;\n      position: relative;\n      padding: 8px;\n      cursor: pointer;\n    ";
+        bar.style.cssText = `
+      max-width: 720px;
+      width: 100%;
+      position: relative;
+      padding: 8px;
+      cursor: pointer;
+    `;
+        // close button
         const closeBtn = document.createElement('button');
         closeBtn.innerHTML = '×';
-        closeBtn.style.cssText = "\n      position: absolute;\n      right: 8px;\n      top: 8px;\n      background: none;\n      border: none;\n      font-size: 20px;\n      cursor: pointer;\n      color: #666;\n    ";
+        closeBtn.style.cssText = `
+      position: absolute;
+      right: 8px;
+      top: 8px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      color: #666;
+    `;
         closeBtn.addEventListener('click', (e) => {
             e.stopPropagation();
             this.hide();
         });
+        // create media element
         const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image';
         let mediaEl;
         if (mediaType === 'video') {
@@ -1476,7 +1553,6 @@ export class BottomBar {
         this.isVisible = false;
     }
 }
-
 // Sidebar Component
 export class Sidebar {
     constructor(sovads, containerId, slotConfig = {}) {
@@ -1787,8 +1863,6 @@ export class Sidebar {
         }
     }
 }
-// Export main SovAds class
-export { SovAds };
 // Default export for easy importing
 export default SovAds;
 //# sourceMappingURL=index.js.map

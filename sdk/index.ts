@@ -13,6 +13,7 @@ export interface SovAdsConfig {
   rotationEnabled?: boolean // Enable ad rotation (default: true)
   popupMinIntervalMinutes?: number // Minimum interval between popup impressions
   popupSessionMax?: number // Max popup impressions per browser session
+  walletAddress?: string // Optional viewer wallet address
 }
 
 export interface AdComponent {
@@ -48,12 +49,14 @@ interface TrackingPayload {
   pageUrl: string
   userAgent: string
   trackingToken?: string
+  walletAddress?: string
 }
 
 interface AdLoadOptions {
   consumerId?: string
   placement?: string
   size?: string
+  walletAddress?: string
 }
 
 interface SlotConfig {
@@ -69,11 +72,12 @@ class SovAds {
   private renderObservers: Map<string, IntersectionObserver> = new Map()
   private debugLoggingEnabled: boolean = false
   private adTrackingTokens: Map<string, string> = new Map()
+  private walletAddress: string | null = null
 
   constructor(config: SovAdsConfig = {}) {
     this.config = {
-      apiUrl: typeof window !== 'undefined' && window.location.hostname === 'localhost' 
-        ? 'http://localhost:3000' 
+      apiUrl: typeof window !== 'undefined' && window.location.hostname === 'localhost'
+        ? 'http://localhost:3000'
         : 'https://ads.sovseas.xyz',
       debug: false,
       refreshInterval: 0, // No auto-refresh by default
@@ -85,11 +89,53 @@ class SovAds {
     }
 
     this.debugLoggingEnabled = Boolean(this.config.debug)
-    
+
     this.fingerprint = this.generateFingerprint()
-    
+
+    // Load persisted wallet address if available
+    this.loadPersistedIdentity()
+
+    if (this.config.walletAddress) {
+      this.identify(this.config.walletAddress)
+    }
+
     if (this.config.debug) {
       console.log('SovAds SDK initialized:', this.config)
+    }
+  }
+
+  /**
+   * Identifies the current viewer with a wallet address.
+   * This links the device fingerprint to the wallet on the backend.
+   */
+  public identify(walletAddress: string): void {
+    if (!walletAddress || typeof walletAddress !== 'string') return
+
+    this.walletAddress = walletAddress.toLowerCase()
+
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('sovads_wallet_address', this.walletAddress)
+      }
+    } catch (e) {
+      // Ignore storage errors
+    }
+
+    if (this.config.debug) {
+      console.log('SovAds Identity set:', this.walletAddress)
+    }
+  }
+
+  private loadPersistedIdentity(): void {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const saved = localStorage.getItem('sovads_wallet_address')
+        if (saved) {
+          this.walletAddress = saved.toLowerCase()
+        }
+      }
+    } catch (e) {
+      // Ignore storage errors
     }
   }
 
@@ -185,11 +231,11 @@ class SovAds {
         const data = await response.json()
         if (data.siteId) {
           this.siteId = String(data.siteId)
-          
+
           if (this.config.debug) {
             console.log('Site ID detected from API:', this.siteId, data)
           }
-          
+
           return this.siteId
         }
       }
@@ -215,7 +261,7 @@ class SovAds {
       if (this.config.debug) {
         console.error('Error detecting site ID:', error)
       }
-      
+
       // Fallback: generate site ID from domain
       const hostname = window.location.hostname
       const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1'
@@ -247,7 +293,7 @@ class SovAds {
           entries.forEach((entry) => {
             const isVisible = entry.isIntersecting && entry.intersectionRatio > 0.5
             callback(isVisible)
-            
+
             if (this.config.debug) {
               console.log(`Ad ${adId} visibility:`, {
                 isIntersecting: entry.isIntersecting,
@@ -270,12 +316,12 @@ class SovAds {
       if (this.config.debug) {
         console.warn(`IntersectionObserver not supported, using fallback for ad ${adId}`)
       }
-      
+
       const checkVisibility = () => {
         const rect = element.getBoundingClientRect()
         const windowHeight = window.innerHeight || document.documentElement.clientHeight
         const windowWidth = window.innerWidth || document.documentElement.clientWidth
-        
+
         // Check if element is in viewport and at least 50% visible
         const isInViewport = (
           rect.top < windowHeight &&
@@ -283,7 +329,7 @@ class SovAds {
           rect.left < windowWidth &&
           rect.right > 0
         )
-        
+
         if (isInViewport) {
           const visibleHeight = Math.min(rect.bottom, windowHeight) - Math.max(rect.top, 0)
           const visibleWidth = Math.min(rect.right, windowWidth) - Math.max(rect.left, 0)
@@ -291,21 +337,21 @@ class SovAds {
           const totalArea = rect.height * rect.width
           const intersectionRatio = totalArea > 0 ? visibleArea / totalArea : 0
           const isVisible = intersectionRatio >= 0.5
-          
+
           callback(isVisible)
         } else {
           callback(false)
         }
       }
-      
+
       // Check immediately and on scroll/resize
       checkVisibility()
       const scrollHandler = () => checkVisibility()
       const resizeHandler = () => checkVisibility()
-      
+
       window.addEventListener('scroll', scrollHandler, { passive: true })
       window.addEventListener('resize', resizeHandler, { passive: true })
-      
+
       // Store cleanup function
       this.renderObservers.set(adId, {
         disconnect: () => {
@@ -378,7 +424,7 @@ class SovAds {
     maxAttempts: number = 3
   ): Promise<Response> {
     let lastError: Error | null = null
-    
+
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const response = await fetch(url, options)
@@ -397,7 +443,7 @@ class SovAds {
         }
       }
     }
-    
+
     throw lastError || new Error('Fetch failed after retries')
   }
 
@@ -405,18 +451,30 @@ class SovAds {
     const startTime = Date.now()
     try {
       const siteId = await this.detectSiteId()
-      
-      const params = new URLSearchParams({
-        siteId,
-        ...(options.consumerId && { consumerId: options.consumerId }),
-        ...(options.placement && { placement: options.placement }),
-        ...(options.size && { size: options.size }),
-      })
 
-      const endpoint = `${this.config.apiUrl}/api/ads?${params}`
+      const url = new URL(`${this.config.apiUrl}/api/ads`)
+      url.searchParams.append('siteId', siteId)
+
+      if (options.consumerId || this.config.consumerId) {
+        url.searchParams.append('consumerId', (options.consumerId || this.config.consumerId) as string)
+      }
+      if (options.placement) {
+        url.searchParams.append('placement', options.placement)
+      }
+      if (options.size) {
+        url.searchParams.append('size', options.size)
+      }
+
+      // Add wallet address for targeting and attribution
+      const wallet = options.walletAddress || this.walletAddress
+      if (wallet) {
+        url.searchParams.append('wallet', wallet)
+      }
+
+      const endpoint = url.toString()
       const response = await this.fetchWithRetry(endpoint)
       const duration = Date.now() - startTime
-      
+
       // Log SDK request
       await this.logDebug('SDK_REQUEST', {
         type: 'AD_REQUEST',
@@ -431,7 +489,7 @@ class SovAds {
         responseStatus: response.status,
         duration,
       })
-      
+
       // Check if site is not registered (403 or 404)
       if (response.status === 403 || response.status === 404) {
         console.log('Site not registered')
@@ -451,13 +509,13 @@ class SovAds {
           mediaType: 'image',
         }
       }
-      
+
       if (!response.ok) {
         throw new Error(`Failed to load ad: ${response.statusText}`)
       }
 
       const rawAd = await response.json()
-      
+
       // Validate ad data
       if (!rawAd || !rawAd.bannerUrl || !rawAd.targetUrl) {
         if (this.config.debug) {
@@ -494,7 +552,7 @@ class SovAds {
       if (normalizedAd.trackingToken) {
         this.adTrackingTokens.set(normalizedAd.id, normalizedAd.trackingToken)
       }
-      
+
       if (this.config.debug) {
         console.log('Ad loaded:', normalizedAd)
       }
@@ -523,7 +581,7 @@ class SovAds {
         error: error instanceof Error ? error.message : String(error),
         duration,
       })
-      
+
       if (this.config.debug) {
         console.error('Error loading ad:', error)
       }
@@ -648,8 +706,8 @@ class SovAds {
    * Track event with retry logic (internal helper)
    */
   private async trackEventWithRetry(
-    type: 'IMPRESSION' | 'CLICK', 
-    adId: string, 
+    type: 'IMPRESSION' | 'CLICK',
+    adId: string,
     campaignId: string,
     renderInfo: { rendered: boolean; viewportVisible: boolean; renderTime: number } | undefined,
     attempt: number,
@@ -658,7 +716,7 @@ class SovAds {
     try {
       const siteId = await this.detectSiteId()
       const metadata = this.getClientMetadata()
-      
+
       const payload: TrackingPayload = {
         type,
         campaignId,
@@ -703,15 +761,15 @@ class SovAds {
    * Includes render verification, IP (collected server-side), and site ID validation
    */
   private async trackEvent(
-    type: 'IMPRESSION' | 'CLICK', 
-    adId: string, 
+    type: 'IMPRESSION' | 'CLICK',
+    adId: string,
     campaignId: string,
     renderInfo?: { rendered: boolean; viewportVisible: boolean; renderTime: number }
   ): Promise<void> {
     try {
       const siteId = await this.detectSiteId()
       const metadata = this.getClientMetadata()
-      
+
       const payload: TrackingPayload = {
         type,
         campaignId,
@@ -726,6 +784,7 @@ class SovAds {
         pageUrl: metadata.pageUrl,
         userAgent: metadata.userAgent,
         trackingToken: this.adTrackingTokens.get(adId),
+        walletAddress: this.walletAddress || undefined
       }
 
       if (typeof navigator.sendBeacon === 'function') {
@@ -769,8 +828,8 @@ class SovAds {
   // Note: This is a workaround to access private method from components
   // In production, consider making trackEvent protected or using a different pattern
   public _trackEvent(
-    type: 'IMPRESSION' | 'CLICK', 
-    adId: string, 
+    type: 'IMPRESSION' | 'CLICK',
+    adId: string,
     campaignId: string,
     renderInfo?: { rendered: boolean; viewportVisible: boolean; renderTime: number }
   ) {
@@ -891,7 +950,7 @@ export class Banner {
         size: this.slotConfig.size,
       })
       this.hasTrackedImpression = false
-      
+
       // Skip if same ad (rotation disabled or same ad returned)
       if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
         if (this.sovads.getConfig().debug) {
@@ -900,10 +959,10 @@ export class Banner {
         this.isRendering = false
         return
       }
-      
+
       this.lastAdId = this.currentAd?.id || null
       this.retryCount = 0 // Reset retry count on success
-      
+
       if (!this.currentAd) {
         container.innerHTML = '<div class="sovads-no-ad">No ads available</div>'
         this.isRendering = false
@@ -1090,7 +1149,7 @@ export class Banner {
       })
 
       container.appendChild(adElement)
-      
+
       // Set up auto-refresh if enabled
       this.setupAutoRefresh(consumerId)
     } catch (error) {
@@ -1116,14 +1175,14 @@ export class Banner {
       this.isRendering = false
     }
   }
-  
+
   private async checkViewport(element: HTMLElement): Promise<boolean> {
     return new Promise((resolve) => {
       if (typeof IntersectionObserver === 'undefined') {
         resolve(true) // Fallback: load immediately if IntersectionObserver not supported
         return
       }
-      
+
       const observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
@@ -1135,9 +1194,9 @@ export class Banner {
         },
         { rootMargin: '50px' } // Start loading 50px before entering viewport
       )
-      
+
       observer.observe(element)
-      
+
       // Timeout after 5 seconds - load anyway
       setTimeout(() => {
         observer.disconnect()
@@ -1145,14 +1204,14 @@ export class Banner {
       }, 5000)
     })
   }
-  
+
   private setupLazyLoadObserver(container: HTMLElement, consumerId?: string) {
     if (typeof IntersectionObserver === 'undefined') {
       // Fallback: load immediately
       this.render(consumerId)
       return
     }
-    
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -1164,16 +1223,16 @@ export class Banner {
       },
       { rootMargin: '50px' }
     )
-    
+
     observer.observe(container)
   }
-  
+
   private setupAutoRefresh(consumerId?: string) {
     // Clear existing timer
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
     }
-    
+
     const refreshInterval = this.sovads.getConfig().refreshInterval || 0
     if (refreshInterval > 0) {
       this.refreshTimer = window.setInterval(() => {
@@ -1183,7 +1242,7 @@ export class Banner {
       }, refreshInterval * 1000)
     }
   }
-  
+
   public destroy() {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
@@ -1257,7 +1316,7 @@ export class Popup {
         placement: 'popup',
         size: window.innerWidth < 640 ? '320x100' : '360x120',
       })
-      
+
       if (!this.currentAd) {
         if (this.retryCount < this.maxRetries) {
           this.retryCount++
@@ -1272,7 +1331,7 @@ export class Popup {
         this.retryCount = 0
         return
       }
-      
+
       this.retryCount = 0 // Reset on success
 
       // Show popup after delay
@@ -1477,7 +1536,7 @@ export class Popup {
       img.src = this.currentAd.bannerUrl
       img.alt = this.currentAd.description
       img.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;'
-      
+
       img.addEventListener('load', () => {
         if (this.popupElement) {
           this.popupElement.style.opacity = '1'
@@ -1797,7 +1856,7 @@ export class Sidebar {
         size: this.slotConfig.size,
       })
       this.hasTrackedImpression = false
-      
+
       // Skip if same ad (rotation disabled or same ad returned)
       if (!forceRefresh && this.lastAdId === this.currentAd?.id && this.sovads.getConfig().rotationEnabled) {
         if (this.sovads.getConfig().debug) {
@@ -1806,10 +1865,10 @@ export class Sidebar {
         this.isRendering = false
         return
       }
-      
+
       this.lastAdId = this.currentAd?.id || null
       this.retryCount = 0
-      
+
       if (!this.currentAd) {
         container.innerHTML = '<div class="sovads-no-ad">No ads available</div>'
         this.isRendering = false
@@ -1997,7 +2056,7 @@ export class Sidebar {
         adElement.appendChild(mediaElement)
       }
       container.appendChild(adElement)
-      
+
       // Set up auto-refresh if enabled
       this.setupAutoRefresh(consumerId)
     } catch (error) {
@@ -2023,14 +2082,14 @@ export class Sidebar {
       this.isRendering = false
     }
   }
-  
+
   private async checkViewport(element: HTMLElement): Promise<boolean> {
     return new Promise((resolve) => {
       if (typeof IntersectionObserver === 'undefined') {
         resolve(true)
         return
       }
-      
+
       const observer = new IntersectionObserver(
         (entries) => {
           entries.forEach((entry) => {
@@ -2042,22 +2101,22 @@ export class Sidebar {
         },
         { rootMargin: '50px' }
       )
-      
+
       observer.observe(element)
-      
+
       setTimeout(() => {
         observer.disconnect()
         resolve(true)
       }, 5000)
     })
   }
-  
+
   private setupLazyLoadObserver(container: HTMLElement, consumerId?: string) {
     if (typeof IntersectionObserver === 'undefined') {
       this.render(consumerId)
       return
     }
-    
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -2069,15 +2128,15 @@ export class Sidebar {
       },
       { rootMargin: '50px' }
     )
-    
+
     observer.observe(container)
   }
-  
+
   private setupAutoRefresh(consumerId?: string) {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
     }
-    
+
     const refreshInterval = this.sovads.getConfig().refreshInterval || 0
     if (refreshInterval > 0) {
       this.refreshTimer = window.setInterval(() => {
@@ -2087,7 +2146,7 @@ export class Sidebar {
       }, refreshInterval * 1000)
     }
   }
-  
+
   public destroy() {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
@@ -2095,9 +2154,6 @@ export class Sidebar {
     }
   }
 }
-
-// Export main SovAds class
-export { SovAds, Banner, Popup, Sidebar, BottomBar }
 
 // Default export for easy importing
 export default SovAds

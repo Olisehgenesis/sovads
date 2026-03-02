@@ -115,6 +115,7 @@ export interface Event {
   userAgent?: string
   timestamp: Date
   fingerprint?: string
+  viewerWallet?: string // Attributed wallet at time of event
   verified: boolean
 }
 
@@ -214,6 +215,8 @@ export interface ViewerPoints {
   claimedPoints: number // Points already claimed
   pendingPoints: number // Points available to claim
   lastInteraction: Date // Last time user interacted with an ad
+  linkedDevices?: string[] // List of fingerprints linked to this wallet
+  lastWalletChange?: Date // Cooldown for changing wallet link
   createdAt: Date
   updatedAt: Date
 }
