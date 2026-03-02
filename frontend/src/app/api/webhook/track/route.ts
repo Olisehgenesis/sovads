@@ -317,6 +317,23 @@ export async function POST(request: NextRequest) {
             update.$set.wallet = explicitWallet
             update.$set.lastWalletChange = nowTs
             update.$addToSet = { linkedDevices: fingerprint }
+
+            // Merge Logic: If this is a wallet record, check if there's a separate 
+            // anonymous record for this device that should be merged into this wallet.
+            if (viewer.wallet === explicitWallet) {
+              const anonRecord = await vPointsCollection.findOne({
+                fingerprint: fingerprint as string,
+                wallet: { $eq: null }
+              } as any)
+
+              if (anonRecord && anonRecord._id !== viewer._id) {
+                // Transfer anonymous points to the wallet record
+                update.$inc.totalPoints += (anonRecord.totalPoints || 0)
+                update.$inc.pendingPoints += (anonRecord.pendingPoints || 0)
+                // Delete the anonymous record to prevent double-claiming
+                await vPointsCollection.deleteOne({ _id: anonRecord._id })
+              }
+            }
           }
 
           await vPointsCollection.updateOne({ _id: viewer._id }, update)
