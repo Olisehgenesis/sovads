@@ -6,6 +6,7 @@ import { useAccount, useSignMessage, useWriteContract } from 'wagmi'
 import { parseUnits } from 'viem'
 import WalletButton from '@/components/WalletButton'
 import { BannerAd, SidebarAd } from '@/components/ads/AdSlots'
+import BannerAdPreview from '@/components/ads/BannerAdPreview'
 import { useAds } from '@/hooks/useAds'
 import { TREASURY_ADDRESS, SUPPORTED_EXCHANGE_TOKENS, ERC20_TRANSFER_ABI, GS_RATES } from '@/lib/treasury-tokens'
 import { getTokenInfo } from '@/lib/tokens'
@@ -80,6 +81,7 @@ export default function PublisherDashboard() {
   const [fundError, setFundError] = useState<string | null>(null)
   const [fundSuccess, setFundSuccess] = useState<string | null>(null)
   const [selectedCampaignVault, setSelectedCampaignVault] = useState<any | null>(null)
+  const [previewSiteId, setPreviewSiteId] = useState<string | null>(null)
 
   const formatVaultAmount = (value: any, tokenAddress: string) => {
     try {
@@ -473,6 +475,12 @@ export default function PublisherDashboard() {
                   </div>
                   <div className="flex items-center gap-3">
                     <button
+                      onClick={() => setPreviewSiteId(site.siteId)}
+                      className="text-xs text-[var(--accent-primary-solid)] hover:underline font-bold"
+                    >
+                      Preview Ad
+                    </button>
+                    <button
                       onClick={() => setSelectedSite(site)}
                       className="text-xs text-[var(--text-primary)] hover:underline"
                     >
@@ -520,7 +528,7 @@ export default function PublisherDashboard() {
                   (showApiSecret[selectedSite.id]
                     ? (newApiSecrets[selectedSite.id] || selectedSite.apiSecret || '')
                     : '')
-                const envBlock = `NEXT_PUBLIC_SOVADS_API_URL=http://localhost:3000
+                const envBlock = `NEXT_PUBLIC_SOVADS_API_URL=https://ads.sovseas.xyz
 NEXT_PUBLIC_SOVADS_SITE_ID=${selectedSite.siteId}`
                 return (
                   <div className="mb-3 flex flex-wrap gap-2">
@@ -565,9 +573,8 @@ NEXT_PUBLIC_SOVADS_SITE_ID=${selectedSite.siteId}`
                 </div>
                 <div className="mt-1">Use API key/secret on your server only. Do not put secrets in `NEXT_PUBLIC_*` env.</div>
               </div>
-              <pre className="bg-neutral-950 text-neutral-100 text-[10px] p-4 rounded-lg overflow-x-auto">
-                <code>{`// Install: npm install @sovads/sdk
-import { SovAds, Banner } from '@sovads/sdk';
+              <code>{`// Install: npm install sovads-sdk@latest
+import { SovAds, Banner } from 'sovads-sdk';
 
 const adsClient = new SovAds({
   siteId: '${selectedSite.siteId}',
@@ -576,8 +583,7 @@ const adsClient = new SovAds({
 
 const banner = new Banner(adsClient, 'banner-id');
 await banner.render();`}</code>
-              </pre>
-            </div>
+            </pre>
           )}
 
           <div className="glass-card rounded-lg p-4">
@@ -779,8 +785,44 @@ await banner.render();`}</code>
               {withdrawError && <p className="text-xs text-destructive">{withdrawError}</p>}
             </div>
           </div>
-        </>
-      )}
-    </div>
+        </div>
+
+      {/* Preview Modal */}
+      {
+        previewSiteId && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <div className="glass-card max-w-lg w-full p-6 border-4 border-black bg-white">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-sm font-bold uppercase tracking-widest">Ad Preview: {previewSiteId}</h3>
+                <button
+                  onClick={() => setPreviewSiteId(null)}
+                  className="text-2xl font-bold hover:text-[var(--accent-primary-solid)] text-black"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="bg-[#F5F3F0] p-8 border-2 border-dashed border-black rounded-lg mb-6">
+                <div className="text-[10px] font-bold uppercase text-gray-500 mb-4 text-center">Previewing Banner Slot</div>
+                <div className="mx-auto flex justify-center">
+                  <BannerAdPreview siteId={previewSiteId} />
+                </div>
+              </div>
+
+              <p className="text-[10px] font-bold uppercase text-gray-500 leading-relaxed mb-6">
+                This is how a banner ad will appear on your site using this Site ID. If you see a placeholder, it means no active campaigns are currently targeting your site or placements.
+              </p>
+
+              <button
+                onClick={() => setPreviewSiteId(null)}
+                className="w-full btn btn-primary py-3 uppercase text-xs font-bold"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        )
+      }
+    </div >
   )
 }

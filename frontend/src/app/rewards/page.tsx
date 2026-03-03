@@ -58,7 +58,7 @@ export default function RewardsPage() {
       try {
         const params = new URLSearchParams()
         if (address) {
-          params.append('wallet', address)
+          params.append('wallet', address.toLowerCase())
         } else if (fingerprint) {
           params.append('fingerprint', fingerprint)
         }

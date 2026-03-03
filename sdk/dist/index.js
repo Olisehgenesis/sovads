@@ -1,6 +1,6 @@
 // SovAds SDK - Modular Ad Network Integration
 // Usage: import { SovAds, Banner, Popup, Sidebar } from '@sovads/sdk'
-class SovAds {
+export class SovAds {
     constructor(config = {}) {
         this.components = new Map();
         this.siteId = null;
@@ -9,11 +9,9 @@ class SovAds {
         this.adTrackingTokens = new Map();
         this.walletAddress = null;
         this.config = {
-            apiUrl: typeof window !== 'undefined' && window.location.hostname === 'localhost'
-                ? 'http://localhost:3000'
-                : 'https://ads.sovseas.xyz',
+            apiUrl: 'https://ads.sovseas.xyz',
             debug: false,
-            refreshInterval: 0, // No auto-refresh by default
+            refreshInterval: 30, // Default to 30 seconds for variety
             lazyLoad: true,
             rotationEnabled: true,
             popupMinIntervalMinutes: 30,
@@ -757,6 +755,8 @@ export class Banner {
                 this.isRendering = false;
                 return;
             }
+            // Initial state: hidden
+            container.style.display = 'none';
             // Lazy loading: wait for container to be in viewport
             if (this.sovads.getConfig().lazyLoad && !forceRefresh) {
                 const isInViewport = await this.checkViewport(container);
@@ -785,7 +785,7 @@ export class Banner {
             this.lastAdId = this.currentAd?.id || null;
             this.retryCount = 0; // Reset retry count on success
             if (!this.currentAd) {
-                container.innerHTML = '<div class="sovads-no-ad">No ads available</div>';
+                container.style.display = 'none';
                 this.isRendering = false;
                 return;
             }
@@ -852,6 +852,8 @@ export class Banner {
       box-sizing: border-box;
       opacity: 0;
     `;
+            // Always ensure container is hidden until loaded
+            container.style.display = 'none';
             const handleVisibilityTracking = (renderInfo) => {
                 this.sovads.setupRenderObserver(adElement, this.currentAd.id, (isVisible) => {
                     renderInfo.viewportVisible = isVisible;
@@ -863,6 +865,7 @@ export class Banner {
             };
             const handleRenderSuccess = () => {
                 adElement.style.opacity = '1';
+                container.style.display = 'block';
                 const renderTime = Date.now() - this.renderStartTime;
                 handleVisibilityTracking({
                     rendered: true,
@@ -1864,5 +1867,105 @@ export class Sidebar {
     }
 }
 // Default export for easy importing
+// Overlay Component
+export class Overlay {
+    constructor(sovads) {
+        this.currentAd = null;
+        this.overlayElement = null;
+        this.sovads = sovads;
+    }
+    async show(consumerId) {
+        if (!this.currentAd)
+            return;
+        const wrapper = document.createElement('div');
+        wrapper.style.cssText = `
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(0,0,0,0.5); z-index: 10001;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; transition: opacity 0.3s ease;
+    `;
+        const container = document.createElement('div');
+        container.style.cssText = `
+      position: relative; max-width: 90%; max-height: 90%;
+      background: white; border-radius: 12px; overflow: hidden;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+    `;
+        const closeBtn = document.createElement('button');
+        closeBtn.innerHTML = '&times;';
+        closeBtn.style.cssText = `
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(0,0,0,0.5); color: white; border: none;
+      width: 30px; height: 30px; border-radius: 15px;
+      cursor: pointer; z-index: 11; font-size: 20px;
+    `;
+        closeBtn.onclick = () => wrapper.remove();
+        const img = document.createElement('img');
+        img.src = this.currentAd.bannerUrl;
+        img.style.cssText = 'display: block; max-width: 100%; height: auto;';
+        img.onload = () => {
+            wrapper.style.opacity = '1';
+            this.sovads._trackEvent('IMPRESSION', this.currentAd.id, this.currentAd.campaignId);
+        };
+        container.onclick = () => {
+            this.sovads._trackEvent('CLICK', this.currentAd.id, this.currentAd.campaignId);
+            window.open(this.sovads.normalizeUrl(this.currentAd.targetUrl), '_blank');
+            wrapper.remove();
+        };
+        container.appendChild(closeBtn);
+        container.appendChild(img);
+        wrapper.appendChild(container);
+        document.body.appendChild(wrapper);
+        this.overlayElement = wrapper;
+    }
+}
+// Interstitial Component (Full page ad before content)
+export class Interstitial extends Overlay {
+}
+// NativeCard Component
+export class NativeCard {
+    constructor(sovads, containerId) {
+        this.currentAd = null;
+        this.sovads = sovads;
+        this.containerId = containerId;
+    }
+    async render(consumerId) {
+        const container = document.getElementById(this.containerId);
+        if (!container)
+            return;
+        container.style.display = 'none';
+        this.currentAd = await this.sovads.loadAd({
+            consumerId,
+            placement: 'native',
+        });
+        if (!this.currentAd)
+            return;
+        const card = document.createElement('div');
+        card.style.cssText = `
+      display: flex; gap: 16px; padding: 16px;
+      background: white; border: 1px solid #eee; border-radius: 12px;
+      cursor: pointer; position: relative;
+    `;
+        const img = document.createElement('img');
+        img.src = this.currentAd.bannerUrl;
+        img.style.cssText = 'width: 80px; height: 80px; object-fit: cover; border-radius: 8px;';
+        const content = document.createElement('div');
+        content.innerHTML = `
+      <div style="font-weight: bold; font-size: 16px; margin-bottom: 4px;">${this.currentAd.description.slice(0, 40)}...</div>
+      <div style="font-size: 12px; color: #666;">Sponsored</div>
+    `;
+        img.onload = () => {
+            container.style.display = 'block';
+            this.sovads._trackEvent('IMPRESSION', this.currentAd.id, this.currentAd.campaignId);
+        };
+        card.onclick = () => {
+            this.sovads._trackEvent('CLICK', this.currentAd.id, this.currentAd.campaignId);
+            window.open(this.sovads.normalizeUrl(this.currentAd.targetUrl), '_blank');
+        };
+        card.appendChild(img);
+        card.appendChild(content);
+        container.innerHTML = '';
+        container.appendChild(card);
+    }
+}
 export default SovAds;
 //# sourceMappingURL=index.js.map

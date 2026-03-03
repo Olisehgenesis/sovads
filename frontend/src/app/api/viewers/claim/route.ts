@@ -22,6 +22,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet or fingerprint required' }, { status: 400, headers: corsHeaders })
     }
 
+    const normalizedWallet = wallet?.toLowerCase()
     if (!isSovadGsConfigured) {
       console.warn('G$ payouts not configured, points will be marked as claimed in DB only')
     }
@@ -31,8 +32,8 @@ export async function POST(request: NextRequest) {
 
     // Find viewer
     let viewer = null
-    if (wallet) {
-      viewer = await viewerPointsCollection.findOne({ wallet })
+    if (normalizedWallet) {
+      viewer = await viewerPointsCollection.findOne({ wallet: normalizedWallet })
     } else {
       viewer = await viewerPointsCollection.findOne({
         fingerprint,
@@ -51,9 +52,9 @@ export async function POST(request: NextRequest) {
 
     // Execute actual payout if wallet is connected and G$ payout is configured
     let txHash = null
-    if (wallet && isSovadGsConfigured) {
+    if (normalizedWallet && isSovadGsConfigured) {
       try {
-        txHash = await payoutG$(wallet, claimAmount)
+        txHash = await payoutG$(normalizedWallet, claimAmount)
       } catch (payoutError) {
         console.error('Contract payout failed:', payoutError)
         return NextResponse.json({

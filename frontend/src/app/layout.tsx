@@ -21,8 +21,39 @@ const spaceMono = Space_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "SovAds - Decentralized Ad Network",
-  description: "Earn crypto by serving ads on your website. Transparent, fraud-resistant, and on-chain accountable.",
+  title: {
+    default: "SovAds - Sovereign Decentralized Ad Network",
+    template: "%s | SovAds"
+  },
+  description: "The decentralized ad protocol where publishers earn, viewers get rewarded with SovPoints, and advertisers reach real human audiences on-chain.",
+  keywords: ["decentralized ads", "web3 advertising", "on-chain marketing", "sovpoints", "payouts", "publisher ads"],
+  authors: [{ name: "SovAds Team" }],
+  creator: "SovAds Protocol",
+  icons: {
+    icon: "/logo.svg",
+    apple: "/logo.svg",
+  },
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://ads.sovseas.xyz",
+    siteName: "SovAds",
+    title: "SovAds - Decentralized Ad Network",
+    description: "Earn crypto by serving ads on your website. Transparent, fraud-resistant, and on-chain accountable.",
+    images: [{
+      url: "/logo.svg",
+      width: 512,
+      height: 512,
+      alt: "SovAds Logo",
+    }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "SovAds - Decentralized Ad Network",
+    description: "Transparent, fraud-resistant, and on-chain accountable ad protocol.",
+    images: ["/logo.svg"],
+    creator: "@sovads",
+  },
 };
 
 export default async function RootLayout({
@@ -35,6 +66,15 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className={`${anton.variable} ${spaceMono.variable}`}>
+      <head>
+        <link
+          rel="preload"
+          href="https://fonts.reown.com/KHTeka-Medium.woff2"
+          as="font"
+          type="font/woff2"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body className="antialiased bg-background text-foreground min-h-screen flex flex-col font-body">
         <ContextProvider cookies={cookies}>
           <Header />

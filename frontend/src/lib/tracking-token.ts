@@ -8,6 +8,7 @@ type TrackingTokenClaims = {
   placement?: string
   size?: string
   walletAddress?: string
+  isUnverified?: boolean
 }
 
 const secret = process.env.TRACKING_TOKEN_SECRET || 'dev-tracking-secret-change-me'

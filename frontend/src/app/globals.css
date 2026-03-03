@@ -239,3 +239,32 @@ a:not(.btn):hover {
   border: var(--border-width) solid var(--accent-primary);
   box-shadow: var(--hard-shadow);
 }
+/* Admin specific softer styles */
+.admin-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1.5rem;
+  transition: all 0.2s ease;
+}
+
+.admin-card:hover {
+  border-color: #d1d5db;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.btn-admin {
+  @apply inline-flex items-center justify-center font-semibold transition-all rounded-lg;
+  background: #1f2937;
+  color: white;
+  border: 1px solid #111827;
+}
+
+.btn-admin:hover {
+  background: #374151;
+  transform: translateY(-1px);
+}
+
+.btn-admin:active {
+  transform: translateY(0);
+}

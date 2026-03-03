@@ -10,10 +10,7 @@ const resolveApiUrl = (): string => {
   }
 
   return (
-    process.env.NEXT_PUBLIC_SOVADS_API_URL ||
-    (window.location.hostname === 'localhost'
-      ? 'http://localhost:3000'
-      : 'https://ads.sovseas.xyz')
+    process.env.NEXT_PUBLIC_SOVADS_API_URL || 'https://ads.sovseas.xyz'
   )
 }
 

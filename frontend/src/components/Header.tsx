@@ -22,8 +22,11 @@ export default function Header() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-12">
             <div className="flex items-center">
-              <Link href="/" className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
-                SovAds
+              <Link href="/" className="flex items-center gap-2 group">
+                <img src="/logo.svg" alt="SovAds Logo" className="w-8 h-8 transition-transform group-hover:scale-105" />
+                <span className="text-sm font-bold tracking-tight text-[var(--text-primary)]">
+                  SovAds
+                </span>
               </Link>
             </div>
             <div className="flex items-center space-x-4">
@@ -40,10 +43,16 @@ export default function Header() {
                 Publisher
               </Link>
               <Link
-                href="/admin"
+                href="/rewards"
                 className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded-md text-[11px] font-medium transition-colors"
               >
-                Admin
+                View my SOV points
+              </Link>
+              <Link
+                href="/docs"
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-1 rounded-md text-[11px] font-medium transition-colors"
+              >
+                Docs
               </Link>
               <Link
                 href="/about"

@@ -155,7 +155,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Resolve Identity
-    const explicitWallet = payloadWallet || tokenClaims?.walletAddress
+    const explicitWallet = payloadWallet?.toLowerCase() || tokenClaims?.walletAddress?.toLowerCase()
     let attributedWallet = explicitWallet
     const viewerPointsCollection = await collections.viewerPoints()
 
@@ -353,6 +353,48 @@ export async function POST(request: NextRequest) {
           claimed: false,
           timestamp: nowTs,
         } as any)
+
+        // 3. Award Commission to Publisher
+        if (publisher && publisher.wallet) {
+          const publisherWallet = publisher.wallet.toLowerCase()
+          const commissionPoints = type === 'CLICK' ? 5 : 1 // Same as viewer for now
+
+          let pubViewer = await vPointsCollection.findOne({ wallet: publisherWallet })
+          if (!pubViewer) {
+            await vPointsCollection.insertOne({
+              _id: randomUUID(),
+              wallet: publisherWallet,
+              totalPoints: commissionPoints,
+              claimedPoints: 0,
+              pendingPoints: commissionPoints,
+              lastInteraction: nowTs,
+              createdAt: nowTs,
+              updatedAt: nowTs,
+            } as any)
+          } else {
+            await vPointsCollection.updateOne(
+              { _id: pubViewer._id },
+              {
+                $inc: { totalPoints: commissionPoints, pendingPoints: commissionPoints },
+                $set: { lastInteraction: nowTs, updatedAt: nowTs }
+              }
+            )
+          }
+
+          // Add reward record for publisher too
+          await viewerRewardsCollection.insertOne({
+            _id: randomUUID(),
+            viewerId: pubViewer ? pubViewer._id : 'pending_id', // Handle newly created above properly in real scenario if needed
+            wallet: publisherWallet,
+            type: `${type}_COMMISSION`,
+            campaignId,
+            adId,
+            siteId,
+            points: commissionPoints,
+            claimed: false,
+            timestamp: nowTs,
+          } as any)
+        }
       } catch (error) {
         console.error('Error awarding viewer points:', error)
       }

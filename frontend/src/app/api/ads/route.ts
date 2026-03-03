@@ -51,34 +51,13 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400, headers: corsHeaders })
     }
 
-    // Handle unregistered temporary sites (temp_ prefix) FIRST - before MongoDB access
-    // This prevents crashes when MongoDB is unavailable
+    // Handle unregistered temporary sites (temp_ prefix)
+    let isUnverifiedSite = false
     if (siteId.startsWith('temp_')) {
-      // Return dummy ad for unregistered sites to prevent crashes
-      const dummyAd = {
-        id: 'dummy_ad_unregistered',
-        campaignId: 'dummy_campaign',
-        name: 'Register Your Site',
-        description: 'Register your site to start serving ads and earning revenue',
-        bannerUrl: 'https://sovseas.xyz/logo.png', // Placeholder - can be replaced with actual sovseas image
-        targetUrl: 'https://ads.sovseas.xyz/publisher',
-        cpc: '0',
-        tags: ['register', 'sovads'],
-        targetLocations: [],
-        metadata: {
-          message: 'Register your site to start serving ads.',
-          isDummy: true,
-        },
-        startDate: null,
-        endDate: null,
-        mediaType: 'image' as const,
-        isDummy: true,
-      }
-
-      return NextResponse.json(dummyAd, { headers: corsHeaders })
+      isUnverifiedSite = true
     }
 
-    // Try to access MongoDB - wrap in try-catch to handle connection errors
+    // Try to access MongoDB
     let publisherSitesCollection, publishersCollection, campaignsCollection
     try {
       publisherSitesCollection = await collections.publisherSites()
@@ -86,96 +65,27 @@ export async function GET(request: NextRequest) {
       campaignsCollection = await collections.campaigns()
     } catch (dbError) {
       console.error('MongoDB connection error:', dbError)
-      // If MongoDB is unavailable, return dummy ad instead of crashing
-      const dummyAd = {
-        id: 'dummy_ad_db_error',
-        campaignId: 'dummy_campaign',
-        name: 'Service Temporarily Unavailable',
-        description: 'Ad service is temporarily unavailable. Please try again later.',
-        bannerUrl: 'https://sovseas.xyz/logo.png',
-        targetUrl: 'https://ads.sovseas.xyz',
-        cpc: '0',
-        tags: ['error', 'sovads'],
-        targetLocations: [],
-        metadata: {
-          message: 'Database connection error.',
-          isDummy: true,
-        },
-        startDate: null,
-        endDate: null,
-        mediaType: 'image' as const,
-        isDummy: true,
-      }
-
-      return NextResponse.json(dummyAd, { headers: corsHeaders })
+      return NextResponse.json({ error: 'Database unavailable' }, { status: 503, headers: corsHeaders })
     }
 
     const publisherSite = await publisherSitesCollection.findOne({ siteId })
-
     let publisher = null
     if (publisherSite) {
       publisher = await publishersCollection.findOne({ _id: publisherSite.publisherId })
     }
 
-    // If not found in PublisherSite, check Publisher (legacy or direct ID)
+    // Fallback: check if siteId is a direct publisher ID or domain
     if (!publisher) {
-      // Try as direct publisher ID
       publisher = await publishersCollection.findOne({
         $or: [{ _id: siteId }, { _id: siteId.replace('site_', '') }, { domain: siteId }],
       })
     }
 
-    // Check if publisher exists (already handled temp_ above, so this is for other cases)
-    if (!publisher && !publisherSite) {
-      if (process.env.NODE_ENV === 'development') {
-        const dummyAd = {
-          id: 'dummy_ad_development',
-          campaignId: 'dummy_campaign',
-          name: 'Development Mode Ad',
-          description: 'This is a placeholder ad shown because no matching publisher site was found in the database.',
-          bannerUrl: 'https://sovseas.xyz/logo.png',
-          targetUrl: 'https://ads.sovseas.xyz',
-          cpc: '0',
-          tags: ['development', 'sovads'],
-          targetLocations: [],
-          metadata: {
-            message: 'Publisher not found. Showing development dummy ad.',
-            isDevelopment: true,
-            isDummy: true,
-          },
-          startDate: null,
-          endDate: null,
-          mediaType: 'image' as const,
-          isDummy: true,
-        }
-        return NextResponse.json(dummyAd, { headers: corsHeaders })
-      }
-      return NextResponse.json({ error: 'Publisher not found or not verified' }, { status: 404, headers: corsHeaders })
-    }
-
-    if (publisher && !publisher.verified && process.env.NODE_ENV !== 'development') {
-      // Return dummy ad for unverified sites too
-      const dummyAd = {
-        id: 'dummy_ad_unverified',
-        campaignId: 'dummy_campaign',
-        name: 'Verify Your Site',
-        description: 'Your site needs to be verified to serve ads',
-        bannerUrl: 'https://sovseas.xyz/logo.png',
-        targetUrl: 'https://ads.sovseas.xyz/publisher',
-        cpc: '0',
-        tags: ['verify', 'sovads'],
-        targetLocations: [],
-        metadata: {
-          message: 'Verify your site to start serving ads.',
-          isDummy: true,
-        },
-        startDate: null,
-        endDate: null,
-        mediaType: 'image' as const,
-        isDummy: true,
-      }
-
-      return NextResponse.json(dummyAd, { headers: corsHeaders })
+    if (publisher && !publisher.verified) {
+      isUnverifiedSite = true
+    } else if (!publisher && !isUnverifiedSite) {
+      // If not a temp site and no publisher found, it's effectively unverified/unknown
+      isUnverifiedSite = true
     }
 
     // Get active campaigns with budget remaining and approved verification status
@@ -188,7 +98,7 @@ export async function GET(request: NextRequest) {
         ]
       })
       .sort({ createdAt: -1 })
-      .limit(50)
+      .limit(100)
 
     const candidateCampaigns = await candidatesCursor.toArray()
     const campaigns = candidateCampaigns
@@ -222,7 +132,7 @@ export async function GET(request: NextRequest) {
         if (!targetedConsumer) return true
         return targetedConsumer === consumerId
       })
-      .slice(0, 10)
+      .slice(0, 30)
 
     if (campaigns.length === 0) {
       // Return dummy ad when no campaigns available instead of error
@@ -277,7 +187,9 @@ export async function GET(request: NextRequest) {
         placement: placement || undefined,
         size: size || undefined,
         walletAddress: wallet || undefined,
+        isUnverified: isUnverifiedSite,
       }),
+      isUnverified: isUnverifiedSite,
     }
 
     return NextResponse.json(ad, { headers: corsHeaders })

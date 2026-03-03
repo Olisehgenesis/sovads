@@ -29,6 +29,7 @@ export interface AdComponent {
     trackingToken?: string;
     placement?: string;
     size?: string;
+    isUnverified?: boolean;
 }
 interface AdLoadOptions {
     consumerId?: string;
@@ -40,7 +41,7 @@ interface SlotConfig {
     placementId?: string;
     size?: string;
 }
-declare class SovAds {
+export declare class SovAds {
     protected config: SovAdsConfig;
     private fingerprint;
     private components;
@@ -184,6 +185,22 @@ export declare class Sidebar {
     private setupLazyLoadObserver;
     private setupAutoRefresh;
     destroy(): void;
+}
+export declare class Overlay {
+    private sovads;
+    private currentAd;
+    private overlayElement;
+    constructor(sovads: SovAds);
+    show(consumerId?: string): Promise<void>;
+}
+export declare class Interstitial extends Overlay {
+}
+export declare class NativeCard {
+    private sovads;
+    private containerId;
+    private currentAd;
+    constructor(sovads: SovAds, containerId: string);
+    render(consumerId?: string): Promise<void>;
 }
 export default SovAds;
 //# sourceMappingURL=index.d.ts.map

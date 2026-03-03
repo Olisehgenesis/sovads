@@ -3,6 +3,7 @@
 import { BannerAd } from './AdSlots'
 
 type BannerAdPreviewProps = {
+  siteId?: string
   consumerId?: string
   className?: string
   placeholder?: React.ReactNode

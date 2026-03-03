@@ -24,13 +24,14 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet or fingerprint required' }, { status: 400, headers: corsHeaders })
     }
 
+    const normalizedWallet = wallet?.toLowerCase()
     const viewerPointsCollection = await collections.viewerPoints()
-    
+
     let viewer = null
-    if (wallet) {
-      viewer = await viewerPointsCollection.findOne({ wallet })
+    if (normalizedWallet) {
+      viewer = await viewerPointsCollection.findOne({ wallet: normalizedWallet })
     } else if (fingerprint) {
-      viewer = await viewerPointsCollection.findOne({ 
+      viewer = await viewerPointsCollection.findOne({
         fingerprint,
         $or: [{ wallet: null }, { wallet: { $exists: false } }] as any
       })
@@ -84,7 +85,7 @@ export async function POST(request: NextRequest) {
     if (wallet) {
       viewer = await viewerPointsCollection.findOne({ wallet })
     } else {
-      viewer = await viewerPointsCollection.findOne({ 
+      viewer = await viewerPointsCollection.findOne({
         fingerprint,
         $or: [{ wallet: null }, { wallet: { $exists: false } }] as any
       })

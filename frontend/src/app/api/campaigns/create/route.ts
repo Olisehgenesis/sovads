@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
       cpc,
       active: true,
       tokenAddress: campaignData.tokenAddress || null,
-      onChainId: onChainId ? Number(onChainId) : undefined,
+      onChainId: (onChainId !== undefined && onChainId !== null) ? Number(onChainId) : undefined,
       metadataURI: JSON.stringify({
         contractCampaignId,
         transactionHash,

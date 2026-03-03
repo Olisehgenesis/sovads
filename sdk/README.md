@@ -5,11 +5,11 @@ SovAds SDK for publisher integration - A modular ad network SDK with banner, pop
 ## Installation
 
 ```bash
-npm install sovads-sdk
+npm install sovads-sdk@latest
 # or
-pnpm add sovads-sdk
+pnpm add sovads-sdk@latest
 # or
-yarn add sovads-sdk
+yarn add sovads-sdk@latest
 ```
 
 ## Usage

@@ -2,7 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   // Add Turbopack config to avoid warning when webpack is customized
-  turbopack: {},
+  turbopack: {
+    root: ".",
+  },
   // Externalize server-only packages for both Webpack and Turbopack
   serverExternalPackages: ["pino-pretty", "lokijs", "encoding"],
   webpack: (config) => {

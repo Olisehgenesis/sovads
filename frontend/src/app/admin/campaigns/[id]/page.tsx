@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import TopUpModal from '@/components/TopUpModal'
 import { useAds } from '@/hooks/useAds'
@@ -24,9 +24,9 @@ interface Analytics {
   totalRevenue: number
 }
 
-export default function AdminCampaignPage({ params }: { params: { id: string } }) {
+export default function AdminCampaignPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter()
-  const { id } = params
+  const { id } = use(params)
   const { topUpCampaign } = useAds()
 
   const [campaign, setCampaign] = useState<Campaign | null>(null)

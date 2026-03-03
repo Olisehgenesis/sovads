@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, use } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import {
@@ -21,7 +21,8 @@ type CampaignPayload = {
   mediaType?: 'image' | 'video'
 }
 
-export default function EditCampaignPage({ params }: { params: { id: string } }) {
+export default function EditCampaignPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = use(params)
   const { address } = useAccount()
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(true)
@@ -49,7 +50,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch(`/api/campaigns/detail?id=${encodeURIComponent(params.id)}`)
+        const res = await fetch(`/api/campaigns/detail?id=${encodeURIComponent(id)}`)
         if (!res.ok) throw new Error('Failed to load campaign')
         const data = await res.json()
         const c = data.campaign as CampaignPayload
@@ -67,7 +68,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
       }
     }
     load()
-  }, [params.id])
+  }, [id])
 
   const onSave = async () => {
     if (!address) {
@@ -88,7 +89,7 @@ export default function EditCampaignPage({ params }: { params: { id: string } })
     try {
       const payload = {
         wallet: address,
-        id: params.id,
+        id,
         updates: {
           name,
           description,
