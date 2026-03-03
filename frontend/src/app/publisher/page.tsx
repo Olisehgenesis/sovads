@@ -82,6 +82,7 @@ export default function PublisherDashboard() {
   const [fundSuccess, setFundSuccess] = useState<string | null>(null)
   const [selectedCampaignVault, setSelectedCampaignVault] = useState<any | null>(null)
   const [previewSiteId, setPreviewSiteId] = useState<string | null>(null)
+  const [sovPoints, setSovPoints] = useState<number>(0)
 
   const formatVaultAmount = (value: any, tokenAddress: string) => {
     try {
@@ -170,6 +171,7 @@ export default function PublisherDashboard() {
         loadStats(publisherData.id)
         loadBalance(walletAddress)
         loadExchangeHistory(walletAddress)
+        loadSovPoints(walletAddress)
       }
 
       if (sitesResponse.ok) {
@@ -227,6 +229,19 @@ export default function PublisherDashboard() {
       }
     } catch {
       setExchangeHistory([])
+    }
+  }
+
+  const loadSovPoints = async (walletAddress: string) => {
+    try {
+      const normalizedWallet = walletAddress.toLowerCase()
+      const res = await fetch(`/api/viewers/points?wallet=${normalizedWallet}`)
+      if (res.ok) {
+        const data = await res.json()
+        setSovPoints(data.totalPoints ?? 0)
+      }
+    } catch (error) {
+      console.error('Error loading SovPoints:', error)
     }
   }
 
@@ -449,12 +464,13 @@ export default function PublisherDashboard() {
         </div>
       ) : (
         <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             {[
               { label: 'Impressions', value: stats.impressions.toLocaleString() },
               { label: 'Clicks', value: stats.clicks.toLocaleString() },
               { label: 'CTR', value: `${stats.ctr.toFixed(2)}%` },
-              { label: 'Total Revenue (GS)', value: stats.totalRevenue.toFixed(2) }
+              { label: 'Revenue (GS)', value: stats.totalRevenue.toFixed(2) },
+              { label: 'Earned SovPoints', value: sovPoints.toLocaleString() }
             ].map(s => (
               <div key={s.label} className="glass-card rounded-lg p-4">
                 <div className="text-lg font-bold">{s.value}</div>
@@ -585,210 +601,210 @@ const adsClient = new SovAds({
 const banner = new Banner(adsClient, 'banner-id');
 await banner.render();`}</code>
               </pre>
+            </div>
           )}
 
-              <div className="glass-card rounded-lg p-4">
-                <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Exchange Tokens for G$</h2>
-                <div className="space-y-4">
-                  <div className="flex gap-2">
-                    <select
-                      value={topupToken}
-                      onChange={(e) => setTopupToken(e.target.value)}
-                      className="bg-input border border-border rounded-md px-2 py-1.5 text-xs outline-none"
-                    >
-                      {SUPPORTED_EXCHANGE_TOKENS.map(t => (
-                        <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="number"
-                      value={topupAmount}
-                      onChange={(e) => setTopupAmount(e.target.value)}
-                      placeholder="Amount"
-                      className="flex-1 bg-input border border-border rounded-md px-3 py-1.5 text-xs outline-none"
-                    />
-                  </div>
-
-                  {topupAmount && (
-                    <div className="text-[10px] text-[var(--text-secondary)] uppercase">
-                      Estimated: {(Number(topupAmount) * (SUPPORTED_EXCHANGE_TOKENS.find(t => t.symbol === topupToken)?.gsPerUnit || 10000)).toLocaleString()} G$
-                    </div>
-                  )}
-
-                  <button
-                    onClick={async () => {
-                      if (!address || !topupAmount) return
-                      const token = SUPPORTED_EXCHANGE_TOKENS.find(t => t.symbol === topupToken)
-                      if (!token) return
-
-                      setIsToppingUp(true)
-                      setTopupError(null)
-                      setTopupSuccess(null)
-
-                      try {
-                        const amountWei = parseUnits(topupAmount, token.decimals)
-
-                        // Step 1: Transfer to Treasury
-                        const txHash = await writeTransfer({
-                          address: token.address,
-                          abi: ERC20_TRANSFER_ABI,
-                          functionName: 'transfer',
-                          args: [TREASURY_ADDRESS, amountWei]
-                        })
-
-                        // Step 2: Notify backend
-                        const res = await fetch('/api/publishers/topup', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            wallet: address,
-                            amount: Number(topupAmount),
-                            token: topupToken,
-                            txHash
-                          })
-                        })
-
-                        if (res.ok) {
-                          setTopupSuccess('Exchange successful! Your G$ balance will update shortly.')
-                          setTopupAmount('')
-                          loadBalance(address)
-                          loadExchangeHistory(address)
-                        } else {
-                          throw new Error('Failed to sync with backend')
-                        }
-                      } catch (e) {
-                        setTopupError(e instanceof Error ? e.message : 'Exchange failed')
-                      } finally {
-                        setIsToppingUp(false)
-                      }
-                    }}
-                    disabled={isToppingUp || !topupAmount}
-                    className="w-full btn btn-primary py-2 text-xs"
-                  >
-                    {isToppingUp ? 'Processing...' : `Exchange ${topupToken} to G$`}
-                  </button>
-                  {topupSuccess && <p className="text-xs text-green-600">{topupSuccess}</p>}
-                  {topupError && <p className="text-xs text-destructive">{topupError}</p>}
-                </div>
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Exchange Tokens for G$</h2>
+            <div className="space-y-4">
+              <div className="flex gap-2">
+                <select
+                  value={topupToken}
+                  onChange={(e) => setTopupToken(e.target.value)}
+                  className="bg-input border border-border rounded-md px-2 py-1.5 text-xs outline-none"
+                >
+                  {SUPPORTED_EXCHANGE_TOKENS.map(t => (
+                    <option key={t.symbol} value={t.symbol}>{t.symbol}</option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  placeholder="Amount"
+                  className="flex-1 bg-input border border-border rounded-md px-3 py-1.5 text-xs outline-none"
+                />
               </div>
 
-              <div className="glass-card rounded-lg p-4">
-                <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Fund Campaign (Good Dollar)</h2>
-                <div className="space-y-3">
-                  {campaignCount && Number(campaignCount) > 0 ? (
-                    <select
-                      value={fundCampaignId}
-                      onChange={async (e) => {
-                        setFundCampaignId(e.target.value)
-                        // load vault info for selected campaign
-                        try {
-                          const vault = await getCampaignVault(Number(e.target.value))
-                          setSelectedCampaignVault(vault)
-                        } catch (err) {
-                          setSelectedCampaignVault(null)
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
-                    >
-                      <option value="">Select campaign</option>
-                      {Array.from({ length: Number(campaignCount) }).map((_, i) => (
-                        <option key={i + 1} value={i + 1}>#{i + 1}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="number"
-                      value={fundCampaignId}
-                      onChange={(e) => setFundCampaignId(e.target.value)}
-                      placeholder="Campaign ID"
-                      className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
-                    />
-                  )}
-                  <input
-                    type="number"
-                    value={fundAmount}
-                    onChange={(e) => setFundAmount(e.target.value)}
-                    placeholder="Amount (G$)"
-                    className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
-                  />
-                  {selectedCampaignVault && (
-                    <div className="text-[12px] text-[var(--text-secondary)] space-y-1">
-                      <div>Token: {getTokenInfo(selectedCampaignVault.token)?.symbol ?? selectedCampaignVault.token}</div>
-                      <div>Funded: {formatVaultAmount(selectedCampaignVault.totalFunded, selectedCampaignVault.token)}</div>
-                      <div>Locked: {formatVaultAmount(selectedCampaignVault.locked, selectedCampaignVault.token)}</div>
-                      <div>Claimed: {formatVaultAmount(selectedCampaignVault.claimed, selectedCampaignVault.token)}</div>
-                    </div>
-                  )}
-                  <button
-                    onClick={async () => {
-                      if (!address || !fundCampaignId || !fundAmount) return
-                      const ok = window.confirm(`Fund campaign #${fundCampaignId} with ${fundAmount} G$?`)
-                      if (!ok) return
-                      setIsFunding(true)
-                      setFundError(null)
-                      setFundSuccess(null)
-                      try {
-                        const txHash = await topUpCampaign(Number(fundCampaignId), fundAmount, GOOD_DOLLAR_ADDRESS)
-                        if (txHash) {
-                          setFundSuccess(`Campaign funded on-chain. Tx: ${txHash}`)
-                        } else {
-                          setFundSuccess('Campaign funded (tx submitted).')
-                        }
-                        setFundCampaignId('')
-                        setFundAmount('')
-                      } catch (e) {
-                        setFundError(e instanceof Error ? e.message : 'Funding failed')
-                      } finally {
-                        setIsFunding(false)
-                      }
-                    }}
-                    disabled={isFunding || !fundCampaignId || !fundAmount}
-                    className="w-full btn btn-primary py-2 text-xs"
-                  >
-                    {isFunding ? 'Funding...' : 'Fund with G$'}
-                  </button>
-                  {fundSuccess && <p className="text-xs text-green-600">{fundSuccess}</p>}
-                  {fundError && <p className="text-xs text-destructive">{fundError}</p>}
+              {topupAmount && (
+                <div className="text-[10px] text-[var(--text-secondary)] uppercase">
+                  Estimated: {(Number(topupAmount) * (SUPPORTED_EXCHANGE_TOKENS.find(t => t.symbol === topupToken)?.gsPerUnit || 10000)).toLocaleString()} G$
                 </div>
-              </div>
+              )}
 
-              <div className="glass-card rounded-lg p-4">
-                <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Withdraw Earnings (G$)</h2>
-                <div className="space-y-4">
-                  <div className="text-sm">Available: <span className="font-bold">{availableBalance.toFixed(2)}</span> G$</div>
-                  <button
-                    onClick={async () => {
-                      if (!address || availableBalance <= 0) return
-                      setIsWithdrawing(true)
-                      try {
-                        const res = await fetch('/api/publishers/withdraw', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({ wallet: address, amount: availableBalance })
-                        })
-                        if (res.ok) {
-                          const data = await res.json()
-                          setWithdrawSuccess(`Withdrawn ${data.amount} G$!`)
-                          loadBalance(address)
-                        }
-                      } catch (e) {
-                        setWithdrawError('Withdrawal failed')
-                      } finally {
-                        setIsWithdrawing(false)
-                      }
-                    }}
-                    disabled={isWithdrawing || availableBalance <= 0}
-                    className="btn btn-primary px-6 py-2"
-                  >
-                    {isWithdrawing ? 'Processing...' : 'Withdraw All'}
-                  </button>
-                  {withdrawSuccess && <p className="text-xs text-green-600">{withdrawSuccess}</p>}
-                  {withdrawError && <p className="text-xs text-destructive">{withdrawError}</p>}
-                </div>
-              </div>
+              <button
+                onClick={async () => {
+                  if (!address || !topupAmount) return
+                  const token = SUPPORTED_EXCHANGE_TOKENS.find(t => t.symbol === topupToken)
+                  if (!token) return
+
+                  setIsToppingUp(true)
+                  setTopupError(null)
+                  setTopupSuccess(null)
+
+                  try {
+                    const amountWei = parseUnits(topupAmount, token.decimals)
+
+                    // Step 1: Transfer to Treasury
+                    const txHash = await writeTransfer({
+                      address: token.address,
+                      abi: ERC20_TRANSFER_ABI,
+                      functionName: 'transfer',
+                      args: [TREASURY_ADDRESS, amountWei]
+                    })
+
+                    // Step 2: Notify backend
+                    const res = await fetch('/api/publishers/topup', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        wallet: address,
+                        amount: Number(topupAmount),
+                        token: topupToken,
+                        txHash
+                      })
+                    })
+
+                    if (res.ok) {
+                      setTopupSuccess('Exchange successful! Your G$ balance will update shortly.')
+                      setTopupAmount('')
+                      loadBalance(address)
+                      loadExchangeHistory(address)
+                    } else {
+                      throw new Error('Failed to sync with backend')
+                    }
+                  } catch (e) {
+                    setTopupError(e instanceof Error ? e.message : 'Exchange failed')
+                  } finally {
+                    setIsToppingUp(false)
+                  }
+                }}
+                disabled={isToppingUp || !topupAmount}
+                className="w-full btn btn-primary py-2 text-xs"
+              >
+                {isToppingUp ? 'Processing...' : `Exchange ${topupToken} to G$`}
+              </button>
+              {topupSuccess && <p className="text-xs text-green-600">{topupSuccess}</p>}
+              {topupError && <p className="text-xs text-destructive">{topupError}</p>}
             </div>
+          </div>
 
-      {/* Preview Modal */}
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Fund Campaign (Good Dollar)</h2>
+            <div className="space-y-3">
+              {campaignCount && Number(campaignCount) > 0 ? (
+                <select
+                  value={fundCampaignId}
+                  onChange={async (e) => {
+                    setFundCampaignId(e.target.value)
+                    // load vault info for selected campaign
+                    try {
+                      const vault = await getCampaignVault(Number(e.target.value))
+                      setSelectedCampaignVault(vault)
+                    } catch (err) {
+                      setSelectedCampaignVault(null)
+                    }
+                  }}
+                  className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+                >
+                  <option value="">Select campaign</option>
+                  {Array.from({ length: Number(campaignCount) }).map((_, i) => (
+                    <option key={i + 1} value={i + 1}>#{i + 1}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="number"
+                  value={fundCampaignId}
+                  onChange={(e) => setFundCampaignId(e.target.value)}
+                  placeholder="Campaign ID"
+                  className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+                />
+              )}
+              <input
+                type="number"
+                value={fundAmount}
+                onChange={(e) => setFundAmount(e.target.value)}
+                placeholder="Amount (G$)"
+                className="w-full px-3 py-2 bg-input border border-border rounded-md text-[11px]"
+              />
+              {selectedCampaignVault && (
+                <div className="text-[12px] text-[var(--text-secondary)] space-y-1">
+                  <div>Token: {getTokenInfo(selectedCampaignVault.token)?.symbol ?? selectedCampaignVault.token}</div>
+                  <div>Funded: {formatVaultAmount(selectedCampaignVault.totalFunded, selectedCampaignVault.token)}</div>
+                  <div>Locked: {formatVaultAmount(selectedCampaignVault.locked, selectedCampaignVault.token)}</div>
+                  <div>Claimed: {formatVaultAmount(selectedCampaignVault.claimed, selectedCampaignVault.token)}</div>
+                </div>
+              )}
+              <button
+                onClick={async () => {
+                  if (!address || !fundCampaignId || !fundAmount) return
+                  const ok = window.confirm(`Fund campaign #${fundCampaignId} with ${fundAmount} G$?`)
+                  if (!ok) return
+                  setIsFunding(true)
+                  setFundError(null)
+                  setFundSuccess(null)
+                  try {
+                    const txHash = await topUpCampaign(Number(fundCampaignId), fundAmount, GOOD_DOLLAR_ADDRESS)
+                    if (txHash) {
+                      setFundSuccess(`Campaign funded on-chain. Tx: ${txHash}`)
+                    } else {
+                      setFundSuccess('Campaign funded (tx submitted).')
+                    }
+                    setFundCampaignId('')
+                    setFundAmount('')
+                  } catch (e) {
+                    setFundError(e instanceof Error ? e.message : 'Funding failed')
+                  } finally {
+                    setIsFunding(false)
+                  }
+                }}
+                disabled={isFunding || !fundCampaignId || !fundAmount}
+                className="w-full btn btn-primary py-2 text-xs"
+              >
+                {isFunding ? 'Funding...' : 'Fund with G$'}
+              </button>
+              {fundSuccess && <p className="text-xs text-green-600">{fundSuccess}</p>}
+              {fundError && <p className="text-xs text-destructive">{fundError}</p>}
+            </div>
+          </div>
+
+          <div className="glass-card rounded-lg p-4">
+            <h2 className="text-xs font-semibold mb-4 uppercase tracking-wider">Withdraw Earnings (G$)</h2>
+            <div className="space-y-4">
+              <div className="text-sm">Available: <span className="font-bold">{availableBalance.toFixed(2)}</span> G$</div>
+              <button
+                onClick={async () => {
+                  if (!address || availableBalance <= 0) return
+                  setIsWithdrawing(true)
+                  try {
+                    const res = await fetch('/api/publishers/withdraw', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ wallet: address, amount: availableBalance })
+                    })
+                    if (res.ok) {
+                      const data = await res.json()
+                      setWithdrawSuccess(`Withdrawn ${data.amount} G$!`)
+                      loadBalance(address)
+                    }
+                  } catch (e) {
+                    setWithdrawError('Withdrawal failed')
+                  } finally {
+                    setIsWithdrawing(false)
+                  }
+                }}
+                disabled={isWithdrawing || availableBalance <= 0}
+                className="btn btn-primary px-6 py-2"
+              >
+                {isWithdrawing ? 'Processing...' : 'Withdraw All'}
+              </button>
+              {withdrawSuccess && <p className="text-xs text-green-600">{withdrawSuccess}</p>}
+              {withdrawError && <p className="text-xs text-destructive">{withdrawError}</p>}
+            </div>
+          </div>
+
+          {/* Preview Modal */}
           {
             previewSiteId && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
@@ -822,8 +838,9 @@ await banner.render();`}</code>
                   </button>
                 </div>
               </div>
-            )
-          }
-        </div >
-      )
+            )}
+        </>
+      )}
+    </div>
+  )
 }
