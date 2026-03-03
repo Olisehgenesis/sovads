@@ -553,7 +553,11 @@ export class SovAds {
         }
         const response = await fetch(webhookUrl, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+                'Content-Type': 'application/json',
+                'Cache-Control': 'no-cache',
+                'X-SovAds-SDK-Version': '1.0.8'
+            },
             body: envelope,
             keepalive: true,
         });
