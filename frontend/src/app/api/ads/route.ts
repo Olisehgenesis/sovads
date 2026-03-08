@@ -51,9 +51,12 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Site ID is required' }, { status: 400, headers: corsHeaders })
     }
 
-    // Handle unregistered temporary sites (temp_ prefix)
+    // Handle unregistered temporary sites (temp_ prefix) or localhost development
     let isUnverifiedSite = false
-    if (siteId.startsWith('temp_')) {
+    const referer = request.headers.get('referer')
+    const isLocalhost = referer && (referer.includes('localhost') || referer.includes('127.0.0.1'))
+
+    if (siteId.startsWith('temp_') || isLocalhost) {
       isUnverifiedSite = true
     }
 

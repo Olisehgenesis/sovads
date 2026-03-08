@@ -61,6 +61,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
     "createCampaign(address,uint256,uint256,string)": FunctionFragment;
     "createClaim(uint256,uint256)": FunctionFragment;
     "disburseFunds(uint256,address,uint256)": FunctionFragment;
+    "extendCampaignDuration(uint256,uint256)": FunctionFragment;
     "feePercent()": FunctionFragment;
     "feeRecipient()": FunctionFragment;
     "getBalanceInfo(uint256,address)": FunctionFragment;
@@ -80,9 +81,11 @@ export interface SovAdsManagerInterface extends utils.Interface {
     "setRates(uint256,uint256)": FunctionFragment;
     "subscribePublisher(string[])": FunctionFragment;
     "supportedTokens(address)": FunctionFragment;
+    "toggleCampaignPause(uint256)": FunctionFragment;
     "topUpCampaign(uint256,uint256)": FunctionFragment;
     "transferOwnership(address)": FunctionFragment;
     "unpause()": FunctionFragment;
+    "updateCampaignMetadata(uint256,string)": FunctionFragment;
     "valuations(uint256,address)": FunctionFragment;
     "viewers(address)": FunctionFragment;
   };
@@ -100,6 +103,7 @@ export interface SovAdsManagerInterface extends utils.Interface {
       | "createCampaign"
       | "createClaim"
       | "disburseFunds"
+      | "extendCampaignDuration"
       | "feePercent"
       | "feeRecipient"
       | "getBalanceInfo"
@@ -119,9 +123,11 @@ export interface SovAdsManagerInterface extends utils.Interface {
       | "setRates"
       | "subscribePublisher"
       | "supportedTokens"
+      | "toggleCampaignPause"
       | "topUpCampaign"
       | "transferOwnership"
       | "unpause"
+      | "updateCampaignMetadata"
       | "valuations"
       | "viewers"
   ): FunctionFragment;
@@ -175,6 +181,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
       PromiseOrValue<string>,
       PromiseOrValue<BigNumberish>
     ]
+  ): string;
+  encodeFunctionData(
+    functionFragment: "extendCampaignDuration",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
   ): string;
   encodeFunctionData(
     functionFragment: "feePercent",
@@ -249,6 +259,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(
+    functionFragment: "toggleCampaignPause",
+    values: [PromiseOrValue<BigNumberish>]
+  ): string;
+  encodeFunctionData(
     functionFragment: "topUpCampaign",
     values: [PromiseOrValue<BigNumberish>, PromiseOrValue<BigNumberish>]
   ): string;
@@ -257,6 +271,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     values: [PromiseOrValue<string>]
   ): string;
   encodeFunctionData(functionFragment: "unpause", values?: undefined): string;
+  encodeFunctionData(
+    functionFragment: "updateCampaignMetadata",
+    values: [PromiseOrValue<BigNumberish>, PromiseOrValue<string>]
+  ): string;
   encodeFunctionData(
     functionFragment: "valuations",
     values: [PromiseOrValue<BigNumberish>, PromiseOrValue<string>]
@@ -290,6 +308,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
   ): Result;
   decodeFunctionResult(
     functionFragment: "disburseFunds",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "extendCampaignDuration",
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "feePercent", data: BytesLike): Result;
@@ -345,6 +367,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(
+    functionFragment: "toggleCampaignPause",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
     functionFragment: "topUpCampaign",
     data: BytesLike
   ): Result;
@@ -353,12 +379,19 @@ export interface SovAdsManagerInterface extends utils.Interface {
     data: BytesLike
   ): Result;
   decodeFunctionResult(functionFragment: "unpause", data: BytesLike): Result;
+  decodeFunctionResult(
+    functionFragment: "updateCampaignMetadata",
+    data: BytesLike
+  ): Result;
   decodeFunctionResult(functionFragment: "valuations", data: BytesLike): Result;
   decodeFunctionResult(functionFragment: "viewers", data: BytesLike): Result;
 
   events: {
     "CampaignCreated(uint256,address,address,uint256)": EventFragment;
+    "CampaignDurationExtended(uint256,uint256)": EventFragment;
     "CampaignFunded(uint256,uint256)": EventFragment;
+    "CampaignMetadataUpdated(uint256,string)": EventFragment;
+    "CampaignPaused(uint256,bool)": EventFragment;
     "ClaimCreated(uint256,uint256,address,uint256)": EventFragment;
     "ClaimProcessed(uint256,address,uint256,bool)": EventFragment;
     "InteractionRecorded(uint256,address,uint256,string)": EventFragment;
@@ -373,7 +406,10 @@ export interface SovAdsManagerInterface extends utils.Interface {
   };
 
   getEvent(nameOrSignatureOrTopic: "CampaignCreated"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "CampaignDurationExtended"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "CampaignFunded"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "CampaignMetadataUpdated"): EventFragment;
+  getEvent(nameOrSignatureOrTopic: "CampaignPaused"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "ClaimCreated"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "ClaimProcessed"): EventFragment;
   getEvent(nameOrSignatureOrTopic: "InteractionRecorded"): EventFragment;
@@ -400,6 +436,18 @@ export type CampaignCreatedEvent = TypedEvent<
 
 export type CampaignCreatedEventFilter = TypedEventFilter<CampaignCreatedEvent>;
 
+export interface CampaignDurationExtendedEventObject {
+  id: BigNumber;
+  newEndTime: BigNumber;
+}
+export type CampaignDurationExtendedEvent = TypedEvent<
+  [BigNumber, BigNumber],
+  CampaignDurationExtendedEventObject
+>;
+
+export type CampaignDurationExtendedEventFilter =
+  TypedEventFilter<CampaignDurationExtendedEvent>;
+
 export interface CampaignFundedEventObject {
   id: BigNumber;
   amount: BigNumber;
@@ -410,6 +458,29 @@ export type CampaignFundedEvent = TypedEvent<
 >;
 
 export type CampaignFundedEventFilter = TypedEventFilter<CampaignFundedEvent>;
+
+export interface CampaignMetadataUpdatedEventObject {
+  id: BigNumber;
+  metadata: string;
+}
+export type CampaignMetadataUpdatedEvent = TypedEvent<
+  [BigNumber, string],
+  CampaignMetadataUpdatedEventObject
+>;
+
+export type CampaignMetadataUpdatedEventFilter =
+  TypedEventFilter<CampaignMetadataUpdatedEvent>;
+
+export interface CampaignPausedEventObject {
+  id: BigNumber;
+  paused: boolean;
+}
+export type CampaignPausedEvent = TypedEvent<
+  [BigNumber, boolean],
+  CampaignPausedEventObject
+>;
+
+export type CampaignPausedEventFilter = TypedEventFilter<CampaignPausedEvent>;
 
 export interface ClaimCreatedEventObject {
   claimId: BigNumber;
@@ -641,6 +712,12 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
+    extendCampaignDuration(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _additionalDuration: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
+
     feePercent(overrides?: CallOverrides): Promise<[BigNumber]>;
 
     feeRecipient(overrides?: CallOverrides): Promise<[string]>;
@@ -739,6 +816,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<[boolean]>;
 
+    toggleCampaignPause(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
+
     topUpCampaign(
       _campaignId: PromiseOrValue<BigNumberish>,
       _amount: PromiseOrValue<BigNumberish>,
@@ -751,6 +833,12 @@ export interface SovAdsManager extends BaseContract {
     ): Promise<ContractTransaction>;
 
     unpause(
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<ContractTransaction>;
+
+    updateCampaignMetadata(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _metadata: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<ContractTransaction>;
 
@@ -871,6 +959,12 @@ export interface SovAdsManager extends BaseContract {
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
+  extendCampaignDuration(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    _additionalDuration: PromiseOrValue<BigNumberish>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
+
   feePercent(overrides?: CallOverrides): Promise<BigNumber>;
 
   feeRecipient(overrides?: CallOverrides): Promise<string>;
@@ -969,6 +1063,11 @@ export interface SovAdsManager extends BaseContract {
     overrides?: CallOverrides
   ): Promise<boolean>;
 
+  toggleCampaignPause(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
+
   topUpCampaign(
     _campaignId: PromiseOrValue<BigNumberish>,
     _amount: PromiseOrValue<BigNumberish>,
@@ -981,6 +1080,12 @@ export interface SovAdsManager extends BaseContract {
   ): Promise<ContractTransaction>;
 
   unpause(
+    overrides?: Overrides & { from?: PromiseOrValue<string> }
+  ): Promise<ContractTransaction>;
+
+  updateCampaignMetadata(
+    _campaignId: PromiseOrValue<BigNumberish>,
+    _metadata: PromiseOrValue<string>,
     overrides?: Overrides & { from?: PromiseOrValue<string> }
   ): Promise<ContractTransaction>;
 
@@ -1101,6 +1206,12 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<void>;
 
+    extendCampaignDuration(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _additionalDuration: PromiseOrValue<BigNumberish>,
+      overrides?: CallOverrides
+    ): Promise<void>;
+
     feePercent(overrides?: CallOverrides): Promise<BigNumber>;
 
     feeRecipient(overrides?: CallOverrides): Promise<string>;
@@ -1195,6 +1306,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<boolean>;
 
+    toggleCampaignPause(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: CallOverrides
+    ): Promise<void>;
+
     topUpCampaign(
       _campaignId: PromiseOrValue<BigNumberish>,
       _amount: PromiseOrValue<BigNumberish>,
@@ -1207,6 +1323,12 @@ export interface SovAdsManager extends BaseContract {
     ): Promise<void>;
 
     unpause(overrides?: CallOverrides): Promise<void>;
+
+    updateCampaignMetadata(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _metadata: PromiseOrValue<string>,
+      overrides?: CallOverrides
+    ): Promise<void>;
 
     valuations(
       arg0: PromiseOrValue<BigNumberish>,
@@ -1247,6 +1369,15 @@ export interface SovAdsManager extends BaseContract {
       amount?: null
     ): CampaignCreatedEventFilter;
 
+    "CampaignDurationExtended(uint256,uint256)"(
+      id?: PromiseOrValue<BigNumberish> | null,
+      newEndTime?: null
+    ): CampaignDurationExtendedEventFilter;
+    CampaignDurationExtended(
+      id?: PromiseOrValue<BigNumberish> | null,
+      newEndTime?: null
+    ): CampaignDurationExtendedEventFilter;
+
     "CampaignFunded(uint256,uint256)"(
       id?: PromiseOrValue<BigNumberish> | null,
       amount?: null
@@ -1255,6 +1386,24 @@ export interface SovAdsManager extends BaseContract {
       id?: PromiseOrValue<BigNumberish> | null,
       amount?: null
     ): CampaignFundedEventFilter;
+
+    "CampaignMetadataUpdated(uint256,string)"(
+      id?: PromiseOrValue<BigNumberish> | null,
+      metadata?: null
+    ): CampaignMetadataUpdatedEventFilter;
+    CampaignMetadataUpdated(
+      id?: PromiseOrValue<BigNumberish> | null,
+      metadata?: null
+    ): CampaignMetadataUpdatedEventFilter;
+
+    "CampaignPaused(uint256,bool)"(
+      id?: PromiseOrValue<BigNumberish> | null,
+      paused?: null
+    ): CampaignPausedEventFilter;
+    CampaignPaused(
+      id?: PromiseOrValue<BigNumberish> | null,
+      paused?: null
+    ): CampaignPausedEventFilter;
 
     "ClaimCreated(uint256,uint256,address,uint256)"(
       claimId?: PromiseOrValue<BigNumberish> | null,
@@ -1398,6 +1547,12 @@ export interface SovAdsManager extends BaseContract {
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
+    extendCampaignDuration(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _additionalDuration: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
+
     feePercent(overrides?: CallOverrides): Promise<BigNumber>;
 
     feeRecipient(overrides?: CallOverrides): Promise<BigNumber>;
@@ -1484,6 +1639,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<BigNumber>;
 
+    toggleCampaignPause(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
+
     topUpCampaign(
       _campaignId: PromiseOrValue<BigNumberish>,
       _amount: PromiseOrValue<BigNumberish>,
@@ -1496,6 +1656,12 @@ export interface SovAdsManager extends BaseContract {
     ): Promise<BigNumber>;
 
     unpause(
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<BigNumber>;
+
+    updateCampaignMetadata(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _metadata: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<BigNumber>;
 
@@ -1561,6 +1727,12 @@ export interface SovAdsManager extends BaseContract {
       _campaignId: PromiseOrValue<BigNumberish>,
       _recipient: PromiseOrValue<string>,
       _amount: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<PopulatedTransaction>;
+
+    extendCampaignDuration(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _additionalDuration: PromiseOrValue<BigNumberish>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 
@@ -1650,6 +1822,11 @@ export interface SovAdsManager extends BaseContract {
       overrides?: CallOverrides
     ): Promise<PopulatedTransaction>;
 
+    toggleCampaignPause(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<PopulatedTransaction>;
+
     topUpCampaign(
       _campaignId: PromiseOrValue<BigNumberish>,
       _amount: PromiseOrValue<BigNumberish>,
@@ -1662,6 +1839,12 @@ export interface SovAdsManager extends BaseContract {
     ): Promise<PopulatedTransaction>;
 
     unpause(
+      overrides?: Overrides & { from?: PromiseOrValue<string> }
+    ): Promise<PopulatedTransaction>;
+
+    updateCampaignMetadata(
+      _campaignId: PromiseOrValue<BigNumberish>,
+      _metadata: PromiseOrValue<string>,
       overrides?: Overrides & { from?: PromiseOrValue<string> }
     ): Promise<PopulatedTransaction>;
 

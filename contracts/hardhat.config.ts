@@ -2,6 +2,7 @@ import { HardhatUserConfig } from "hardhat/config";
 import "@nomiclabs/hardhat-ethers";
 import "@nomiclabs/hardhat-etherscan";
 import "@typechain/hardhat";
+import "@openzeppelin/hardhat-upgrades";
 import "hardhat-gas-reporter";
 import "solidity-coverage";
 import dotenvx from '@dotenvx/dotenvx'
@@ -11,6 +12,7 @@ const config: HardhatUserConfig = {
   solidity: {
     version: "0.8.28",
     settings: {
+      viaIR: true,
       optimizer: {
         enabled: true,
         runs: 200,

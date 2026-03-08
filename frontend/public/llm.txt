@@ -1,0 +1,58 @@
+# SovAds Integration Guide for LLMs
+
+SovAds is a decentralized advertising protocol that allows publishers to monetize their sites with zero middlemen and earn G$ or SovPoints.
+
+## Installation
+
+```bash
+npm install sovads-sdk@latest
+```
+
+## Quick Start
+
+### 1. Initialize SDK
+```javascript
+import { SovAds, Banner, Popup, Sidebar, BottomBar } from 'sovads-sdk';
+
+const ads = new SovAds({
+  siteId: 'YOUR_SITE_ID', // Get this from https://ads.sovseas.xyz/publisher
+  apiUrl: 'https://ads.sovseas.xyz'
+});
+```
+
+### 2. Implement Ad Formats
+
+#### Banner (Recommended for content areas)
+```javascript
+// HTML: <div id="ad-banner"></div>
+const banner = new Banner(ads, 'ad-banner');
+await banner.render();
+```
+
+#### Popup (High conversion)
+```javascript
+const popup = new Popup(ads);
+await popup.show(); // Shows after default delay
+```
+
+#### Bottom Bar (Floating)
+```javascript
+const bottomBar = new BottomBar(ads);
+await bottomBar.show();
+```
+
+#### Sidebar
+```javascript
+// HTML: <div id="ad-sidebar"></div>
+const sidebar = new Sidebar(ads, 'ad-sidebar');
+await sidebar.render();
+```
+
+## Development Mode
+Requests from `localhost` or `127.0.0.1` are automatically allowed for testing. You can use any dummy strings for `siteId` during local development, but standard verification applies in production.
+
+## Site ID Detection
+If `siteId` is not provided in the config, the SDK will attempt to auto-detect it based on the current domain.
+
+## Full Documentation
+Visit https://ads.sovseas.xyz/docs for interactive guides.

@@ -2,4 +2,5 @@
 /* tslint:disable */
 /* eslint-disable */
 export { SovAdsManager__factory } from "./SovAdsManager__factory";
+export { SovAdsStreaming__factory } from "./SovAdsStreaming__factory";
 export { SovAdsToken__factory } from "./SovAdsToken__factory";

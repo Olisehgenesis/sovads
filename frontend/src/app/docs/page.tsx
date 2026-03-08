@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 
-type Tab = 'publisher' | 'advertiser' | 'developer'
+type Tab = 'publisher' | 'advertiser' | 'developer' | 'ai'
 
 export default function DocsPage() {
     const [activeTab, setActiveTab] = useState<Tab>('publisher')
@@ -50,6 +50,15 @@ export default function DocsPage() {
                     >
                         Developer Reference
                     </button>
+                    <button
+                        onClick={() => setActiveTab('ai')}
+                        className={`px-6 py-3 text-lg font-heading uppercase transition-all border-2 border-black ${activeTab === 'ai'
+                            ? 'bg-black text-[#22C55E] shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] -translate-y-1'
+                            : 'bg-white text-black hover:bg-gray-100'
+                            }`}
+                    >
+                        AI Integration
+                    </button>
                 </div>
 
                 {/* Content Area */}
@@ -58,6 +67,7 @@ export default function DocsPage() {
                         {activeTab === 'publisher' && <PublisherDocs />}
                         {activeTab === 'advertiser' && <AdvertiserDocs />}
                         {activeTab === 'developer' && <DeveloperDocs />}
+                        {activeTab === 'ai' && <AIDocs />}
                     </div>
 
                     {/* Sidebar */}
@@ -113,21 +123,66 @@ function PublisherDocs() {
                         </div>
                     </div>
 
-                    <div className="card p-8 bg-white border-4 border-black">
+                    <div className="card p-8 bg-white border-4 border-black relative overflow-hidden">
+                        <div className="absolute top-0 right-0 bg-black text-[#FBCC5C] px-4 py-1 font-heading text-xs uppercase tracking-widest -rotate-2 translate-y-2 translate-x-2 shadow-md">
+                            Recommended
+                        </div>
                         <h3 className="text-2xl font-heading mb-4 uppercase flex items-center gap-3 text-black">
                             <span className="w-10 h-10 bg-black text-[#FBCC5C] rounded-full flex items-center justify-center italic">2</span>
-                            Integration
+                            Popup Setup (Best Performance)
                         </h3>
                         <p className="font-bold text-gray-800 mb-6">
-                            The simplest way to integrate is using our lightweight SDK. It auto-handles impressions, fraud detection, and viewer rewards.
+                            Popups offer the highest engagement. They appear after a short delay and are non-intrusive.
                         </p>
-                        <div className="text-gray-400 mb-2">// 1. Install</div>
-                        <div className="text-[#FBCC5C] mb-4 font-bold">npm install sovads-sdk@latest</div>
-                        <div className="text-gray-400 mb-2">// 2. Initialize and render</div>
-                        <div className="text-white">import {`{ SovAds, Banner }`} from &apos;sovads-sdk&apos;</div>
-                        <div className="text-[#FBCC5C] mt-2">const ads = new SovAds(&apos;YOUR_SITE_ID&apos;);</div>
-                        <div className="text-[#FBCC5C]">const div = new Banner(ads, &apos;ad-container&apos;);</div>
-                        <div className="text-[#FBCC5C]">await div.render();</div>
+                        <div className="bg-black p-4 rounded-lg font-mono text-sm mb-6 shadow-inner">
+                            <div className="text-gray-500 mb-2">// 1. Import and Show</div>
+                            <div className="text-blue-400">import <span className="text-white">{`{ SovAds, Popup }`}</span> from <span className="text-green-400">&apos;sovads-sdk&apos;</span></div>
+                            <div className="text-[#FBCC5C] mt-2">const ads = new <span className="text-blue-300">SovAds</span>(<span className="text-green-400">&apos;YOUR_SITE_ID&apos;</span>);</div>
+                            <div className="text-[#FBCC5C]">const popup = new <span className="text-blue-300">Popup</span>(ads);</div>
+                            <div className="text-[#FBCC5C] font-bold">await popup.show();</div>
+                        </div>
+                    </div>
+
+                    <div className="card p-8 bg-white border-4 border-black">
+                        <h3 className="text-2xl font-heading mb-4 uppercase flex items-center gap-3 text-black">
+                            <span className="w-10 h-10 bg-black text-[#FBCC5C] rounded-full flex items-center justify-center italic">3</span>
+                            Banner Setup
+                        </h3>
+                        <p className="font-bold text-gray-800 mb-6">
+                            Standard banner ads for your headers, footers, or within content.
+                        </p>
+                        <div className="bg-black p-4 rounded-lg font-mono text-sm shadow-inner">
+                            <div className="text-gray-500 mb-2">// HTML: &lt;div id=&quot;ad-container&quot;&gt;&lt;/div&gt;</div>
+                            <div className="text-blue-400">import <span className="text-white">{`{ SovAds, Banner }`}</span> from <span className="text-green-400">&apos;sovads-sdk&apos;</span></div>
+                            <div className="text-[#FBCC5C] mt-2">const ads = new <span className="text-blue-300">SovAds</span>(<span className="text-green-400">&apos;YOUR_SITE_ID&apos;</span>);</div>
+                            <div className="text-[#FBCC5C]">const banner = new <span className="text-blue-300">Banner</span>(ads, <span className="text-green-400">&apos;ad-container&apos;</span>);</div>
+                            <div className="text-[#FBCC5C]">await banner.render();</div>
+                        </div>
+                    </div>
+
+                    <div className="card p-8 bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                        <h3 className="text-2xl font-heading mb-4 uppercase flex items-center gap-3 text-black">
+                            <span className="w-10 h-10 bg-black text-[#FBCC5C] rounded-full flex items-center justify-center italic">4</span>
+                            Sidebar & BottomBar
+                        </h3>
+                        <div className="grid md:grid-cols-2 gap-8">
+                            <div>
+                                <h4 className="font-heading uppercase text-sm mb-2 text-black bg-[#FBCC5C] inline-block px-1">Sidebar</h4>
+                                <p className="text-xs font-bold mb-4">Vertical ads for your side navigation.</p>
+                                <div className="bg-black p-3 rounded font-mono text-[10px] text-blue-300">
+                                    const side = new Sidebar(ads, &apos;side-id&apos;);<br />
+                                    await side.render();
+                                </div>
+                            </div>
+                            <div>
+                                <h4 className="font-heading uppercase text-sm mb-2 text-black bg-[#FBCC5C] inline-block px-1">BottomBar</h4>
+                                <p className="text-xs font-bold mb-4">Floating bar fixed at the bottom.</p>
+                                <div className="bg-black p-3 rounded font-mono text-[10px] text-blue-300">
+                                    const bar = new BottomBar(ads);<br />
+                                    await bar.show();
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="card p-8 bg-white text-black border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
@@ -270,6 +325,71 @@ function DeveloperDocs() {
                         </ol>
                     </div>
                 </section>
+            </div>
+        </div>
+    )
+}
+function AIDocs() {
+    const prompt = "read ads.sovseas.xyz/llm.txt and implement banner ads in my site"
+
+    const copyToClipboard = (text: string) => {
+        navigator.clipboard.writeText(text)
+        alert('Copied to clipboard!')
+    }
+
+    const copyLlmTxt = async () => {
+        try {
+            const res = await fetch('/llm.txt')
+            const text = await res.text()
+            navigator.clipboard.writeText(text)
+            alert('llm.txt content copied to clipboard!')
+        } catch (err) {
+            alert('Failed to copy llm.txt')
+        }
+    }
+
+    return (
+        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-10">
+            <h2 className="text-4xl font-heading mb-8 uppercase underline decoration-8 underline-offset-8 decoration-[#22C55E]">AI Integration</h2>
+
+            <div className="card p-8 bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+                <h3 className="text-2xl font-heading mb-4 uppercase text-black">LLM-First Integration</h3>
+                <p className="font-bold text-gray-800 mb-6">
+                    Our protocol is optimized for LLM assistance. You can ask any AI agent to handle the integration for you using our standard configuration.
+                </p>
+
+                <div className="bg-neutral-900 p-6 rounded-lg border-2 border-black mb-6">
+                    <h4 className="text-[#22C55E] font-heading uppercase text-xs mb-3">Copy this prompt to your AI:</h4>
+                    <div className="bg-black text-white p-4 rounded border border-neutral-700 font-mono text-sm mb-4">
+                        &quot;{prompt}&quot;
+                    </div>
+                    <button
+                        onClick={() => copyToClipboard(prompt)}
+                        className="bg-[#22C55E] text-black px-6 py-2 font-heading uppercase text-sm border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:translate-y-[-2px] transition-transform active:translate-y-[0px]"
+                    >
+                        Copy Prompt
+                    </button>
+                </div>
+
+                <div className="space-y-4">
+                    <h4 className="font-heading uppercase text-sm text-black">What is llm.txt?</h4>
+                    <p className="text-xs font-bold leading-relaxed text-gray-700">
+                        The <code>/llm.txt</code> file is a standard way to provide high-density context to LLMs like ChatGPT, Claude, and Gemini. It allows them to understand our SDK perfectly without reading pages of docs.
+                    </p>
+                    <button
+                        onClick={copyLlmTxt}
+                        className="btn btn-primary text-xs py-2 px-4"
+                    >
+                        Copy llm.txt Content
+                    </button>
+                </div>
+            </div>
+
+            <div className="card p-8 bg-black text-white border-4 border-black rotate-1">
+                <h3 className="text-2xl font-heading mb-4 uppercase text-[#22C55E]">Pro Tip</h3>
+                <p className="text-sm font-bold opacity-90">
+                    If you use an IDE with AI (like Cursor, Windsurf, or Copilot), just point it to <code>https://ads.sovseas.xyz/llm.txt</code> and it will know exactly how to implement any ad format.
+                </p>
             </div>
         </div>
     )
