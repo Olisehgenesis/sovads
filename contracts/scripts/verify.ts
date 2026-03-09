@@ -1,30 +1,27 @@
-import { ethers } from "hardhat";
+import { ethers, run } from "hardhat";
 
 async function main() {
-  const contractAddress = process.argv[2];
-  const constructorArgs = process.argv.slice(3);
+  const streamingAddress = process.argv[2];
 
-  if (!contractAddress) {
-    console.error("❌ Please provide contract address");
-    console.log("Usage: npx hardhat run scripts/verify.ts --network <network> <contract-address> [constructor-args...]");
+  if (!streamingAddress) {
+    console.error("❌ Please provide SovAdsStreaming address");
+    console.log("Usage: npx hardhat run scripts/verify.ts --network <network> <streaming-address>");
     process.exit(1);
   }
 
-  console.log("🔍 Verifying contract at:", contractAddress);
   console.log("🌐 Network:", await ethers.provider.getNetwork());
 
+  console.log("\n🔍 Verifying SovAdsStreaming at:", streamingAddress);
   try {
-    await hre.run("verify:verify", {
-      address: contractAddress,
-      constructorArguments: constructorArgs,
+    await run("verify:verify", {
+      address: streamingAddress,
     });
-    
-    console.log("✅ Contract verified successfully!");
-  } catch (error) {
-    if (error.message.includes("Already Verified")) {
-      console.log("✅ Contract already verified");
+    console.log("✅ SovAdsStreaming verified successfully!");
+  } catch (error: any) {
+    if (error.message.includes("Already Verified") || error.message.includes("already verified")) {
+      console.log("✅ SovAdsStreaming already verified");
     } else {
-      console.error("❌ Verification failed:", error.message);
+      console.error("❌ Verification failed for SovAdsStreaming:", error.message);
     }
   }
 }

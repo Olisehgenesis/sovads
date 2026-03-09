@@ -5,7 +5,7 @@ import {ISuperToken, ISuperfluid} from "@superfluid-finance/ethereum-contracts/c
 import {SuperTokenV1Library} from "@superfluid-finance/ethereum-contracts/contracts/apps/SuperTokenV1Library.sol";
 import {ISuperfluidPool, PoolConfig} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {ReentrancyGuardUpgradeable} from "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 // OpenZeppelin Upgradeable
 import {Initializable} from "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
@@ -29,7 +29,7 @@ import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/U
 contract SovAdsStreaming is 
     Initializable, 
     OwnableUpgradeable, 
-    ReentrancyGuard, 
+    ReentrancyGuardUpgradeable, 
     PausableUpgradeable, 
     UUPSUpgradeable 
 {
@@ -144,6 +144,7 @@ contract SovAdsStreaming is
     function initialize(ISuperToken _goodDollar, address _admin) public initializer {
         __Ownable_init(msg.sender);
         __Pausable_init();
+        __ReentrancyGuard_init();
 
         require(address(_goodDollar) != address(0), "Invalid GoodDollar address");
         require(_admin != address(0), "Invalid admin address");
