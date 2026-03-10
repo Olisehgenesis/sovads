@@ -5,3 +5,4 @@ export * as openzeppelin from "./@openzeppelin";
 export * as openzeppelinV5 from "./@openzeppelin-v5";
 export * as superfluidFinance from "./@superfluid-finance";
 export * as contracts from "./contracts";
+export * as utils from "./utils";

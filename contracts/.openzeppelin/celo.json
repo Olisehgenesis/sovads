@@ -1,0 +1,335 @@
+{
+  "manifestVersion": "3.2",
+  "proxies": [
+    {
+      "address": "0x6b5d642065CCC47199a9C9562Ca6c1D993a34580",
+      "txHash": "0xdd8dd7a141fb47bc1e9ec50e5ea56740dcd58668eed84e91f5cc6c4837348cf8",
+      "kind": "uups"
+    },
+    {
+      "address": "0xA621Da678868393409B05691318CCB00c627914D",
+      "txHash": "0xa6337c966c4032f70a11953575c70423d0a47068530d462e592a95ec4c12b080",
+      "kind": "uups"
+    },
+    {
+      "address": "0x6aC1Cbf64bb6a92D71f8c238c32dB94b3c0398dc",
+      "txHash": "0x1c919594832d33499ee096980f8ea0c676dd700ed8ec5add3336992fd05e7cbd",
+      "kind": "uups"
+    },
+    {
+      "address": "0xFb76103FC70702413cEa55805089106D0626823f",
+      "txHash": "0xcc432dfd5ad322a140d525aeb3eb134aa2f2e6bedb92bb16f9c1fa3e887a7335",
+      "kind": "uups"
+    }
+  ],
+  "impls": {
+    "854e7fe7b7491b58737cab84d281f6e0f0ea01da7d253766ea144120d1eafb8a": {
+      "address": "0x567feD9d17B1d88448615aBFfC3Fe6a3C647508B",
+      "txHash": "0x520bcdfe4e08bd48e0cb054308d1516e1ef82770b3830e5ce3fe5d908310e838",
+      "layout": {
+        "solcVersion": "0.8.28",
+        "storage": [
+          {
+            "label": "_status",
+            "offset": 0,
+            "slot": "0",
+            "type": "t_uint256",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "utils/ReentrancyGuardUpgradeable.sol:39"
+          },
+          {
+            "label": "__gap",
+            "offset": 0,
+            "slot": "1",
+            "type": "t_array(t_uint256)49_storage",
+            "contract": "ReentrancyGuardUpgradeable",
+            "src": "utils/ReentrancyGuardUpgradeable.sol:89"
+          },
+          {
+            "label": "goodDollar",
+            "offset": 0,
+            "slot": "50",
+            "type": "t_contract(ISuperToken)9312",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:74"
+          },
+          {
+            "label": "admin",
+            "offset": 0,
+            "slot": "51",
+            "type": "t_address",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:77"
+          },
+          {
+            "label": "campaigns",
+            "offset": 0,
+            "slot": "52",
+            "type": "t_mapping(t_uint256,t_struct(StreamingCampaign)10602_storage)",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:80"
+          },
+          {
+            "label": "campaignCount",
+            "offset": 0,
+            "slot": "53",
+            "type": "t_uint256",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:81"
+          },
+          {
+            "label": "stakers",
+            "offset": 0,
+            "slot": "54",
+            "type": "t_mapping(t_address,t_struct(StakerInfo)10607_storage)",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:84"
+          },
+          {
+            "label": "totalStaked",
+            "offset": 0,
+            "slot": "55",
+            "type": "t_uint256",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:85"
+          },
+          {
+            "label": "stakerPool",
+            "offset": 0,
+            "slot": "56",
+            "type": "t_contract(ISuperfluidPool)8116",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:86"
+          },
+          {
+            "label": "isPublisher",
+            "offset": 0,
+            "slot": "57",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:89"
+          },
+          {
+            "label": "admins",
+            "offset": 0,
+            "slot": "58",
+            "type": "t_mapping(t_address,t_bool)",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:90"
+          },
+          {
+            "label": "publisherUnits",
+            "offset": 0,
+            "slot": "59",
+            "type": "t_mapping(t_uint256,t_mapping(t_address,t_uint128))",
+            "contract": "SovAdsStreaming",
+            "src": "contracts/SovAdsStreaming.sol:93"
+          }
+        ],
+        "types": {
+          "t_address": {
+            "label": "address",
+            "numberOfBytes": "20"
+          },
+          "t_array(t_uint256)49_storage": {
+            "label": "uint256[49]",
+            "numberOfBytes": "1568"
+          },
+          "t_bool": {
+            "label": "bool",
+            "numberOfBytes": "1"
+          },
+          "t_contract(ISuperToken)9312": {
+            "label": "contract ISuperToken",
+            "numberOfBytes": "20"
+          },
+          "t_contract(ISuperfluidPool)8116": {
+            "label": "contract ISuperfluidPool",
+            "numberOfBytes": "20"
+          },
+          "t_mapping(t_address,t_bool)": {
+            "label": "mapping(address => bool)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_struct(StakerInfo)10607_storage)": {
+            "label": "mapping(address => struct SovAdsStreaming.StakerInfo)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_address,t_uint128)": {
+            "label": "mapping(address => uint128)",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_mapping(t_address,t_uint128))": {
+            "label": "mapping(uint256 => mapping(address => uint128))",
+            "numberOfBytes": "32"
+          },
+          "t_mapping(t_uint256,t_struct(StreamingCampaign)10602_storage)": {
+            "label": "mapping(uint256 => struct SovAdsStreaming.StreamingCampaign)",
+            "numberOfBytes": "32"
+          },
+          "t_string_storage": {
+            "label": "string",
+            "numberOfBytes": "32"
+          },
+          "t_struct(StakerInfo)10607_storage": {
+            "label": "struct SovAdsStreaming.StakerInfo",
+            "members": [
+              {
+                "label": "stakedAmount",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "stakingTime",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "1"
+              }
+            ],
+            "numberOfBytes": "64"
+          },
+          "t_struct(StreamingCampaign)10602_storage": {
+            "label": "struct SovAdsStreaming.StreamingCampaign",
+            "members": [
+              {
+                "label": "id",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "0"
+              },
+              {
+                "label": "creator",
+                "type": "t_address",
+                "offset": 0,
+                "slot": "1"
+              },
+              {
+                "label": "totalBudget",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "2"
+              },
+              {
+                "label": "adminFee",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "3"
+              },
+              {
+                "label": "dailyStreamBudget",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "4"
+              },
+              {
+                "label": "publisherBudget",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "5"
+              },
+              {
+                "label": "stakerBudget",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "6"
+              },
+              {
+                "label": "startTime",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "7"
+              },
+              {
+                "label": "endTime",
+                "type": "t_uint256",
+                "offset": 0,
+                "slot": "8"
+              },
+              {
+                "label": "metadata",
+                "type": "t_string_storage",
+                "offset": 0,
+                "slot": "9"
+              },
+              {
+                "label": "active",
+                "type": "t_bool",
+                "offset": 0,
+                "slot": "10"
+              },
+              {
+                "label": "publisherFlowActive",
+                "type": "t_bool",
+                "offset": 1,
+                "slot": "10"
+              },
+              {
+                "label": "adminStreamActive",
+                "type": "t_bool",
+                "offset": 2,
+                "slot": "10"
+              },
+              {
+                "label": "stakerFlowActive",
+                "type": "t_bool",
+                "offset": 3,
+                "slot": "10"
+              },
+              {
+                "label": "publisherPool",
+                "type": "t_contract(ISuperfluidPool)8116",
+                "offset": 4,
+                "slot": "10"
+              }
+            ],
+            "numberOfBytes": "352"
+          },
+          "t_uint128": {
+            "label": "uint128",
+            "numberOfBytes": "16"
+          },
+          "t_uint256": {
+            "label": "uint256",
+            "numberOfBytes": "32"
+          },
+          "t_uint64": {
+            "label": "uint64"
+          }
+        },
+        "namespaces": {
+          "erc7201:openzeppelin.storage.Pausable": [
+            {
+              "contract": "PausableUpgradeable",
+              "label": "_paused",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts-upgradeable/utils/PausableUpgradeable.sol:21"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Ownable": [
+            {
+              "contract": "OwnableUpgradeable",
+              "label": "_owner",
+              "type": "t_address",
+              "src": "@openzeppelin/contracts-upgradeable/access/OwnableUpgradeable.sol:24"
+            }
+          ],
+          "erc7201:openzeppelin.storage.Initializable": [
+            {
+              "contract": "Initializable",
+              "label": "_initialized",
+              "type": "t_uint64",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:69"
+            },
+            {
+              "contract": "Initializable",
+              "label": "_initializing",
+              "type": "t_bool",
+              "src": "@openzeppelin/contracts/proxy/utils/Initializable.sol:73"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

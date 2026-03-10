@@ -25,6 +25,7 @@ export async function POST(request: NextRequest) {
     const normalizedWallet = wallet?.toLowerCase()
     if (!isSovadGsConfigured) {
       console.warn('G$ payouts not configured, points will be marked as claimed in DB only')
+      // we'll still let the request continue; the client will see configured=false
     }
 
     const viewerPointsCollection = await collections.viewerPoints()
@@ -93,7 +94,7 @@ export async function POST(request: NextRequest) {
       txHash,
       message: txHash
         ? `Successfully claimed ${claimAmount} G$! Transaction: ${txHash}`
-        : `Points marked as claimed. Tokens will be transferred manually.`
+        : `Claiming is temporarily disabled; points have been marked as claimed in the database. Tokens will be distributed once payouts are live – please hang tight!`
     }, { headers: corsHeaders })
   } catch (error) {
     console.error('Error claiming points:', error)

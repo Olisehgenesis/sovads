@@ -227,7 +227,8 @@ export interface ViewerReward {
   viewerId: string // Reference to ViewerPoints _id
   wallet?: string // Wallet if connected
   fingerprint?: string // Fingerprint if anonymous
-  type: 'IMPRESSION' | 'CLICK' | 'ENGAGEMENT'
+  // We're now tracking additional reward types in the future, e.g. staking
+  type: 'IMPRESSION' | 'CLICK' | 'ENGAGEMENT' | 'STAKE'
   campaignId: string
   adId: string
   siteId: string

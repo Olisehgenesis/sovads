@@ -22,12 +22,10 @@ export default function LeaderboardPage() {
                     setEntries(data.entries || [])
                 } else {
                     console.error('Failed to fetch leaderboard:', response.status, response.statusText)
-                    // Optionally, set an empty array or handle error state
                     setEntries([])
                 }
             } catch (error) {
                 console.error('Error fetching leaderboard:', error)
-                // Optionally, set an empty array or handle error state
                 setEntries([])
             } finally {
                 setLoading(false)
@@ -35,6 +33,9 @@ export default function LeaderboardPage() {
         }
 
         fetchLeaderboard()
+        // periodically refresh to make stake rewards show up quickly
+        const interval = setInterval(fetchLeaderboard, 30000)
+        return () => clearInterval(interval)
     }, [])
 
     return (

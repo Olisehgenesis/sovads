@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { useAccount } from 'wagmi';
-import { useAds } from '../../hooks/useAds';
+import { useStreamingAds } from '../../hooks/useStreamingAds';
+import { GOODDOLLAR_ADDRESS } from '@/lib/chain-config';
 import { getTokenInfo, getTokenLabel } from '@/lib/tokens';
 
 interface CampaignFormData {
@@ -22,7 +23,7 @@ interface CampaignFormData {
 
 export default function CreateCampaign() {
   const { address } = useAccount();
-  const { createCampaign, isLoading, error, getSupportedTokens } = useAds();
+  const { createStreamingCampaign, isLoading, error } = useStreamingAds();
 
   const [formData, setFormData] = useState<CampaignFormData>(() => {
     // Check if cloning from URL params
@@ -53,7 +54,7 @@ export default function CreateCampaign() {
       budget: '',
       cpc: '0.002',
       duration: '',
-      tokenAddress: '',
+      tokenAddress: GOODDOLLAR_ADDRESS,
       tags: '',
       targetLocations: '',
       metadata: '',
@@ -69,7 +70,6 @@ export default function CreateCampaign() {
   // Get token info for selected token
   const selectedTokenInfo = getTokenInfo(formData.tokenAddress) || { symbol: 'TOKEN', name: 'Token', decimals: 18, address: '' };
 
-  const [supportedTokens, setSupportedTokens] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   const [bannerPreview, setBannerPreview] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,25 +85,8 @@ export default function CreateCampaign() {
     return `sovads-${month}-${day}-${random}`;
   };
 
-  // Load supported tokens on component mount
-  React.useEffect(() => {
-    const loadSupportedTokens = async () => {
-      try {
-        const tokens = await getSupportedTokens();
-        if (tokens) {
-          setSupportedTokens(tokens);
-          // Set first token as default if available
-          if (tokens.length > 0) {
-            setFormData(prev => ({ ...prev, tokenAddress: tokens[0] }));
-          }
-        }
-      } catch (err) {
-        console.error('Failed to load supported tokens:', err);
-      }
-    };
-
-    loadSupportedTokens();
-  }, [getSupportedTokens]);
+  // Load supported tokens (default to G$ for now as it's the only one for streaming)
+  const supportedTokens = [GOODDOLLAR_ADDRESS];
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
@@ -189,8 +172,7 @@ export default function CreateCampaign() {
       const start = new Date(startIso).getTime();
       const end = new Date(endIso).getTime();
       const durationSeconds = Math.max(1, Math.floor((end - start) / 1000));
-      const { hash: txHash, id: onChainId } = await createCampaign(
-        formData.tokenAddress,
+      const { hash: txHash, id: onChainId } = await createStreamingCampaign(
         formData.budget,
         durationSeconds,
         metadata
