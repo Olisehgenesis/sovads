@@ -8,9 +8,11 @@ export async function GET(request: NextRequest) {
     const publisherId = searchParams.get('publisherId')
     const days = Number.parseInt(searchParams.get('days') ?? '7', 10)
 
-    if (!campaignId && !publisherId) {
-      return NextResponse.json({ error: 'Campaign ID or Publisher ID is required' }, { status: 400 })
-    }
+    // if neither campaign nor publisher specified, return global analytics
+    // (everything is covered by timestamp filter below)
+    // if (!campaignId && !publisherId) {
+    //   return NextResponse.json({ error: 'Campaign ID or Publisher ID is required' }, { status: 400 })
+    // }
 
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - days)
@@ -77,12 +79,30 @@ export async function GET(request: NextRequest) {
         return sum + (campaign?.cpc ?? 0)
       }, 0)
 
+    // build daily breakdown (ISO date -> counts)
+    const dailyMap: Map<string, { date: string; impressions: number; clicks: number; revenue: number }> = new Map()
+    events.forEach((e) => {
+      const d = new Date(e.timestamp).toISOString().split('T')[0]
+      if (!dailyMap.has(d)) {
+        dailyMap.set(d, { date: d, impressions: 0, clicks: 0, revenue: 0 })
+      }
+      const rec = dailyMap.get(d)!
+      if (e.type === 'IMPRESSION') {
+        rec.impressions++
+      } else if (e.type === 'CLICK') {
+        rec.clicks++
+        rec.revenue += campaignMap.get(e.campaignId)?.cpc ?? 0
+      }
+    })
+    const dailyStats = Array.from(dailyMap.values())
+
     const analytics = {
       period: `${days} days`,
       impressions,
       clicks,
       ctr: parseFloat(ctr.toFixed(2)),
       totalRevenue: parseFloat(totalRevenue.toFixed(6)),
+      dailyStats,
       events: events.map((event) => ({
         id: event._id,
         type: event.type,

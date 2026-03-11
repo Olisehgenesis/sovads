@@ -16,6 +16,7 @@ const navLinks = [
   { href: '/staking', label: 'Stake', hover: 'hover:bg-pink-400' },
   { href: '/advertiser', label: 'Advertiser', hover: 'hover:bg-yellow-400' },
   { href: '/publisher', label: 'Publisher', hover: 'hover:bg-blue-300' },
+  { href: '/analytics', label: 'Analytics', hover: 'hover:bg-gray-200' },
   { href: '/about', label: 'About', hover: 'hover:bg-gray-200' },
   { href: '/docs', label: 'Docs', hover: 'hover:bg-gray-200' },
 ]
