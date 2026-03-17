@@ -13,6 +13,7 @@ const navBase =
 
 const navLinks = [
   { href: '/rewards', label: 'Rewards', hover: 'hover:bg-yellow-400' },
+  { href: '/leaderboard', label: 'Leaderboard', hover: 'hover:bg-blue-300' },
   { href: '/staking', label: 'Stake', hover: 'hover:bg-pink-400' },
   { href: '/advertiser', label: 'Advertiser', hover: 'hover:bg-yellow-400' },
   { href: '/publisher', label: 'Publisher', hover: 'hover:bg-blue-300' },

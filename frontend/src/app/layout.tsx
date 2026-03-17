@@ -7,6 +7,7 @@ import Header from '@/components/Header'
 import Footer from '@/components/Footer'
 import PopupAdClient from '@/components/ads/PopupAdClient'
 import { SDKIdentityHelper } from '@/components/ads/SDKIdentityHelper'
+import GoodDollarClaimGate from '@/components/GoodDollarClaimGate'
 
 const anton = Anton({
   variable: "--font-heading",
@@ -84,6 +85,7 @@ export default async function RootLayout({
           <Footer />
           <PopupAdClient delay={4000} />
           <SDKIdentityHelper />
+          <GoodDollarClaimGate />
         </ContextProvider>
       </body>
     </html>

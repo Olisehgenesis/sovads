@@ -12,6 +12,10 @@ if (!projectId) {
 // Celo mainnet only (SovadGs, G$, treasury)
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [celo]
 export const defaultNetwork = celo
+const celoRpcUrl =
+  process.env.NEXT_PUBLIC_CELO_MAINNET_RPC_URL ||
+  process.env.CELO_MAINNET_RPC_URL ||
+  'https://celo.drpc.org'
 
 // Set up the Wagmi Adapter (Config)
 export const wagmiAdapter = new WagmiAdapter({
@@ -20,7 +24,10 @@ export const wagmiAdapter = new WagmiAdapter({
   }),
   ssr: true,
   projectId,
-  networks
+  networks,
+  transports: {
+    [celo.id]: http(celoRpcUrl)
+  }
 })
 
 export const config = wagmiAdapter.wagmiConfig

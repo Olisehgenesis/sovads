@@ -14,3 +14,12 @@ export const SOVADS_STREAMING_ADDRESS = process.env.NEXT_PUBLIC_SOVADS_STREAMING
 
 /** GoodDollar (G$) - SuperToken address */
 export const GOODDOLLAR_ADDRESS = process.env.NEXT_PUBLIC_GOODDOLLAR_ADDRESS || '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A'
+
+/** GoodDollar Identity contract (used for verification checks) */
+export const GOODDOLLAR_IDENTITY_ADDRESS = process.env.NEXT_PUBLIC_GOODDOLLAR_IDENTITY_ADDRESS || ''
+
+/** GoodDollar UBI contract (used for daily claim checks and claims) */
+export const GOODDOLLAR_UBI_ADDRESS = process.env.NEXT_PUBLIC_GOODDOLLAR_UBI_ADDRESS || ''
+
+/** GoodDollar verification page */
+export const GOODDOLLAR_VERIFY_URL = process.env.NEXT_PUBLIC_GOODDOLLAR_VERIFY_URL || 'https://wallet.gooddollar.org'

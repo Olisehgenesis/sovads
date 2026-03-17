@@ -54,11 +54,14 @@ export interface StakerInfo {
     units: bigint;
 }
 
+export type StakingPhase = 'idle' | 'approving' | 'staking';
+
 export const useStreamingAds = () => {
     const { address: userAddress } = useAccount();
     const address = SOVADS_STREAMING_ADDRESS;
     const publicClient = usePublicClient({ chainId });
     const [isLoading, setIsLoading] = useState(false);
+    const [stakingPhase, setStakingPhase] = useState<StakingPhase>('idle');
     const [error, setError] = useState<string | null>(null);
 
     const { writeContractAsync: writeContract } = useWriteContract();
@@ -257,65 +260,71 @@ export const useStreamingAds = () => {
     // the hook now returns an object with the transaction hash and how many points were
     // applied (useful for showing a toast/alert in the UI)
     const stake = useCallback(async (amount: string): Promise<{ hash?: string; pointsAwarded?: number } | undefined> => {
-        // first perform the on‑chain operation via the helper wrapper
-        const hash = await handleContractCall(async () => {
-            if (!writeContract || !userAddress) throw new Error('Wallet not connected');
-            const amountWei = parseUnits(amount, 18);
-            await ensureAllowance(GOODDOLLAR_ADDRESS, userAddress, address as `0x${string}`, amountWei);
+        setStakingPhase('approving');
+        try {
+            // first perform the on‑chain operation via the helper wrapper
+            const hash = await handleContractCall(async () => {
+                if (!writeContract || !userAddress) throw new Error('Wallet not connected');
+                const amountWei = parseUnits(amount, 18);
+                await ensureAllowance(GOODDOLLAR_ADDRESS, userAddress, address as `0x${string}`, amountWei);
 
-            const h = await writeContract({
-                address: address as `0x${string}`,
-                abi: sovAdsStreamingAbi,
-                functionName: 'stake',
-                chainId,
-                args: [amountWei],
-            });
-            if (publicClient) await publicClient.waitForTransactionReceipt({ hash: h });
-            return h;
-        }, 'stake G$');
+                setStakingPhase('staking');
+                const h = await writeContract({
+                    address: address as `0x${string}`,
+                    abi: sovAdsStreamingAbi,
+                    functionName: 'stake',
+                    chainId,
+                    args: [amountWei],
+                });
+                if (publicClient) await publicClient.waitForTransactionReceipt({ hash: h });
+                return h;
+            }, 'stake G$');
 
-        let pointsToAward: number | undefined;
-        // only try to award points if staking succeeded and we have an address
-        if (hash && userAddress) {
-            pointsToAward = 5;
-            try {
-                const lb = await fetch('/api/viewers/leaderboard');
-                if (lb.ok) {
-                    const data = await lb.json();
-                    const entries: Array<{ points: number }> = data.entries || [];
-                    if (entries.length) {
-                        const top = entries[0].points;
-                        const bottom = entries[entries.length - 1]?.points || 0;
-                        const range = top - bottom;
-                        const tenPct = Math.floor(range * 0.1);
-                        if (tenPct > pointsToAward) {
-                            pointsToAward = tenPct;
+            let pointsToAward: number | undefined;
+            // only try to award points if staking succeeded and we have an address
+            if (hash && userAddress) {
+                pointsToAward = 5;
+                try {
+                    const lb = await fetch('/api/viewers/leaderboard');
+                    if (lb.ok) {
+                        const data = await lb.json();
+                        const entries: Array<{ points: number }> = data.entries || [];
+                        if (entries.length) {
+                            const top = entries[0].points;
+                            const bottom = entries[entries.length - 1]?.points || 0;
+                            const range = top - bottom;
+                            const tenPct = Math.floor(range * 0.1);
+                            if (tenPct > pointsToAward) {
+                                pointsToAward = tenPct;
+                            }
                         }
                     }
+                } catch (e) {
+                    console.warn('could not fetch leaderboard for bonus calculation', e);
                 }
-            } catch (e) {
-                console.warn('could not fetch leaderboard for bonus calculation', e);
+
+                try {
+                    await fetch('/api/viewers/points', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            wallet: userAddress.toLowerCase(),
+                            type: 'STAKE',
+                            campaignId: '0',
+                            adId: '0',
+                            siteId: 'staking',
+                            points: pointsToAward,
+                        }),
+                    });
+                } catch (e) {
+                    console.warn('failed to award stake points', e);
+                }
             }
 
-            try {
-                await fetch('/api/viewers/points', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        wallet: userAddress.toLowerCase(),
-                        type: 'STAKE',
-                        campaignId: '0',
-                        adId: '0',
-                        siteId: 'staking',
-                        points: pointsToAward,
-                    }),
-                });
-            } catch (e) {
-                console.warn('failed to award stake points', e);
-            }
+            return { hash, pointsAwarded: pointsToAward };
+        } finally {
+            setStakingPhase('idle');
         }
-
-        return { hash, pointsAwarded: pointsToAward };
     }, [writeContract, publicClient, handleContractCall, address, userAddress, ensureAllowance]);
 
     const unstake = useCallback(async (amount: string) => {
@@ -369,6 +378,7 @@ export const useStreamingAds = () => {
         totalStaked: totalStaked as bigint | undefined,
         isProtocolPaused: isProtocolPaused as boolean | undefined,
         isLoading,
+        stakingPhase,
         error,
         getCampaign,
         getStakerInfo,

@@ -9,6 +9,18 @@ interface LeaderboardEntry {
     rank: number
 }
 
+function formatWalletLabel(wallet: string): string {
+    if (!wallet) return '0x...ANON...'
+
+    const lower = wallet.toLowerCase()
+    if (lower.startsWith('anon_') || lower === 'anonymous') {
+        const suffix = wallet.slice(-1).toUpperCase()
+        return `0x...ANON...${suffix}`
+    }
+
+    return wallet
+}
+
 export default function LeaderboardPage() {
     const [entries, setEntries] = useState<LeaderboardEntry[]>([])
     const [loading, setLoading] = useState(true)
@@ -66,7 +78,7 @@ export default function LeaderboardPage() {
                         ) : (
                             entries.map((entry, idx) => (
                                 <tr
-                                    key={entry.wallet}
+                                    key={`${entry.rank}-${entry.wallet}`}
                                     className={`border-b-2 border-black/10 hover:bg-[#F5F3F0] transition-colors ${idx === 0 ? 'bg-yellow-50/50' : ''}`}
                                 >
                                     <td className="px-6 py-4">
@@ -75,7 +87,7 @@ export default function LeaderboardPage() {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 font-mono text-sm font-bold">
-                                        {entry.wallet}
+                                        {formatWalletLabel(entry.wallet)}
                                     </td>
                                     <td className="px-6 py-4 text-right font-heading text-xl">
                                         {entry.points.toLocaleString()}
