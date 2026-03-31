@@ -24,6 +24,8 @@ type ClaimGateStatus = {
   error: string | null
 }
 
+const GOODDOLLAR_GATE_SEEN_COOKIE = 'sovads_gd_gate_seen'
+
 const identityAbi = [
   {
     name: 'getWhitelistedRoot',
@@ -81,6 +83,21 @@ function isAddress(value: string): value is `0x${string}` {
   return /^0x[a-fA-F0-9]{40}$/.test(value)
 }
 
+function hasSeenGateToday(): boolean {
+  if (typeof document === 'undefined') return false
+  return document.cookie
+    .split(';')
+    .map((item) => item.trim())
+    .some((item) => item.startsWith(`${GOODDOLLAR_GATE_SEEN_COOKIE}=`))
+}
+
+function markGateSeenUntilMidnight(): void {
+  if (typeof document === 'undefined') return
+  const nextMidnight = new Date()
+  nextMidnight.setHours(24, 0, 0, 0)
+  document.cookie = `${GOODDOLLAR_GATE_SEEN_COOKIE}=1; expires=${nextMidnight.toUTCString()}; path=/; SameSite=Lax`
+}
+
 export default function GoodDollarClaimGate() {
   const { address, isConnected } = useAccount()
   const pathname = usePathname()
@@ -100,6 +117,20 @@ export default function GoodDollarClaimGate() {
   })
   const [visible, setVisible] = useState(false)
   const [isClaiming, setIsClaiming] = useState(false)
+
+  const hideGateForToday = useCallback(() => {
+    markGateSeenUntilMidnight()
+    setVisible(false)
+  }, [])
+
+  const showGateOncePerDay = useCallback(() => {
+    if (hasSeenGateToday()) {
+      setVisible(false)
+      return
+    }
+    markGateSeenUntilMidnight()
+    setVisible(true)
+  }, [])
 
   const identityAddress = useMemo(
     () => (isAddress(GOODDOLLAR_IDENTITY_ADDRESS) ? GOODDOLLAR_IDENTITY_ADDRESS : undefined),
@@ -228,7 +259,7 @@ export default function GoodDollarClaimGate() {
         error: null,
       })
 
-      setVisible(true)
+      showGateOncePerDay()
     } catch (error) {
       setStatus({
         loading: false,
@@ -240,9 +271,9 @@ export default function GoodDollarClaimGate() {
         lastCheckedAt: Date.now(),
         error: error instanceof Error ? error.message : 'Failed to check claim status',
       })
-      setVisible(true)
+      showGateOncePerDay()
     }
-  }, [address, gDollarAddress, identityAddress, isConfigured, isConnected, publicClient, ubiAddress])
+  }, [address, gDollarAddress, identityAddress, isConfigured, isConnected, publicClient, showGateOncePerDay, ubiAddress])
 
   useEffect(() => {
     if (!isConnected || !address) {
@@ -288,13 +319,13 @@ export default function GoodDollarClaimGate() {
 
       {visible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/50" onClick={() => setVisible(false)} />
+          <div className="absolute inset-0 bg-black/50" onClick={hideGateForToday} />
 
           <div className="relative w-full max-w-md border-4 border-black bg-white p-6 shadow-[10px_10px_0px_0px_rgba(0,0,0,1)]">
             <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-2">
               <h2 className="text-lg font-black uppercase tracking-wider">GoodDollar Check</h2>
               <button
-                onClick={() => setVisible(false)}
+                onClick={hideGateForToday}
                 className="border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase"
               >
                 Close
@@ -315,11 +346,11 @@ export default function GoodDollarClaimGate() {
                   GoodDollar claim contracts are not configured yet.
                 </p>
                 {isOnStakingPage ? (
-                  <button onClick={() => setVisible(false)} className="btn btn-primary w-full text-center">
+                  <button onClick={hideGateForToday} className="btn btn-primary w-full text-center">
                     Close
                   </button>
                 ) : (
-                  <Link href="/staking" className="btn btn-primary w-full text-center" onClick={() => setVisible(false)}>
+                  <Link href="/staking" className="btn btn-primary w-full text-center" onClick={hideGateForToday}>
                     Go to Staking
                   </Link>
                 )}
@@ -338,11 +369,11 @@ export default function GoodDollarClaimGate() {
                   Verify with GoodDollar
                 </a>
                 {isOnStakingPage ? (
-                  <button onClick={() => setVisible(false)} className="btn btn-outline block w-full text-center">
+                  <button onClick={hideGateForToday} className="btn btn-outline block w-full text-center">
                     Continue to Staking
                   </button>
                 ) : (
-                  <Link href="/staking" className="btn btn-outline block w-full text-center" onClick={() => setVisible(false)}>
+                  <Link href="/staking" className="btn btn-outline block w-full text-center" onClick={hideGateForToday}>
                     Continue to Staking
                   </Link>
                 )}
@@ -360,11 +391,11 @@ export default function GoodDollarClaimGate() {
                   {isClaiming ? 'Claiming...' : 'Claim G$'}
                 </button>
                 {isOnStakingPage ? (
-                  <button onClick={() => setVisible(false)} className="btn btn-outline block w-full text-center">
+                  <button onClick={hideGateForToday} className="btn btn-outline block w-full text-center">
                     Stake G$ Now
                   </button>
                 ) : (
-                  <Link href="/staking" className="btn btn-outline block w-full text-center" onClick={() => setVisible(false)}>
+                  <Link href="/staking" className="btn btn-outline block w-full text-center" onClick={hideGateForToday}>
                     Stake G$ Now
                   </Link>
                 )}
@@ -381,11 +412,11 @@ export default function GoodDollarClaimGate() {
                   </p>
                 )}
                 {isOnStakingPage ? (
-                  <button onClick={() => setVisible(false)} className="btn btn-primary block w-full text-center">
+                  <button onClick={hideGateForToday} className="btn btn-primary block w-full text-center">
                     Close
                   </button>
                 ) : (
-                  <Link href="/staking" className="btn btn-primary block w-full text-center" onClick={() => setVisible(false)}>
+                  <Link href="/staking" className="btn btn-primary block w-full text-center" onClick={hideGateForToday}>
                     Open Staking
                   </Link>
                 )}

@@ -1,158 +1,114 @@
 "use client"
 
-import { useEffect, useMemo, useState } from 'react'
-import { formatUnits } from 'viem'
-import { useAccount, useDisconnect, useReadContracts } from 'wagmi'
-import { CELO_MAINNET_TOKENS } from '@/lib/tokens'
+import { useEffect, useState } from 'react'
+import { useAccount, useDisconnect } from 'wagmi'
 
 interface WalletButtonProps {
   className?: string
   onConnect?: (address: string) => void
   onDisconnect?: () => void
+  tone?: 'light' | 'dark'
 }
 
-const ERC20_BALANCE_OF_ABI = [
-  {
-    constant: true,
-    inputs: [{ name: 'owner', type: 'address' }],
-    name: 'balanceOf',
-    outputs: [{ name: '', type: 'uint256' }],
-    payable: false,
-    stateMutability: 'view',
-    type: 'function',
-  },
-] as const
-
-const formatBalance = (value: bigint, decimals: number): string => {
-  const full = formatUnits(value, decimals)
-  const asNumber = Number(full)
-  if (!Number.isFinite(asNumber)) return full
-  if (asNumber >= 1000) return asNumber.toLocaleString(undefined, { maximumFractionDigits: 2 })
-  if (asNumber >= 1) return asNumber.toLocaleString(undefined, { maximumFractionDigits: 4 })
-  return asNumber.toLocaleString(undefined, { maximumFractionDigits: 6 })
+function truncateAddress(address: string) {
+  return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
-export default function WalletButton({ className = '', onConnect, onDisconnect }: WalletButtonProps) {
+export default function WalletButton({ className = '', onConnect, onDisconnect, tone = 'dark' }: WalletButtonProps) {
   const { address, isConnected } = useAccount()
   const { disconnect } = useDisconnect()
-  const [showBalances, setShowBalances] = useState(false)
-  const [sovAddressFromDb, setSovAddressFromDb] = useState<string | null>(null)
+  const [showWalletModal, setShowWalletModal] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   useEffect(() => {
-    let active = true
-    fetch('/api/tokens/sov')
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (!active) return
-        const addr = typeof data?.address === 'string' ? data.address : null
-        if (addr && /^0x[a-fA-F0-9]{40}$/.test(addr)) {
-          setSovAddressFromDb(addr)
-        }
-      })
-      .catch(() => {
-        // Optional token; ignore failures silently.
-      })
-
-    return () => {
-      active = false
+    if (isConnected && address) {
+      onConnect?.(address)
     }
-  }, [])
+  }, [address, isConnected, onConnect])
 
-  const tokensToShow = useMemo(() => {
-    const values = Object.values(CELO_MAINNET_TOKENS)
-    const bySymbol = (symbol: string) => values.find((t) => t.symbol === symbol)
-    const base = ['G$', 'cUSD', 'USDC', 'USDT']
-      .map((symbol) => bySymbol(symbol))
-      .filter((token): token is NonNullable<typeof token> => Boolean(token))
-
-    if (sovAddressFromDb && /^0x[a-fA-F0-9]{40}$/.test(sovAddressFromDb)) {
-      base.push({
-        symbol: 'SOV',
-        name: 'SovAds Token',
-        decimals: 18,
-        address: sovAddressFromDb,
-      })
+  useEffect(() => {
+    if (!showWalletModal) {
+      setCopied(false)
+      return
     }
-    return base
-  }, [sovAddressFromDb])
 
-  const { data: balancesData, isLoading: balancesLoading } = useReadContracts({
-    allowFailure: true,
-    contracts: address
-      ? tokensToShow.map((token) => ({
-        address: token.address as `0x${string}`,
-        abi: ERC20_BALANCE_OF_ABI,
-        functionName: 'balanceOf',
-        args: [address as `0x${string}`],
-      }))
-      : [],
-    query: {
-      enabled: Boolean(address && showBalances),
-      refetchInterval: 15000,
-    },
-  })
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowWalletModal(false)
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [showWalletModal])
+
+  const handleCopy = async () => {
+    if (!address || !navigator.clipboard) {
+      return
+    }
+
+    await navigator.clipboard.writeText(address)
+    setCopied(true)
+  }
 
   const handleDisconnect = () => {
     disconnect()
-    setShowBalances(false)
+    setShowWalletModal(false)
     onDisconnect?.()
   }
 
+  const textToneClass = tone === 'light'
+    ? 'text-white hover:text-white/78'
+    : 'text-[var(--text-primary)] hover:text-black/66'
+
   if (isConnected && address) {
     return (
-      <div className={`flex items-center space-x-2 ${className}`}>
+      <div className={`flex items-center ${className}`}>
         <button
-          onClick={() => setShowBalances(true)}
-          className="btn btn-outline px-3 py-1 text-xs"
-          title="Open wallet balances"
+          type="button"
+          onClick={() => setShowWalletModal(true)}
+          className={`inline-flex items-center rounded-full px-1 py-1 text-sm font-semibold tracking-[0.08em] no-underline transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${textToneClass}`}
+          title="Open wallet details"
         >
-          {address.slice(0, 6)}...{address.slice(-4)}
-        </button>
-        <button
-          onClick={handleDisconnect}
-          className="btn btn-primary px-3 py-1 text-xs"
-        >
-          Disconnect
+          {truncateAddress(address)}
         </button>
 
-        {showBalances && (
+        {showWalletModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40" onClick={() => setShowBalances(false)} />
-            <div className="relative z-10 w-full max-w-sm border-2 border-black bg-white shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6">
-              <div className="flex items-center justify-between mb-4 border-b-2 border-black pb-2">
-                <div>
-                  <h3 className="text-lg font-heading uppercase text-black">Wallet</h3>
-                  <p className="font-mono text-[10px] text-gray-600">
-                    {address}
-                  </p>
+            <div className="absolute inset-0 bg-black/48 backdrop-blur-sm" onClick={() => setShowWalletModal(false)} />
+            <div className="relative z-10 w-full max-w-md rounded-[2rem] bg-white p-6 shadow-[0_24px_70px_rgba(0,0,0,0.26)] animate-in fade-in zoom-in-95 duration-200">
+              <div className="mb-6 flex items-start justify-between gap-4">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-black uppercase tracking-[0.24em] text-[var(--text-secondary)]">Wallet</p>
+                  <p className="break-all text-sm font-semibold text-[var(--text-primary)]">{address}</p>
                 </div>
                 <button
-                  onClick={() => setShowBalances(false)}
-                  className="btn btn-outline px-2 py-1 text-[10px]"
+                  type="button"
+                  onClick={() => setShowWalletModal(false)}
+                  className="inline-flex h-10 w-10 items-center justify-center rounded-full text-[var(--text-secondary)] transition-colors duration-200 hover:bg-black/5 hover:text-[var(--text-primary)]"
+                  aria-label="Close wallet modal"
                 >
-                  Close
+                  <svg className="h-4 w-4" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+                    <path d="M5 5l10 10M15 5L5 15" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
                 </button>
               </div>
 
-              <div className="space-y-3">
-                {tokensToShow.map((token, index) => {
-                  const raw = balancesData?.[index]?.result as bigint | undefined
-                  const amount = raw !== undefined ? formatBalance(raw, token.decimals) : '0'
-                  return (
-                    <div
-                      key={token.symbol}
-                      className="flex items-center justify-between border-2 border-black bg-[#F5F3F0] px-4 py-2 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
-                    >
-                      <div>
-                        <div className="text-xs font-bold text-black">{token.symbol}</div>
-                        <div className="text-[10px] uppercase text-gray-600 font-heading">{token.name}</div>
-                      </div>
-                      <div className="text-sm font-bold text-black">
-                        {balancesLoading ? '...' : amount}
-                      </div>
-                    </div>
-                  )
-                })}
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={handleCopy}
+                  className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-[11px] font-black uppercase tracking-[0.22em] text-white transition-all duration-200 hover:bg-black/88"
+                >
+                  {copied ? 'Copied' : 'Copy'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDisconnect}
+                  className="inline-flex items-center justify-center rounded-full bg-black/6 px-5 py-3 text-[11px] font-black uppercase tracking-[0.22em] text-[var(--text-primary)] transition-all duration-200 hover:bg-black/10"
+                >
+                  Disconnect
+                </button>
               </div>
             </div>
           </div>
