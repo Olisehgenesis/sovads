@@ -104,6 +104,7 @@ export const useStreamingAds = () => {
         if (currentAllowance >= requiredAmountWei) return;
 
         const hash = await writeContract({
+            account: owner as `0x${string}`,
             address: tokenAddress as `0x${string}`,
             abi: superTokenAbi,
             functionName: 'approve',
@@ -224,6 +225,7 @@ export const useStreamingAds = () => {
 
             // 2. Create campaign
             const hash = await writeContract({
+                account: userAddress as `0x${string}`,
                 address: address as `0x${string}`,
                 abi: sovAdsStreamingAbi,
                 functionName: 'createStreamingCampaign',
@@ -270,6 +272,7 @@ export const useStreamingAds = () => {
 
                 setStakingPhase('staking');
                 const h = await writeContract({
+                    account: userAddress as `0x${string}`,
                     address: address as `0x${string}`,
                     abi: sovAdsStreamingAbi,
                     functionName: 'stake',

@@ -187,7 +187,7 @@ export default function RewardsPage() {
         <div className="card p-8 mb-8 bg-[#F5F3F0]">
           <h2 className="text-xl font-heading mb-4 uppercase tracking-wider">Connect Your Wallet</h2>
           <p className="text-black font-bold text-xs mb-6 uppercase">
-            Connect your wallet to claim SOV tokens. You can still earn points anonymously, but you'll need to connect to claim them.
+            Connect your wallet to claim your SovPoints. You can still earn points anonymously, but you&apos;ll need to connect to claim them.
           </p>
           <WalletButton className="w-full" />
         </div>

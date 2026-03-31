@@ -48,9 +48,9 @@ export default function Home() {
               </div>
               <pre className="bg-[#141414] text-white text-base leading-relaxed p-8 overflow-x-auto">
                 <code className="font-mono">
-                  <span className="text-gray-500">{`// Site ID auto-detected from domain`}</span>{'\n'}
-                  <span className="text-blue-400">const</span> adsClient = <span className="text-blue-400">new</span> SovAds(<span className="text-green-400">publicId</span>);{'\n'}
-                  <span className="text-blue-400">const</span> banner = <span className="text-blue-400">new</span> Banner(adsClient, <span className="text-green-400">&apos;banner&apos;</span>);{'\n'}
+                  <span className="text-blue-400">import</span> {`{ SovAds, Banner }`} <span className="text-blue-400">from</span> <span className="text-green-400">&apos;sovads-sdk&apos;</span>;{'\n'}
+                  <span className="text-blue-400">const</span> ads = <span className="text-blue-400">new</span> SovAds({`{ `}<span className="text-green-400">siteId: &apos;YOUR_SITE_ID&apos;</span>{` }`});{'\n'}
+                  <span className="text-blue-400">const</span> banner = <span className="text-blue-400">new</span> Banner(ads, <span className="text-green-400">&apos;ad-container&apos;</span>);{'\n'}
                   <span className="text-blue-400">await</span> banner.render(); <span className="text-gray-500">{`// renders after site ready`}</span>
                 </code>
               </pre>

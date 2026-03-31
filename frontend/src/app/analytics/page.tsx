@@ -19,6 +19,7 @@ import {
 
 interface AnalyticsStats {
   campaignCount: number
+  publisherCount: number
   totalBudget: bigint
   totalPublisherBudget: bigint
   totalStakerBudget: bigint
@@ -62,11 +63,95 @@ export default function AnalyticsPage() {
 
   useEffect(() => {
     async function loadAnalytics() {
+      setIsLoading(true)
       try {
-        if (!publicClient || campaignCountData == null) return
-        const count = Number(campaignCountData)
+        // Primary source: DB stats endpoint
+        const response = await fetch('/api/stats')
+        if (!response.ok) {
+          throw new Error('DB stats fetch failed')
+        }
+
+        const dbData = await response.json()
+        const dbTotalBudget = Number(dbData.totalBudget ?? 0)
+        const dbTotalPublisherBudget = Number(dbData.totalPublisherBudget ?? 0)
+
         const s: AnalyticsStats = {
+          campaignCount: Number(dbData.campaignCount ?? dbData.totalAds ?? 0),
+          publisherCount: Number(dbData.publisherCount ?? dbData.totalPublishers ?? 0),
+          totalBudget: BigInt(Math.floor(dbTotalBudget * 1e18)),
+          totalPublisherBudget: BigInt(Math.floor(dbTotalPublisherBudget * 1e18)),
+          totalStakerBudget: 0n,
+          activeAdminFlows: 0,
+          activePublisherFlows: 0,
+          activeStakerFlows: 0,
+        }
+
+        // contract fallback (for security/consistency) if campaign count or budgets are missing
+        if (!publicClient || campaignCountData == null) {
+          setStats(s)
+          return
+        }
+
+        // If DB has zero or missing for any critical field, fallback to on-chain where available.
+        const canUseFallback = Number(campaignCountData) > 0
+        if (canUseFallback && (s.campaignCount === 0 || s.totalBudget === 0n || s.totalPublisherBudget === 0n)) {
+          const count = Number(campaignCountData)
+          const fallback: AnalyticsStats = {
+            campaignCount: count,
+            publisherCount: s.publisherCount,
+            totalBudget: 0n,
+            totalPublisherBudget: 0n,
+            totalStakerBudget: 0n,
+            activeAdminFlows: 0,
+            activePublisherFlows: 0,
+            activeStakerFlows: 0,
+          }
+
+          for (let i = 1; i <= count; i++) {
+            try {
+              const c: any = await publicClient.readContract({
+                address: SOVADS_STREAMING_ADDRESS as `0x${string}`,
+                abi: sovAdsStreamingAbi,
+                functionName: 'getCampaign',
+                args: [BigInt(i)],
+              })
+
+              fallback.totalBudget += BigInt(c.totalBudget)
+              fallback.totalPublisherBudget += BigInt(c.publisherBudget)
+              fallback.totalStakerBudget += BigInt(c.stakerBudget)
+              if (c.adminStreamActive) fallback.activeAdminFlows += 1
+              if (c.publisherFlowActive) fallback.activePublisherFlows += 1
+              if (c.stakerFlowActive) fallback.activeStakerFlows += 1
+            } catch (e) {
+              console.warn('could not fetch campaign', i, e)
+            }
+          }
+
+          s.campaignCount = fallback.campaignCount
+          s.totalBudget = fallback.totalBudget > 0n ? fallback.totalBudget : s.totalBudget
+          s.totalPublisherBudget = fallback.totalPublisherBudget > 0n ? fallback.totalPublisherBudget : s.totalPublisherBudget
+          // keep staker/flow values in fallback struct but not shown in UI
+          s.totalStakerBudget = fallback.totalStakerBudget
+          s.activeAdminFlows = fallback.activeAdminFlows
+          s.activePublisherFlows = fallback.activePublisherFlows
+          s.activeStakerFlows = fallback.activeStakerFlows
+        }
+
+        setStats(s)
+      } catch (e) {
+        // On any DB failure, fallback to on-chain contract metrics
+        console.warn('DB analytics load failed, falling back to contract', e)
+
+        if (!publicClient || campaignCountData == null) {
+          setError(e instanceof Error ? e.message : String(e))
+          setIsLoading(false)
+          return
+        }
+
+        const count = Number(campaignCountData)
+        const onchain: AnalyticsStats = {
           campaignCount: count,
+          publisherCount: 0,
           totalBudget: 0n,
           totalPublisherBudget: 0n,
           totalStakerBudget: 0n,
@@ -75,7 +160,6 @@ export default function AnalyticsPage() {
           activeStakerFlows: 0,
         }
 
-        // iterate over campaigns and accumulate values
         for (let i = 1; i <= count; i++) {
           try {
             const c: any = await publicClient.readContract({
@@ -85,20 +169,18 @@ export default function AnalyticsPage() {
               args: [BigInt(i)],
             })
 
-            s.totalBudget += BigInt(c.totalBudget)
-            s.totalPublisherBudget += BigInt(c.publisherBudget)
-            s.totalStakerBudget += BigInt(c.stakerBudget)
-            if (c.adminStreamActive) s.activeAdminFlows += 1
-            if (c.publisherFlowActive) s.activePublisherFlows += 1
-            if (c.stakerFlowActive) s.activeStakerFlows += 1
-          } catch (e) {
-            console.warn('could not fetch campaign', i, e)
+            onchain.totalBudget += BigInt(c.totalBudget)
+            onchain.totalPublisherBudget += BigInt(c.publisherBudget)
+            onchain.totalStakerBudget += BigInt(c.stakerBudget)
+            if (c.adminStreamActive) onchain.activeAdminFlows += 1
+            if (c.publisherFlowActive) onchain.activePublisherFlows += 1
+            if (c.stakerFlowActive) onchain.activeStakerFlows += 1
+          } catch (e2) {
+            console.warn('could not fetch campaign', i, e2)
           }
         }
 
-        setStats(s)
-      } catch (e) {
-        setError(e instanceof Error ? e.message : String(e))
+        setStats(onchain)
       } finally {
         setIsLoading(false)
       }
@@ -177,12 +259,7 @@ export default function AnalyticsPage() {
             <div className="text-3xl font-bold">{stats.campaignCount}</div>
           </div>
 
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Global TVL</h2>
-            <div className="text-3xl font-bold">
-              {totalStaked ? `${Number(formatEther(totalStaked)).toLocaleString()} G$` : '0 G$'}
-            </div>
-          </div>
+
 
           <div className="glass-card rounded-lg p-6">
             <h2 className="text-xs font-semibold mb-2">Total Budgets</h2>
@@ -192,47 +269,27 @@ export default function AnalyticsPage() {
           </div>
 
           <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Publisher Budgets</h2>
-            <div className="text-lg">
-              {formatG(stats.totalPublisherBudget)}
-            </div>
+            <h2 className="text-xs font-semibold mb-2">Publisher Count</h2>
+            <div className="text-3xl font-bold">{stats.publisherCount}</div>
           </div>
 
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Staker Budgets</h2>
-            <div className="text-lg">
-              {formatG(stats.totalStakerBudget)}
-            </div>
-          </div>
 
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Active Admin Flows</h2>
-            <div className="text-3xl font-bold">{stats.activeAdminFlows}</div>
-          </div>
-
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Active Publisher Flows</h2>
-            <div className="text-3xl font-bold">{stats.activePublisherFlows}</div>
-          </div>
-
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Active Staker Flows</h2>
-            <div className="text-3xl font-bold">{stats.activeStakerFlows}</div>
-          </div>
         </div>
 
         {/* historical chart */}
         <div className="mb-12">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold">Activity over last {days} days</h2>
+            <h2 className="text-2xl font-bold">
+            Activity over {days > 0 ? `last ${days} days` : 'all time'}
+          </h2>
             <div className="flex gap-2">
               <select
                 value={days}
                 onChange={(e) => setDays(Number(e.target.value))}
                 className="border px-2 py-1 rounded"
               >
-                {[7, 14, 30, 60, 90].map((d) => (
-                  <option key={d} value={d}>{d}d</option>
+                {[7, 14, 30, 60, 90, 0].map((d) => (
+                  <option key={d} value={d}>{d === 0 ? 'All' : `${d}d`}</option>
                 ))}
               </select>
             </div>

@@ -65,7 +65,7 @@ export default function AboutPage() {
               {
                 title: 'Advertisers',
                 desc: 'Launch transparent, high-impact campaigns.',
-                points: 'CPC Model',
+                points: 'Verifiable Reach',
                 color: 'bg-white'
               }
             ].map((role, i) => (

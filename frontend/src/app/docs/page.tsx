@@ -77,8 +77,8 @@ export default function DocsPage() {
                             <ul className="space-y-3 text-sm font-bold uppercase text-white">
                                 <li><Link href="/publisher" className="hover:underline hover:text-[#FBCC5C]">Register Site</Link></li>
                                 <li><Link href="/advertiser" className="hover:underline hover:text-[#FBCC5C]">Launch Campaign</Link></li>
-                                <li><Link href="/rewards" className="hover:underline hover:text-[#FBCC5C]">My SovPoints</Link></li>
-                                <li><a href="https://github.com/sovads" target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-[#FBCC5C]">GitHub</a></li>
+                                <li><Link href="/rewards" className="hover:underline hover:text-[#FBCC5C]">My Rewards</Link></li>
+                                <li><a href="https://github.com/sovseas/sovads" target="_blank" rel="noopener noreferrer" className="hover:underline hover:text-[#FBCC5C]">GitHub</a></li>
                             </ul>
                         </div>
 
@@ -137,7 +137,7 @@ function PublisherDocs() {
                         <div className="bg-black p-4 rounded-lg font-mono text-sm mb-6 shadow-inner">
                             <div className="text-gray-500 mb-2">// 1. Import and Show</div>
                             <div className="text-blue-400">import <span className="text-white">{`{ SovAds, Popup }`}</span> from <span className="text-green-400">&apos;sovads-sdk&apos;</span></div>
-                            <div className="text-[#FBCC5C] mt-2">const ads = new <span className="text-blue-300">SovAds</span>(<span className="text-green-400">&apos;YOUR_SITE_ID&apos;</span>);</div>
+                            <div className="text-[#FBCC5C] mt-2">const ads = new <span className="text-blue-300">SovAds</span>(<span className="text-white">{`{ `}</span><span className="text-green-400">siteId: &apos;YOUR_SITE_ID&apos;</span><span className="text-white">{` }`}</span>);</div>
                             <div className="text-[#FBCC5C]">const popup = new <span className="text-blue-300">Popup</span>(ads);</div>
                             <div className="text-[#FBCC5C] font-bold">await popup.show();</div>
                         </div>
@@ -154,7 +154,7 @@ function PublisherDocs() {
                         <div className="bg-black p-4 rounded-lg font-mono text-sm shadow-inner">
                             <div className="text-gray-500 mb-2">// HTML: &lt;div id=&quot;ad-container&quot;&gt;&lt;/div&gt;</div>
                             <div className="text-blue-400">import <span className="text-white">{`{ SovAds, Banner }`}</span> from <span className="text-green-400">&apos;sovads-sdk&apos;</span></div>
-                            <div className="text-[#FBCC5C] mt-2">const ads = new <span className="text-blue-300">SovAds</span>(<span className="text-green-400">&apos;YOUR_SITE_ID&apos;</span>);</div>
+                            <div className="text-[#FBCC5C] mt-2">const ads = new <span className="text-blue-300">SovAds</span>(<span className="text-white">{`{ `}</span><span className="text-green-400">siteId: &apos;YOUR_SITE_ID&apos;</span><span className="text-white">{` }`}</span>);</div>
                             <div className="text-[#FBCC5C]">const banner = new <span className="text-blue-300">Banner</span>(ads, <span className="text-green-400">&apos;ad-container&apos;</span>);</div>
                             <div className="text-[#FBCC5C]">await banner.render();</div>
                         </div>
@@ -289,16 +289,28 @@ function DeveloperDocs() {
                     <h3 className="text-2xl font-heading mb-4 uppercase text-black">SDK API Reference</h3>
                     <div className="bg-black text-white p-8 rounded border-4 border-black shadow-[4px_4px_0px_0px_rgba(34,197,94,0.2)] font-mono text-sm space-y-8">
                         <div>
-                            <div className="text-[#FBCC5C] font-bold mb-1">new SovAds(siteId, options?)</div>
-                            <div className="text-gray-400 text-xs">Initializes the protocol client. siteId is required for publishers.</div>
+                            <div className="text-[#FBCC5C] font-bold mb-1">new SovAds({`{ siteId, apiKey?, debug?, ... }`})</div>
+                            <div className="text-gray-400 text-xs">Initializes the protocol client. Accepts a config object — <span className="text-white">siteId</span> is required for publishers. All other options are optional.</div>
                         </div>
                         <div>
-                            <div className="text-[#FBCC5C] font-bold mb-1">ads.track(eventType, metadata?)</div>
-                            <div className="text-gray-400 text-xs">Manually track custom events. Useful for non-standard integrations.</div>
+                            <div className="text-[#FBCC5C] font-bold mb-1">ads.identify(walletAddress)</div>
+                            <div className="text-gray-400 text-xs">Links the current device fingerprint to a wallet address for accurate attribution and SovPoints accrual.</div>
                         </div>
                         <div>
-                            <div className="text-[#FBCC5C] font-bold mb-1">new Popup(ads, options?)</div>
-                            <div className="text-gray-400 text-xs">Creates a non-intrusive popup ad slot.</div>
+                            <div className="text-[#FBCC5C] font-bold mb-1">new Banner(ads, containerId, slotConfig?)</div>
+                            <div className="text-gray-400 text-xs">Renders a banner ad into the specified DOM element ID.</div>
+                        </div>
+                        <div>
+                            <div className="text-[#FBCC5C] font-bold mb-1">new Popup(ads)</div>
+                            <div className="text-gray-400 text-xs">Creates a non-intrusive popup ad. Frequency-capped — respects session limits and minimum interval between shows.</div>
+                        </div>
+                        <div>
+                            <div className="text-[#FBCC5C] font-bold mb-1">new Sidebar(ads, containerId)</div>
+                            <div className="text-gray-400 text-xs">Renders a vertical sidebar ad into the specified container.</div>
+                        </div>
+                        <div>
+                            <div className="text-[#FBCC5C] font-bold mb-1">new BottomBar(ads)</div>
+                            <div className="text-gray-400 text-xs">Renders a floating bar fixed at the bottom of the viewport.</div>
                         </div>
                     </div>
                 </section>

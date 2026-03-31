@@ -6,7 +6,14 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const campaignId = searchParams.get('campaignId')
     const publisherId = searchParams.get('publisherId')
-    const days = Number.parseInt(searchParams.get('days') ?? '7', 10)
+    const daysParam = searchParams.get('days')
+    let days = Number.parseInt(daysParam ?? '7', 10)
+    let useTimeFilter = true
+
+    if (!daysParam || Number.isNaN(days) || days <= 0 || daysParam.toLowerCase() === 'all') {
+      useTimeFilter = false
+      days = 0
+    }
 
     // if neither campaign nor publisher specified, return global analytics
     // (everything is covered by timestamp filter below)
@@ -15,14 +22,17 @@ export async function GET(request: NextRequest) {
     // }
 
     const startDate = new Date()
-    startDate.setDate(startDate.getDate() - days)
+    if (useTimeFilter) {
+      startDate.setDate(startDate.getDate() - days)
+    }
 
     const eventsCollection = await collections.events()
     const campaignsCollection = await collections.campaigns()
     const publishersCollection = await collections.publishers()
 
-    const query: Record<string, unknown> = {
-      timestamp: { $gte: startDate },
+    const query: Record<string, unknown> = {}
+    if (useTimeFilter) {
+      query.timestamp = { $gte: startDate }
     }
 
     if (campaignId) {
@@ -67,13 +77,16 @@ export async function GET(request: NextRequest) {
     })
 
     // Calculate metrics
-    const impressions = events.filter((e) => e.type === 'IMPRESSION').length
-    const clicks = events.filter((e) => e.type === 'CLICK').length
+    const normalizeEventType = (type: unknown) =>
+      typeof type === 'string' ? type.toUpperCase() : ''
+
+    const impressions = events.filter((e) => normalizeEventType(e.type) === 'IMPRESSION').length
+    const clicks = events.filter((e) => normalizeEventType(e.type) === 'CLICK').length
     const ctr = impressions > 0 ? (clicks / impressions) * 100 : 0
 
     // Calculate revenue (for publishers)
     const totalRevenue = events
-      .filter((e) => e.type === 'CLICK')
+      .filter((e) => normalizeEventType(e.type) === 'CLICK')
       .reduce((sum, event) => {
         const campaign = campaignMap.get(event.campaignId)
         return sum + (campaign?.cpc ?? 0)
@@ -87,9 +100,10 @@ export async function GET(request: NextRequest) {
         dailyMap.set(d, { date: d, impressions: 0, clicks: 0, revenue: 0 })
       }
       const rec = dailyMap.get(d)!
-      if (e.type === 'IMPRESSION') {
+      const eventType = normalizeEventType(e.type)
+      if (eventType === 'IMPRESSION') {
         rec.impressions++
-      } else if (e.type === 'CLICK') {
+      } else if (eventType === 'CLICK') {
         rec.clicks++
         rec.revenue += campaignMap.get(e.campaignId)?.cpc ?? 0
       }

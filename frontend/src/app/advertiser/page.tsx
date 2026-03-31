@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import WalletButton from '@/components/WalletButton'
 import { getTokenSymbol } from '@/lib/tokens'
@@ -40,6 +41,7 @@ interface CampaignStats {
 
 export default function AdvertiserDashboard() {
   const { address, isConnected } = useAccount()
+  const router = useRouter()
   const {
     topUpCampaign,
     toggleCampaignPause,
@@ -157,7 +159,7 @@ export default function AdvertiserDashboard() {
   const cloneCampaign = (campaign: Campaign) => {
     // Open campaign admin/details page for this campaign
     // the campaign.id is the DB id used by the admin route
-    window.location.href = `/admin/campaigns/${campaign.id}`
+    router.push(`/admin/campaigns/${campaign.id}`)
   }
 
   const clearModes = () => {
@@ -284,7 +286,7 @@ export default function AdvertiserDashboard() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  window.location.href = `/edit-campaign/${campaign.id}`
+                                  router.push(`/edit-campaign/${campaign.id}`)
                                 }}
                                 className="btn btn-outline py-1 h-8 px-3"
                               >

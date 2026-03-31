@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { usePathname } from 'next/navigation'
 import { useAccount } from 'wagmi'
 import WalletButton from './WalletButton'
 
@@ -9,7 +10,7 @@ const ADMIN_ADDRESS = '0x53eaF4CD171842d8144e45211308e5D90B4b0088'.toLowerCase()
 
 // Shared nav link base — defeats the global `a:not(.btn)` underline rule
 const navBase =
-  'no-underline text-black font-black text-xs uppercase tracking-widest px-3 py-1.5 border-2 border-transparent transition-all hover:border-black'
+  'no-underline text-black font-black text-xs uppercase tracking-widest px-3 py-1.5 border-2 border-transparent transition-all'
 
 const navLinks = [
   { href: '/rewards', label: 'Rewards', hover: 'hover:bg-yellow-400' },
@@ -23,6 +24,7 @@ const navLinks = [
 ]
 
 export default function Header() {
+  const pathname = usePathname() || '/'
   const { address } = useAccount()
   const [isScrolled, setIsScrolled] = useState(false)
 
@@ -33,6 +35,9 @@ export default function Header() {
     window.addEventListener('scroll', onScroll)
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  const getLinkClass = (href: string) =>
+    `${navBase} ${pathname === href ? 'border-black bg-black text-white' : 'hover:border-black'}`
 
   return (
     <header
@@ -54,8 +59,8 @@ export default function Header() {
 
             {/* Nav links */}
             <div className="flex items-center gap-1">
-              {navLinks.map(({ href, label, hover }) => (
-                <Link key={href} href={href} className={`${navBase} ${hover}`}>
+              {navLinks.map(({ href, label }) => (
+                <Link key={href} href={href} className={getLinkClass(href)}>
                   {label}
                 </Link>
               ))}
@@ -63,7 +68,7 @@ export default function Header() {
               {isAuthorized && (
                 <Link
                   href="/backoffice"
-                  className="no-underline bg-yellow-400 text-black font-black uppercase text-xs tracking-widest px-3 py-1.5 border-2 border-black hover:bg-black hover:text-white transition-all"
+                  className={getLinkClass('/backoffice')}
                 >
                   Backoffice
                 </Link>

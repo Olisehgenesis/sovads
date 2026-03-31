@@ -182,6 +182,7 @@ export const useAds = (): UseAdsReturn => {
     if (currentAllowance >= requiredAmountWei) return;
 
     const approveTx = await writeContract({
+      account: owner as `0x${string}`,
       address: tokenAddress as `0x${string}`,
       abi: erc20Abi,
       functionName: 'approve',
@@ -307,6 +308,7 @@ export const useAds = (): UseAdsReturn => {
       await ensureAllowance(token, userAddress, address as `0x${string}`, amountWei);
 
       const hash = await writeContract({
+        account: userAddress as `0x${string}`,
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi as any,
         functionName: 'createCampaign',
@@ -358,6 +360,7 @@ export const useAds = (): UseAdsReturn => {
       await ensureAllowance(tokenAddress, userAddress, address as `0x${string}`, amountWei);
 
       const hash = await writeContract({
+        account: userAddress as `0x${string}`,
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi as any,
         functionName: 'topUpCampaign',
@@ -379,6 +382,7 @@ export const useAds = (): UseAdsReturn => {
       if (!writeContract) throw new Error('Contract write function not available');
 
       const hash = await writeContract({
+        account: userAddress as `0x${string}`,
         address: address as `0x${string}`,
         abi: sovAdsManagerAbi as any,
         functionName: 'createClaim',
