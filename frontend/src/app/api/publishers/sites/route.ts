@@ -95,7 +95,9 @@ async function verifyPublisherRequest(request: NextRequest, wallet: string): Pro
   return null
 }
 
-// Get all sites for a publisher
+// Get all sites for a publisher.
+// No signature auth required — toSiteView strips apiSecret; only public fields are returned.
+// Mutations (POST / PATCH / DELETE) still require verifyPublisherRequest.
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
@@ -104,9 +106,6 @@ export async function GET(request: NextRequest) {
     if (!wallet) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
     }
-
-    const authError = await verifyPublisherRequest(request, wallet)
-    if (authError) return authError
 
     let publishersCollection, publisherSitesCollection
     try {

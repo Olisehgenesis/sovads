@@ -73,13 +73,12 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-body), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
   font-size: 16px;
-  /* Increased from 14px */
   line-height: 1.5;
 }
 
-.font-body {
+.font-mono-data {
   font-family: var(--font-body), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
@@ -90,15 +89,19 @@ body {
 /* Force heading font on all headers and specific classes */
 h1,
 h2,
-h3,
-h4,
-h5,
-h6,
 .anton {
   font-family: var(--font-heading) !important;
   text-transform: uppercase;
   letter-spacing: -0.02em;
   line-height: 1.1;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading) !important;
+  line-height: 1.2;
 }
 
 /* Neubrutalist utility for text strokes or heavy look */
@@ -183,6 +186,27 @@ label[for],
 .btn-outline:active {
   transform: translate(2px, 2px);
   box-shadow: var(--hard-shadow-active);
+}
+
+.btn-danger {
+  background: var(--destructive);
+  color: white;
+  box-shadow: var(--hard-shadow);
+  @apply px-6 py-3;
+}
+
+.btn-danger:hover {
+  transform: translate(-4px, -4px);
+  box-shadow: var(--hard-shadow-hover);
+}
+
+.btn-danger:active {
+  transform: translate(2px, 2px);
+  box-shadow: var(--hard-shadow-active);
+}
+
+.btn-sm {
+  @apply px-3 py-1.5 text-xs;
 }
 
 /* Input styling */

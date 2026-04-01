@@ -5,7 +5,6 @@ import { formatEther } from 'viem'
 import { usePublicClient, useReadContract } from 'wagmi'
 import { sovAdsStreamingAbi } from '@/contract/sovAdsStreamingAbi'
 import { SOVADS_STREAMING_ADDRESS, chainId } from '@/lib/chain-config'
-import Link from 'next/link'
 import {
   LineChart,
   Line,
@@ -215,16 +214,34 @@ export default function AnalyticsPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="min-h-screen bg-transparent">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+          <div className="mb-8">
+            <div className="h-10 w-64 animate-pulse bg-[#e5e5e5] border-2 border-black mb-4" />
+            <div className="h-4 w-96 animate-pulse bg-[#e5e5e5] border border-black" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="h-3 w-24 animate-pulse bg-[#e5e5e5] mb-4" />
+                <div className="h-8 w-16 animate-pulse bg-[#e5e5e5]" />
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <p className="text-red-500">Error loading analytics: {error}</p>
+      <div className="min-h-screen bg-transparent">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
+          <div className="border-2 border-black bg-[#fef2f2] p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <h2 className="text-base font-heading mb-2">Failed to load analytics</h2>
+            <p className="text-sm text-[var(--text-secondary)]">{error}</p>
+          </div>
+        </div>
       </div>
     )
   }
@@ -238,55 +255,42 @@ export default function AnalyticsPage() {
   return (
     <div className="min-h-screen bg-transparent text-[var(--text-primary)]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24">
-        <div className="mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold tracking-tight mb-4">
+        <div className="mb-10">
+          <h1 className="text-4xl sm:text-5xl font-heading uppercase tracking-tight mb-3">
             Network Analytics
           </h1>
-          <p className="text-lg text-[var(--text-secondary)] mb-6">
-            On‑chain metrics for SovAds streaming contract. See TVL, budgets and active flows.
+          <p className="text-sm text-[var(--text-secondary)] mb-4 max-w-2xl">
+            On-chain metrics for SovAds streaming contract — campaigns, budgets, and active flows.
           </p>
-          <Link
-            href="/"
-            className="text-primary hover:underline text-sm font-medium"
-          >
-            ← Back to Home
-          </Link>
+          <a href="/" className="text-xs font-black uppercase tracking-wider hover:underline decoration-2">← Back to Home</a>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Campaigns</h2>
-            <div className="text-3xl font-bold">{stats.campaignCount}</div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+          <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Campaigns</p>
+            <p className="text-4xl font-heading">{stats.campaignCount}</p>
           </div>
-
-
-
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Total Budgets</h2>
-            <div className="text-lg">
-              {formatG(stats.totalBudget)}
-            </div>
+          <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Publishers</p>
+            <p className="text-4xl font-heading">{stats.publisherCount}</p>
           </div>
-
-          <div className="glass-card rounded-lg p-6">
-            <h2 className="text-xs font-semibold mb-2">Publisher Count</h2>
-            <div className="text-3xl font-bold">{stats.publisherCount}</div>
+          <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Total Budgets</p>
+            <p className="text-2xl font-heading break-all">{formatG(stats.totalBudget)}</p>
           </div>
-
-
         </div>
 
         {/* historical chart */}
         <div className="mb-12">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-2xl font-bold">
-            Activity over {days > 0 ? `last ${days} days` : 'all time'}
-          </h2>
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+            <h2 className="text-2xl font-heading uppercase">
+              Activity — {days > 0 ? `last ${days} days` : 'all time'}
+            </h2>
             <div className="flex gap-2">
               <select
                 value={days}
                 onChange={(e) => setDays(Number(e.target.value))}
-                className="border px-2 py-1 rounded"
+                className="border-2 border-black bg-white px-3 py-2 text-xs font-bold uppercase shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
               >
                 {[7, 14, 30, 60, 90, 0].map((d) => (
                   <option key={d} value={d}>{d === 0 ? 'All' : `${d}d`}</option>
@@ -296,35 +300,44 @@ export default function AnalyticsPage() {
           </div>
 
           {historyLoading ? (
-            <div className="text-center py-10">Loading history…</div>
+            <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex items-center gap-3">
+                <div className="h-5 w-5 border-2 border-black border-t-transparent animate-spin" />
+                <span className="text-xs font-black uppercase tracking-wider">Loading chart data…</span>
+              </div>
+            </div>
           ) : historyError ? (
-            <div className="text-red-500">{historyError}</div>
+            <div className="border-2 border-black bg-[#fef2f2] p-4 text-sm font-bold text-[#ef4444]">{historyError}</div>
           ) : (
+            <div className="border-2 border-black bg-white p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={history.map((h) => ({
                 date: h.date,
                 impressions: h.impressions,
                 clicks: h.clicks,
               }))}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" />
-                <YAxis />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e5e5" />
+                <XAxis dataKey="date" tick={{ fontSize: 11, fontWeight: 700 }} />
+                <YAxis tick={{ fontSize: 11, fontWeight: 700 }} />
                 <Tooltip />
                 <Legend />
                 <Line
                   type="monotone"
                   dataKey="impressions"
-                  stroke="#0088FE"
+                  stroke="#000000"
+                  strokeWidth={2}
                   name="Impressions"
                 />
                 <Line
                   type="monotone"
                   dataKey="clicks"
-                  stroke="#FFBB28"
+                  stroke="#22c55e"
+                  strokeWidth={2}
                   name="Clicks"
                 />
               </LineChart>
             </ResponsiveContainer>
+            </div>
           )}
         </div>
       </div>

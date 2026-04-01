@@ -266,19 +266,24 @@ export default function CreateCampaign() {
 
   if (success) {
     return (
-      <div className="max-w-2xl mx-auto p-6 bg-white rounded-lg shadow-lg">
-        <div className="text-center">
-          <div className="text-green-500 text-6xl mb-4">✓</div>
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">Campaign Created Successfully!</h1>
-          <p className="text-gray-600 mb-6">
-            Your campaign has been created on the blockchain and saved to the database.
+      <div className="max-w-xl mx-auto p-8">
+        <div className="card p-10 bg-white text-center">
+          <div className="inline-flex h-16 w-16 items-center justify-center border-2 border-black bg-[var(--accent-success)] text-white text-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
+            ✓
+          </div>
+          <h1 className="text-2xl font-heading mb-3">Campaign Created</h1>
+          <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-sm mx-auto">
+            Your campaign is live on-chain and saved. It will begin serving once the start date is reached.
           </p>
-          <button
-            onClick={() => setSuccess(false)}
-            className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Create Another Campaign
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 justify-center">
+            <button
+              onClick={() => setSuccess(false)}
+              className="btn btn-primary"
+            >
+              Create Another
+            </button>
+            <a href="/advertiser" className="btn btn-outline">Back to Dashboard</a>
+          </div>
         </div>
       </div>
     );
@@ -297,25 +302,42 @@ export default function CreateCampaign() {
       </div>
       <h1 className="text-3xl font-heading mb-8 uppercase">New Campaign</h1>
 
+      {/* Step indicator */}
+      <div className="mb-6 flex gap-2 items-center">
+        {(['details', 'budget', 'dates'] as const).map((tab, i) => (
+          <div key={tab} className="flex items-center gap-2">
+            <div className={`flex h-6 w-6 items-center justify-center border-2 border-black text-[10px] font-black ${
+              activeTab === tab ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' :
+              (['details','budget','dates'].indexOf(activeTab) > i) ? 'bg-[var(--accent-success)] text-white border-black' :
+              'bg-white text-black'
+            }`}>{(['details','budget','dates'].indexOf(activeTab) > i) ? '✓' : i + 1}</div>
+            <span className={`text-[10px] font-black uppercase tracking-wider hidden sm:inline ${
+              activeTab === tab ? 'text-black' : 'text-[var(--text-tertiary)]'
+            }`}>{tab}</span>
+            {i < 2 && <span className="text-[var(--text-tertiary)] text-xs mx-1">—</span>}
+          </div>
+        ))}
+      </div>
+
       {/* Tabs */}
       <div className="mb-8 flex gap-3">
         <button
           type="button"
-          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all ${activeTab === 'details' ? 'bg-black text-white' : 'bg-white text-black'}`}
+          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'details' ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:-translate-x-0.5 hover:-translate-y-0.5'}`}
           onClick={() => setActiveTab('details')}
         >
           Details
         </button>
         <button
           type="button"
-          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all ${activeTab === 'budget' ? 'bg-black text-white' : 'bg-white text-black'}`}
+          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'budget' ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:-translate-x-0.5 hover:-translate-y-0.5'}`}
           onClick={() => setActiveTab('budget')}
         >
           Budget
         </button>
         <button
           type="button"
-          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all ${activeTab === 'dates' ? 'bg-black text-white' : 'bg-white text-black'}`}
+          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'dates' ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:-translate-x-0.5 hover:-translate-y-0.5'}`}
           onClick={() => setActiveTab('dates')}
         >
           Dates
@@ -446,7 +468,7 @@ export default function CreateCampaign() {
 
             {/* Tags */}
             <div>
-              <label htmlFor="tags" className="block text-sm font-medium text-foreground/80 mb-2">
+              <label htmlFor="tags" className="block text-xs font-bold uppercase mb-2">
                 Tags (comma separated)
               </label>
               <input
@@ -455,11 +477,11 @@ export default function CreateCampaign() {
                 name="tags"
                 value={formData.tags}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full"
                 placeholder="DeFi, NFTs, web3 gaming"
               />
-              <p className="mt-1 text-xs text-foreground/60">
-                Add keywords that describe your campaign. Publishers can use these to understand the ad context.
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                Add keywords that describe your campaign.
               </p>
             </div>
 
@@ -481,7 +503,7 @@ export default function CreateCampaign() {
 
             {/* Metadata */}
             <div>
-              <label htmlFor="metadata" className="block text-sm font-medium text-foreground/80 mb-2">
+              <label htmlFor="metadata" className="block text-xs font-bold uppercase mb-2">
                 Additional Metadata (JSON)
               </label>
               <textarea
@@ -490,11 +512,11 @@ export default function CreateCampaign() {
                 value={formData.metadata}
                 onChange={handleInputChange}
                 rows={3}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
+                className="w-full font-mono text-sm"
                 placeholder='{"audience": "builders", "cta": "Join the beta"}'
               />
-              <p className="mt-1 text-xs text-foreground/60">
-                Optional. Provide structured metadata to help publishers understand the campaign context.
+              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
+                Optional structured metadata for publisher context.
               </p>
             </div>
           </>
@@ -504,7 +526,7 @@ export default function CreateCampaign() {
           <>
             {/* Token first */}
             <div>
-              <label htmlFor="tokenAddress" className="block text-sm font-medium text-foreground/80 mb-2">
+              <label htmlFor="tokenAddress" className="block text-xs font-bold uppercase mb-2">
                 Payment Token *
               </label>
               <select
@@ -512,7 +534,7 @@ export default function CreateCampaign() {
                 name="tokenAddress"
                 value={formData.tokenAddress}
                 onChange={handleInputChange}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full"
                 required
               >
                 <option value="">Select a token</option>
@@ -527,7 +549,7 @@ export default function CreateCampaign() {
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label htmlFor="budget" className="block text-sm font-medium text-foreground/80 mb-2">
+                <label htmlFor="budget" className="block text-xs font-bold uppercase mb-2">
                   Budget ({selectedTokenInfo.symbol}) *
                 </label>
                 <input
@@ -538,13 +560,13 @@ export default function CreateCampaign() {
                   onChange={handleInputChange}
                   step="0.0001"
                   min="0.0001"
-                  className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full"
                   placeholder="1.0"
                   required
                 />
               </div>
               <div>
-                <label htmlFor="cpc" className="block text-sm font-medium text-foreground/80 mb-2">
+                <label htmlFor="cpc" className="block text-xs font-bold uppercase mb-2">
                   Cost Per Click ({selectedTokenInfo.symbol})
                 </label>
                 <input
@@ -554,9 +576,9 @@ export default function CreateCampaign() {
                   value={formData.cpc}
                   readOnly
                   disabled
-                  className="w-full px-3 py-2 border border-border rounded-md bg-secondary text-foreground/70"
+                  className="w-full opacity-60"
                 />
-                <p className="text-xs text-foreground/60 mt-1">Fixed at 0.002 {selectedTokenInfo.symbol} for now.</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-1">Fixed at 0.002 {selectedTokenInfo.symbol}.</p>
               </div>
             </div>
 
@@ -567,38 +589,38 @@ export default function CreateCampaign() {
         {activeTab === 'dates' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-foreground/80 mb-2">Start Date *</label>
+              <label className="block text-xs font-bold uppercase mb-2">Start Date *</label>
               <input
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full"
                 required
               />
-              <label className="block text-sm font-medium text-foreground/80 mt-2 mb-1">Start Time *</label>
+              <label className="block text-xs font-bold uppercase mt-4 mb-2">Start Time *</label>
               <input
                 type="time"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full"
                 required
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-foreground/80 mb-2">End Date *</label>
+              <label className="block text-xs font-bold uppercase mb-2">End Date *</label>
               <input
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full"
                 required
               />
-              <label className="block text-sm font-medium text-foreground/80 mt-2 mb-1">End Time *</label>
+              <label className="block text-xs font-bold uppercase mt-4 mb-2">End Time *</label>
               <input
                 type="time"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
-                className="w-full px-3 py-2 border border-border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                className="w-full"
                 required
               />
             </div>
@@ -645,8 +667,8 @@ export default function CreateCampaign() {
         </div>
 
         {!address && (
-          <p className="text-center text-gray-500 text-sm">
-            Please connect your wallet to create a campaign
+          <p className="text-center text-xs font-bold uppercase text-[var(--text-secondary)] border-2 border-black bg-[#F5F3F0] p-3">
+            Connect your wallet to create a campaign
           </p>
         )}
       </form>

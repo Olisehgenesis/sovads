@@ -1,7 +1,7 @@
 "use client"
 
 import Link from 'next/link'
-import { usePathname, useSearchParams } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
 import WalletButton from './WalletButton'
@@ -30,20 +30,19 @@ const directNavItems: NavItem[] = [
   { href: '/docs', label: 'Docs' },
 ]
 
-const publisherPaths = ['/publisher', '/rewards']
-const advertiserPaths = ['/advertiser', '/create-campaign', '/edit-campaign', '/ads']
-
 function matchesPath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`)
 }
 
-function navItemClass(isActive: boolean, isScrolled: boolean) {
+function navItemClass(isActive: boolean, isScrolled: boolean, lightWhenTop = false) {
   const activeClass = isScrolled
     ? 'bg-white/14 text-white'
     : 'bg-black text-white'
   const idleClass = isScrolled
     ? 'text-white/84 hover:bg-white/10 hover:text-white'
-    : 'text-[var(--text-primary)] hover:bg-black/6 hover:text-black'
+    : lightWhenTop
+      ? 'text-white/84 hover:bg-white/10 hover:text-white'
+      : 'text-[var(--text-primary)] hover:bg-black/6 hover:text-black'
 
   return [
     'inline-flex items-center gap-1 rounded-full px-4 py-2 text-[11px] font-black uppercase tracking-[0.24em] no-underline transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40',
@@ -53,8 +52,8 @@ function navItemClass(isActive: boolean, isScrolled: boolean) {
 
 function dropdownLinkClass(isActive: boolean) {
   return [
-    'flex items-center justify-between rounded-2xl px-4 py-3 text-sm font-semibold text-[var(--text-primary)] no-underline transition-all duration-200',
-    isActive ? 'bg-black text-white' : 'hover:bg-black/5',
+    'flex items-center justify-between px-4 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-[var(--text-primary)] no-underline transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black',
+    isActive ? 'bg-black text-white' : 'hover:bg-black/8',
   ].join(' ')
 }
 
@@ -116,7 +115,6 @@ function MobileSection({
 
 export default function Header() {
   const pathname = usePathname() ?? '/'
-  const searchParams = useSearchParams()
   const { address } = useAccount()
   const [isScrolled, setIsScrolled] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
@@ -130,28 +128,6 @@ export default function Header() {
     () => (isAuthorized ? [...baseAboutItems, { href: '/backoffice', label: 'Backoffice' }] : baseAboutItems),
     [isAuthorized]
   )
-
-  const cta = useMemo(() => {
-    const advertiserQuery = searchParams?.has('advertiser') ?? false
-    const publisherQuery = searchParams?.has('publisher') ?? false
-    const claimQuery = searchParams?.has('claim') ?? false
-    const isPublisherContext = publisherPaths.some((href) => matchesPath(pathname, href))
-    const isAdvertiserContext = advertiserPaths.some((href) => matchesPath(pathname, href))
-
-    if (claimQuery || matchesPath(pathname, '/rewards')) {
-      return { href: '/rewards?claim', label: 'Claim Rewards' }
-    }
-
-    if (publisherQuery || (isPublisherContext && !isAdvertiserContext)) {
-      return { href: '/publisher?publisher', label: 'Start Earning' }
-    }
-
-    if (advertiserQuery || isAdvertiserContext) {
-      return { href: '/create-campaign?advertiser', label: 'Run Campaign' }
-    }
-
-    return { href: '/create-campaign', label: 'Publish an Ad' }
-  }, [pathname, searchParams])
 
   useEffect(() => {
     const onScroll = () => setIsScrolled(window.scrollY > 20)
@@ -194,9 +170,6 @@ export default function Header() {
     ? 'bg-black/88 shadow-[0_12px_40px_rgba(0,0,0,0.28)] backdrop-blur-md'
     : 'bg-transparent'
   const logoClass = isScrolled ? 'text-white' : 'text-[var(--text-primary)]'
-  const ctaClass = isScrolled
-    ? 'bg-white/10 !text-white ring-1 ring-inset ring-white/20 hover:bg-white/16 hover:!text-white'
-    : 'bg-black !text-white hover:bg-black/88 hover:!text-white'
 
   return (
     <header className="pointer-events-none fixed inset-x-0 top-0 z-30">
@@ -237,7 +210,7 @@ export default function Header() {
                   </button>
 
                   {openDropdown === 'dashboard' && (
-                    <div className="absolute left-1/2 top-[calc(100%+12px)] w-72 -translate-x-1/2 rounded-3xl bg-white p-2 shadow-[0_20px_50px_rgba(0,0,0,0.14)] animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="absolute left-1/2 top-[calc(100%+12px)] w-64 -translate-x-1/2 border-2 border-black bg-white p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-in fade-in slide-in-from-top-2 duration-200">
                       {dashboardItems.map((item) => (
                         <Link
                           key={item.href}
@@ -255,7 +228,7 @@ export default function Header() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={navItemClass(matchesPath(pathname, item.href), isScrolled)}
+                    className={navItemClass(matchesPath(pathname, item.href), isScrolled, true)}
                   >
                     {item.label}
                   </Link>
@@ -283,7 +256,7 @@ export default function Header() {
                   </button>
 
                   {openDropdown === 'about' && (
-                    <div className="absolute left-1/2 top-[calc(100%+12px)] w-72 -translate-x-1/2 rounded-3xl bg-white p-2 shadow-[0_20px_50px_rgba(0,0,0,0.14)] animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="absolute left-1/2 top-[calc(100%+12px)] w-64 -translate-x-1/2 border-2 border-black bg-white p-2 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] animate-in fade-in slide-in-from-top-2 duration-200">
                       {aboutItems.map((item) => (
                         <Link
                           key={item.href}
@@ -300,24 +273,17 @@ export default function Header() {
             </div>
 
             <div className="hidden items-center gap-5 lg:flex">
-              <Link
-                href={cta.href}
-                className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.24em] no-underline !text-white shadow-[0_10px_26px_rgba(0,0,0,0.14)] transition-all duration-200 ${ctaClass}`}
-              >
-                {cta.label}
-              </Link>
-
-              <WalletButton tone={isScrolled ? 'light' : 'dark'} />
+              <WalletButton connectedAsButton tone={isScrolled ? 'light' : 'dark'} />
             </div>
 
             <div className="flex items-center gap-3 lg:hidden">
               <div className="hidden sm:block">
-                <Link
-                  href={cta.href}
-                  className={`inline-flex items-center justify-center rounded-full px-4 py-2.5 text-[10px] font-black uppercase tracking-[0.22em] no-underline !text-white transition-all duration-200 ${ctaClass}`}
-                >
-                  {cta.label}
-                </Link>
+                <WalletButton
+                  connectedAsButton
+                  tone={isScrolled ? 'light' : 'dark'}
+                  className="px-4 py-2.5 text-[10px] tracking-[0.22em]"
+                  connectedClassName="px-4 py-2.5 text-[10px] tracking-[0.22em]"
+                />
               </div>
 
               <button
@@ -340,19 +306,9 @@ export default function Header() {
 
           {mobileMenuOpen && (
             <div className="pb-5 lg:hidden animate-in fade-in slide-in-from-top-2 duration-200">
-              <div className="rounded-[2rem] bg-white p-4 shadow-[0_24px_60px_rgba(0,0,0,0.14)]">
-                <div className="mb-4 flex flex-col gap-3 border-b border-black/8 pb-4 sm:flex-row sm:items-center sm:justify-between">
-                  <Link
-                    href={cta.href}
-                    onClick={() => setMobileMenuOpen(false)}
-                    className="inline-flex items-center justify-center rounded-full bg-black px-5 py-3 text-[11px] font-black uppercase tracking-[0.24em] text-white no-underline transition-all duration-200 hover:bg-black/88"
-                  >
-                    {cta.label}
-                  </Link>
-
-                  <div className="sm:ml-auto">
-                    <WalletButton className="justify-start" tone="dark" />
-                  </div>
+              <div className="border-2 border-black bg-white p-4 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                <div className="mb-4 flex border-b border-black/8 pb-4">
+                  <WalletButton connectedAsButton className="w-full justify-center" connectedClassName="w-full justify-center" tone="dark" />
                 </div>
 
                 <div className="space-y-3">

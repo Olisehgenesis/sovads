@@ -25,7 +25,7 @@ export default function Home() {
               <Link href="/advertiser" className="btn btn-primary text-lg">
                 Run an Ad Campaign
               </Link>
-              <Link href="/publisher" className="btn btn-outline text-lg">
+              <Link href="/publisher" className="btn btn-outline text-base">
                 Earn as a Site Owner
               </Link>
             </div>
@@ -60,9 +60,9 @@ export default function Home() {
       </div>
 
       {/* Who Earns What Section */}
-      <section className="border-t-4 border-black bg-white py-24">
+      <section className="border-t-4 border-black bg-white py-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-4xl sm:text-5xl font-heading text-center mb-16 uppercase">An ad economy for everyone</h2>
+          <h2 className="text-3xl sm:text-4xl font-heading text-center mb-12 uppercase">An ad economy for everyone</h2>
 
           <div className="grid md:grid-cols-3 gap-12">
             {[
@@ -118,13 +118,13 @@ export default function Home() {
       </section>
 
       {/* SovPoints Explainer */}
-      <section className="bg-[#F5F3F0] border-t-4 border-black py-20 px-4">
-        <div className="max-w-4xl mx-auto card p-10 bg-white">
-          <h3 className="text-3xl font-heading mb-6 text-center uppercase">What are SovPoints?</h3>
+      <section className="bg-[#F5F3F0] border-t-2 border-black py-16 px-4">
+        <div className="max-w-4xl mx-auto card p-8 bg-white">
+          <h3 className="text-2xl font-heading mb-4 text-center uppercase tracking-tight">What are SovPoints?</h3>
           <p className="text-lg font-bold text-center mb-10 max-w-2xl mx-auto">
             Reward points earned for your attention. They accumulate over time and can be redeemed across the ecosystem.
           </p>
-          <div className="grid sm:grid-cols-3 gap-8 text-center font-heading text-lg">
+          <div className="grid sm:grid-cols-3 gap-6 text-center font-heading text-base">
             <div className="flex flex-col items-center gap-2">
               <span className="text-4xl">👀</span>
               <span>View Ads</span>
@@ -142,9 +142,9 @@ export default function Home() {
       </section>
 
       {/* Live Preview */}
-      <section className="py-24 px-4 bg-white border-t-4 border-black">
+      <section className="py-16 px-4 bg-white border-t-2 border-black">
         <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-4xl font-heading mb-4 uppercase">Live SovAds Preview</h2>
+          <h2 className="text-3xl font-heading mb-3 uppercase">Live SovAds Preview</h2>
           <p className="font-heading text-sm text-gray-500 mb-12 uppercase tracking-widest">
             View this ad to earn SovPoints automatically
           </p>

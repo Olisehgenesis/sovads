@@ -1,10 +1,14 @@
 "use client"
 
+import { useAppKit } from '@reown/appkit/react'
 import { useEffect, useState } from 'react'
 import { useAccount, useDisconnect } from 'wagmi'
 
 interface WalletButtonProps {
   className?: string
+  connectedClassName?: string
+  connectedAsButton?: boolean
+  hideWhenDisconnected?: boolean
   onConnect?: (address: string) => void
   onDisconnect?: () => void
   tone?: 'light' | 'dark'
@@ -14,7 +18,16 @@ function truncateAddress(address: string) {
   return `${address.slice(0, 6)}...${address.slice(-4)}`
 }
 
-export default function WalletButton({ className = '', onConnect, onDisconnect, tone = 'dark' }: WalletButtonProps) {
+export default function WalletButton({
+  className = '',
+  connectedClassName = '',
+  connectedAsButton = false,
+  hideWhenDisconnected = false,
+  onConnect,
+  onDisconnect,
+  tone = 'dark',
+}: WalletButtonProps) {
+  const { open } = useAppKit()
   const { address, isConnected } = useAccount()
   const { disconnect } = useDisconnect()
   const [showWalletModal, setShowWalletModal] = useState(false)
@@ -60,6 +73,12 @@ export default function WalletButton({ className = '', onConnect, onDisconnect, 
   const textToneClass = tone === 'light'
     ? 'text-white hover:text-white/78'
     : 'text-[var(--text-primary)] hover:text-black/66'
+  const connectButtonClass = tone === 'light'
+    ? 'bg-white/10 text-white ring-1 ring-inset ring-white/20 hover:bg-white/16'
+    : 'bg-black text-white hover:bg-black/88'
+  const connectedButtonClass = tone === 'light'
+    ? 'bg-white/10 text-white ring-1 ring-inset ring-white/20 hover:bg-white/16'
+    : 'bg-black text-white hover:bg-black/88'
 
   if (isConnected && address) {
     return (
@@ -67,7 +86,9 @@ export default function WalletButton({ className = '', onConnect, onDisconnect, 
         <button
           type="button"
           onClick={() => setShowWalletModal(true)}
-          className={`inline-flex items-center rounded-full px-1 py-1 text-sm font-semibold tracking-[0.08em] no-underline transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${textToneClass}`}
+          className={connectedAsButton
+            ? `inline-flex items-center justify-center rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.24em] no-underline shadow-[0_10px_26px_rgba(0,0,0,0.14)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${connectedButtonClass} ${connectedClassName}`
+            : `inline-flex items-center rounded-full px-1 py-1 text-sm font-semibold tracking-[0.08em] no-underline transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${textToneClass} ${connectedClassName}`}
           title="Open wallet details"
         >
           {truncateAddress(address)}
@@ -117,5 +138,17 @@ export default function WalletButton({ className = '', onConnect, onDisconnect, 
     )
   }
 
-  return <appkit-button />
+  if (hideWhenDisconnected) {
+    return null
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => void open()}
+      className={`inline-flex items-center justify-center rounded-full px-5 py-3 text-[11px] font-black uppercase tracking-[0.24em] no-underline shadow-[0_10px_26px_rgba(0,0,0,0.14)] transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40 ${connectButtonClass} ${className}`}
+    >
+      Connect Wallet
+    </button>
+  )
 }

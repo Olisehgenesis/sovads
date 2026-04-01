@@ -199,7 +199,11 @@ export default function AdvertiserDashboard() {
               <h2 className="text-sm font-heading mb-6 uppercase tracking-wider">Your Campaigns</h2>
               <div className="space-y-4">
                 {campaigns.length === 0 ? (
-                  <div className="text-[var(--text-tertiary)] text-[11px]">No campaigns yet. Create your first campaign.</div>
+                  <div className="border-2 border-black bg-[#F5F3F0] p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                    <h3 className="text-base font-heading mb-2">No campaigns yet</h3>
+                    <p className="text-sm text-[var(--text-secondary)] mb-4">Create your first campaign to start running ads across publisher sites.</p>
+                    <Link href="/create-campaign" className="btn btn-primary btn-sm inline-flex">Create Campaign</Link>
+                  </div>
                 ) : campaigns.map((campaign) => (
                   <div
                     key={campaign.id}
@@ -217,7 +221,7 @@ export default function AdvertiserDashboard() {
                         <div className="flex justify-between items-start mb-2">
                           <div>
                             <h3 className="text-sm font-medium">{campaign.name}</h3>
-                            <p className="text-[var(--text-secondary)] text-[11px]">{campaign.description}</p>
+                          <p className="text-[var(--text-secondary)] text-xs mt-0.5">{campaign.description}</p>
                           </div>
                           <div className="text-right">
                             <div className="text-base font-semibold">
@@ -227,7 +231,7 @@ export default function AdvertiserDashboard() {
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5 text-[10px] text-[var(--text-tertiary)] uppercase tracking-tight">
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs text-[var(--text-tertiary)] uppercase tracking-tight">
                           {(() => {
                             const tokenSymbol = getTokenSymbol(campaign.tokenAddress)
                             return (
@@ -246,7 +250,7 @@ export default function AdvertiserDashboard() {
                             )
                           })()}
                         </div>
-                        <div className="mt-2 text-[10px] font-bold text-black uppercase">
+                        <div className="mt-2 text-xs font-bold text-black uppercase">
                           Media: {campaign.mediaType === 'video' ? 'Video' : 'Image'} | ID: {campaign.onChainId ?? '...'}
                         </div>
 
@@ -279,7 +283,7 @@ export default function AdvertiserDashboard() {
                                   handleTogglePause(campaign)
                                 }}
                                 disabled={isProcessing}
-                                className="btn btn-outline py-1 h-8 px-3"
+                                className={`btn btn-sm ${campaign.paused ? 'btn-outline' : 'btn-danger'}`}
                               >
                                 {campaign.paused ? 'Resume' : 'Pause'}
                               </button>
@@ -328,8 +332,8 @@ export default function AdvertiserDashboard() {
                               </div>
                             )}
 
-                            {msgError && <div className="mt-2 text-[10px] font-bold text-red-600 uppercase">{msgError}</div>}
-                            {msgSuccess && <div className="mt-2 text-[10px] font-bold text-green-600 uppercase">{msgSuccess}</div>}
+                            {msgError && <div className="mt-2 text-xs font-bold text-red-700 uppercase border-l-2 border-red-500 pl-2">{msgError}</div>}
+                            {msgSuccess && <div className="mt-2 text-xs font-bold text-[var(--accent-success)] uppercase border-l-2 border-[var(--accent-success)] pl-2">{msgSuccess}</div>}
                           </div>
                         )}
                       </div>
@@ -365,19 +369,19 @@ export default function AdvertiserDashboard() {
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                   <div className="card p-4 text-center">
                     <div className="text-2xl font-heading">{campaignStats.impressions.toLocaleString()}</div>
-                    <div className="text-[10px] font-bold uppercase">Impressions</div>
+                    <div className="text-xs font-bold uppercase">Impressions</div>
                   </div>
                   <div className="card p-4 text-center">
                     <div className="text-2xl font-heading">{campaignStats.clicks.toLocaleString()}</div>
-                    <div className="text-[10px] font-bold uppercase">Clicks</div>
+                    <div className="text-xs font-bold uppercase">Clicks</div>
                   </div>
                   <div className="card p-4 text-center">
                     <div className="text-2xl font-heading">{campaignStats.ctr.toFixed(2)}%</div>
-                    <div className="text-[10px] font-bold uppercase">CTR</div>
+                    <div className="text-xs font-bold uppercase">CTR</div>
                   </div>
                   <div className="card p-4 text-center">
                     <div className="text-2xl font-heading">{campaignStats.totalSpent.toFixed(4)}</div>
-                    <div className="text-[10px] font-bold uppercase whitespace-nowrap">
+                    <div className="text-xs font-bold uppercase whitespace-nowrap">
                       Spent ({getTokenSymbol(selectedCampaign.tokenAddress)})
                     </div>
                   </div>
