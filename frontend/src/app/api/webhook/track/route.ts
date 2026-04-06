@@ -113,10 +113,16 @@ export async function POST(request: NextRequest) {
       ? await publisherSitesCollection.findOne({ siteId: tokenClaims.siteId })
       : await publisherSitesCollection.findOne({ apiKey })
 
-    if (!site) {
-      return NextResponse.json({ error: tokenClaims ? 'Invalid tracking token site' : 'Invalid API key' }, { status: 401 })
+    // Ghost-site mode: tracking token is cryptographically valid but site record was
+    // lost from DB (e.g. after a data recovery). Allow tracking with half points so
+    // publishers whose sites survived the data loss still earn. Reject only when there
+    // is NO token at all (raw apiKey flow with no DB record = unknown caller).
+    const isGhostSite = !site && !!tokenClaims
+
+    if (!site && !isGhostSite) {
+      return NextResponse.json({ error: 'Invalid API key' }, { status: 401 })
     }
-    if (!tokenClaims && site.siteId !== requestSiteId) {
+    if (!tokenClaims && site && site.siteId !== requestSiteId) {
       return NextResponse.json({ error: 'Site ID mismatch' }, { status: 401 })
     }
 
@@ -132,7 +138,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'Missing payload for tracking token flow' }, { status: 400 })
       }
     } else {
-      eventPayload = await parseEventPayload(body, site.apiSecret)
+      eventPayload = await parseEventPayload(body, site!.apiSecret)
       if (!eventPayload) {
         return NextResponse.json({ error: 'Invalid signature or payload' }, { status: 401 })
       }
@@ -196,7 +202,8 @@ export async function POST(request: NextRequest) {
     if (!EVENT_TYPES.includes(type)) {
       return NextResponse.json({ error: 'Invalid event type' }, { status: 400 })
     }
-    if (siteId !== site.siteId) {
+    // For ghost sites (site not in DB but valid token) skip the DB siteId check
+    if (!isGhostSite && siteId !== site!.siteId) {
       return NextResponse.json({ error: 'Payload site ID mismatch' }, { status: 401 })
     }
     if (tokenClaims) {
@@ -249,20 +256,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const publisher = await publishersCollection.findOne({ _id: site.publisherId })
+    const publisher = site ? await publishersCollection.findOne({ _id: site.publisherId }) : null
+    const resolvedSiteId = site?.siteId ?? tokenClaims?.siteId ?? siteId
+    const resolvedSiteDbId = site?._id ?? resolvedSiteId
     const eventDoc: Event = {
       _id: randomUUID(),
       type,
       campaignId,
-      publisherId: publisher?._id ?? site.publisherId,
-      siteId: site.siteId,
+      publisherId: publisher?._id ?? site?.publisherId ?? 'ghost',
+      siteId: resolvedSiteId,
       adId,
       ipAddress: getIp(request),
       userAgent: payloadUserAgent ?? (request.headers.get('user-agent') || 'unknown'),
       ...(fingerprint ? { fingerprint } : {}),
       viewerWallet: attributedWallet || undefined,
       verified: rendered === true && viewportVisible !== false,
-      publisherSiteId: site._id,
+      publisherSiteId: resolvedSiteDbId,
       timestamp: new Date(),
     }
 
@@ -282,7 +291,10 @@ export async function POST(request: NextRequest) {
           collections.viewerPoints(),
           collections.viewerRewards(),
         ])
-        const points = type === 'CLICK' ? 5 : 1
+        // Ghost sites (DB record lost) earn half points as a grace period
+        const points = isGhostSite
+          ? (type === 'CLICK' ? 3 : 1)
+          : (type === 'CLICK' ? 5 : 1)
         const nowTs = new Date()
 
         // 1. Update/Create Identity Mapping
