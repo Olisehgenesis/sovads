@@ -31,8 +31,8 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs font-bold uppercase tracking-widest">
               <Link href="/contact" className="hover:bg-black hover:text-white transition-all">Contact Us</Link>
-              <Link href="/sdk-demo.html" className="hover:bg-black hover:text-white transition-all">Developer Docs</Link>
-              <Link href="/sdk-demo.html#demo" className="hover:bg-black hover:text-white transition-all">SDK Demo</Link>
+              <a href="/sdk-demo.html" className="hover:bg-black hover:text-white transition-all">Developer Docs</a>
+              <a href="/sdk-demo.html#demo" className="hover:bg-black hover:text-white transition-all">SDK Demo</a>
             </div>
           </div>
 

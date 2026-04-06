@@ -61,7 +61,7 @@ export default function Footer() {
             <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-4">Resources</p>
             <ul className="space-y-3">
               <li><Link href="/docs" className="text-sm font-bold hover:underline decoration-2">Docs</Link></li>
-              <li><Link href="/sdk-demo.html" className="text-sm font-bold hover:underline decoration-2">SDK Demo</Link></li>
+              <li><a href="/sdk-demo.html" className="text-sm font-bold hover:underline decoration-2">SDK Demo</a></li>
               <li><Link href="/about" className="text-sm font-bold hover:underline decoration-2">About</Link></li>
               <li><Link href="/contact" className="text-sm font-bold hover:underline decoration-2">Contact</Link></li>
             </ul>
