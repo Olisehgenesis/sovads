@@ -93,13 +93,7 @@ export async function GET(request: NextRequest) {
 
     // Get active campaigns with budget remaining and approved verification status
     const candidatesCursor = campaignsCollection
-      .find({
-        active: true,
-        $or: [
-          { verificationStatus: 'approved' },
-          { verificationStatus: { $exists: false } } // Handle legacy ads
-        ]
-      })
+      .find({ active: true })
       .sort({ createdAt: -1 })
       .limit(100)
 

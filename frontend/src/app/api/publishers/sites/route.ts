@@ -242,11 +242,14 @@ export async function POST(request: NextRequest) {
         siteId: `site_${publisherId}_0`,
         apiKey,
         apiSecret,
-        verified: false,
+        verified: true,
         createdAt: now,
         updatedAt: now,
       }
-      await publisherSitesCollection.insertOne(newSite)
+      await Promise.all([
+        publisherSitesCollection.insertOne(newSite),
+        publishersCollection.updateOne({ _id: publisherId }, { $set: { verified: true } }),
+      ])
 
       return NextResponse.json({
         success: true,
@@ -295,11 +298,14 @@ export async function POST(request: NextRequest) {
       siteId: `site_${existingPublisher._id}_${siteCount}`,
       apiKey,
       apiSecret,
-      verified: false,
+      verified: true,
       createdAt: new Date(),
       updatedAt: new Date(),
     }
-    await publisherSitesCollection.insertOne(newSite)
+    await Promise.all([
+      publisherSitesCollection.insertOne(newSite),
+      publishersCollection.updateOne({ _id: existingPublisher._id }, { $set: { verified: true } }),
+    ])
 
     return NextResponse.json({
       success: true,
