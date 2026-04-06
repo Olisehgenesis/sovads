@@ -11,7 +11,7 @@ async function listAll() {
         console.log('Advertisers:', advertiserMap);
 
         const allCampaigns = await prisma.campaign.findMany({ orderBy: { createdAt: 'desc' } })
-        console.log('Campaigns:', JSON.stringify(allCampaigns.map(c => ({
+        console.log('Campaigns:', JSON.stringify(allCampaigns.map((c: { id: string; name: string; advertiserId: string; verificationStatus: string | null }) => ({
             id: c.id,
             name: c.name,
             advertiser: advertiserMap[c.advertiserId] || 'Unknown',
