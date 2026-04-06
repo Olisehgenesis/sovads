@@ -62,7 +62,11 @@ export async function getTreasuryBalance(): Promise<number> {
     const available = BigInt(vault[1]) - BigInt(vault[3]) - BigInt(vault[2])
     return rawToSovPoints(available)
   } catch (error) {
-    console.warn('Failed to fetch treasury balance:', error)
+    // Campaign vault doesn't exist yet (contract reverted) — not an error condition
+    const msg = error instanceof Error ? error.message : String(error)
+    if (!msg.includes('reverted') && !msg.includes('revert')) {
+      console.warn('Failed to fetch treasury balance:', msg)
+    }
     return 0
   }
 }

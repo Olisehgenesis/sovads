@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useEffect, useState } from 'react'
+import { useAccount } from 'wagmi'
 
 type CampaignSummary = {
   id: string
@@ -10,14 +11,17 @@ type CampaignSummary = {
 }
 
 export default function AdminCampaignsIndex() {
+  const { address } = useAccount()
   const [campaigns, setCampaigns] = useState<CampaignSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
+    if (!address) return
     const load = async () => {
+      setLoading(true)
       try {
-        const res = await fetch('/api/admin/campaigns/list')
+        const res = await fetch(`/api/admin/campaigns/list?adminWallet=${encodeURIComponent(address)}`)
         if (!res.ok) {
           throw new Error(`Failed to load campaigns (${res.status})`)
         }
@@ -36,18 +40,19 @@ export default function AdminCampaignsIndex() {
     }
 
     load()
-  }, [])
+  }, [address])
 
   return (
     <div className="mx-auto max-w-5xl p-6">
       <h1 className="text-3xl font-bold mb-5">Admin Campaigns</h1>
 
-      {loading && <p>Loading campaigns...</p>}
-      {error && <p className="text-red-600">{error}</p>}
+      {!address && <p className="text-red-600">Connect an admin wallet to view campaigns.</p>}
+      {address && loading && <p>Loading campaigns...</p>}
+      {address && error && <p className="text-red-600">{error}</p>}
 
-      {!loading && !error && campaigns.length === 0 && <p>No campaigns found.</p>}
+      {address && !loading && !error && campaigns.length === 0 && <p>No campaigns found.</p>}
 
-      {!loading && !error && campaigns.length > 0 && (
+      {address && !loading && !error && campaigns.length > 0 && (
         <div className="grid gap-3">
           {campaigns.map((campaign) => (
             <Link

@@ -172,6 +172,9 @@ export default function PublisherDashboard() {
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
   const [fundConfirmPending, setFundConfirmPending] = useState(false)
   const [statsLastRefresh, setStatsLastRefresh] = useState<Date | null>(null)
+  const [siteStats, setSiteStats] = useState<Record<string, PublisherStats>>({})
+  const [siteDailyStats, setSiteDailyStats] = useState<Record<string, DailyStatEntry[]>>({})
+  const [isSiteStatsLoading, setIsSiteStatsLoading] = useState(false)
 
   const getPublisherAuthHeaders = async (walletAddress: string): Promise<Record<string, string>> => {
     const now = Date.now()
@@ -270,6 +273,44 @@ export default function PublisherDashboard() {
     }
   }
 
+  const loadSiteStats = async (siteId: string, days: '7' | '30' | '90' | 'all' = 'all') => {
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 20_000)
+    try {
+      const response = await fetch(
+        `/api/analytics?siteId=${encodeURIComponent(siteId)}&days=${days}`,
+        { signal: controller.signal }
+      )
+      if (!response.ok) {
+        return
+      }
+      const data = await response.json()
+      setSiteStats((prev) => ({
+        ...prev,
+        [siteId]: {
+          impressions: data.impressions ?? 0,
+          clicks: data.clicks ?? 0,
+          ctr: data.ctr ?? 0,
+          totalRevenue: data.totalRevenue ?? 0,
+        },
+      }))
+      setSiteDailyStats((prev) => ({
+        ...prev,
+        [siteId]: data.dailyStats ?? [],
+      }))
+    } catch (error) {
+      console.error('Error loading site stats:', error)
+    } finally {
+      clearTimeout(timer)
+    }
+  }
+
+  const loadAllSiteStats = async (sitesToLoad: PublisherSite[], days: '7' | '30' | '90' | 'all' = 'all') => {
+    setIsSiteStatsLoading(true)
+    await Promise.all(sitesToLoad.map((site) => loadSiteStats(site.siteId, days)))
+    setIsSiteStatsLoading(false)
+  }
+
   const loadBalance = async (walletAddress: string) => {
     try {
       const response = await fetch(`/api/publishers/balance?wallet=${walletAddress}`)
@@ -359,12 +400,12 @@ export default function PublisherDashboard() {
           apiSecret: site.apiSecret ?? undefined,
         }))
         setSites(dbSites)
+        void loadAllSiteStats(dbSites, statsDays)
       } else {
         setSites([])
       }
     } catch (error) {
       console.error('Error loading sites:', error)
-      // Leave sites as-is; do not reset registration state
     }
   }
 
@@ -982,38 +1023,97 @@ export default function PublisherDashboard() {
                     {registrationError ? <p className="text-[13px] font-semibold text-[#ef4444]">{registrationError}</p> : null}
                     {registrationSuccess ? <p className="text-[13px] font-semibold text-[#22c55e]">{registrationSuccess}</p> : null}
 
-                    <div className="space-y-3">
+                    <div className="grid gap-4 xl:grid-cols-3">
                       {sites.length === 0 ? (
-                        <div className="border-2 border-black bg-[#F5F3F0] p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+                        <div className="col-span-3 border-2 border-black bg-[#F5F3F0] p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                           <h3 className="text-base font-heading mb-2">No websites registered yet</h3>
                           <p className="text-sm text-[#666666] mb-4">Add your first domain above to receive a Site ID and API key. Once deployed, the SDK will start tracking impressions and paying you per real view.</p>
                           <p className="text-xs font-bold uppercase text-[#666666]">You will need a live domain or localhost for testing.</p>
                         </div>
                       ) : (
-                        sites.map((site) => (
-                          <div key={site.id} className="border-2 border-black bg-white p-4 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                              <div className="space-y-2">
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-[14px] font-bold text-[#141414]">{site.domain}</p>
-                                  <StatusPill tone={site.verified ? 'success' : 'warning'}>{site.verified ? 'Verified' : 'Pending review'}</StatusPill>
-                                  {selectedSite?.id === site.id ? <StatusPill tone="neutral">Selected</StatusPill> : null}
-                                </div>
-                                <div className="space-y-1 text-[12px] text-[#666666]">
-                                  <p>Site ID: <span className="font-bold text-[#141414]">{site.siteId}</span></p>
-                                  <p>API Key: <span className="font-bold text-[#141414] break-all">{site.apiKey || 'Not generated yet'}</span></p>
-                                  <p>Created: <span className="font-bold text-[#141414]">{formatDateLabel(site.createdAt)}</span></p>
-                                </div>
+                        sites.map((site) => {
+                          const siteStat = siteStats[site.siteId]
+                          const siteDaily = siteDailyStats[site.siteId] || []
+                          return (
+                            <div key={site.id} className="border-2 border-black bg-white p-4">
+                              <div className="flex flex-wrap items-center gap-2 mb-3">
+                                <p className="text-[14px] font-bold text-[#141414]">{site.domain}</p>
+                                <StatusPill tone={site.verified ? 'success' : 'warning'}>{site.verified ? 'Verified' : 'Pending'}</StatusPill>
+                                {selectedSite?.id === site.id ? <StatusPill tone="neutral">Selected</StatusPill> : null}
                               </div>
-                              <div className="flex flex-wrap gap-2">
-                                <button type="button" onClick={() => setPreviewSiteId(site.siteId)} className="btn btn-outline btn-sm">Preview ad</button>
-                                <button type="button" onClick={() => setSelectedSite(site)} className="btn btn-outline btn-sm">Use</button>
-                                <button type="button" onClick={() => rotateSiteCredentials(site)} className="btn btn-outline btn-sm">Rotate keys</button>
-                                <button type="button" onClick={() => removeSiteFromDB(site.id)} className="btn btn-danger btn-sm">Remove</button>
+                              <div className="space-y-1 text-[11px] text-[#666666] mb-3">
+                                <p>Site ID: <span className="font-bold text-[#141414]">{site.siteId}</span></p>
+                                <p>API Key: <span className="font-bold text-[#141414] break-all">{site.apiKey || '—'}</span></p>
+                                <p>Created: <span className="font-bold text-[#141414]">{formatDateLabel(site.createdAt)}</span></p>
                               </div>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <button type="button" onClick={() => setPreviewSiteId(site.siteId)} className="btn btn-outline btn-xs">Preview</button>
+                                <button type="button" onClick={() => setSelectedSite(site)} className="btn btn-outline btn-xs">Select</button>
+                                <button type="button" onClick={() => rotateSiteCredentials(site)} className="btn btn-outline btn-xs">Rotate</button>
+                                <button type="button" onClick={() => removeSiteFromDB(site.id)} className="btn btn-danger btn-xs">Remove</button>
+                              </div>
+                              {siteStat && (siteStat.impressions > 0 || siteStat.clicks > 0) && (
+                                <>
+                                  <div className="grid grid-cols-4 gap-1 border-t border-[#e5e5e5] pt-2 mb-2">
+                                    <div className="text-center">
+                                      <p className="text-[9px] font-black uppercase text-[#666666]">Impr.</p>
+                                      <p className="text-[12px] font-bold text-[#141414]">{siteStat.impressions.toLocaleString()}</p>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-[9px] font-black uppercase text-[#666666]">Clicks</p>
+                                      <p className="text-[12px] font-bold text-[#141414]">{siteStat.clicks.toLocaleString()}</p>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-[9px] font-black uppercase text-[#666666]">CTR</p>
+                                      <p className="text-[12px] font-bold text-[#141414]">{siteStat.ctr.toFixed(1)}%</p>
+                                    </div>
+                                    <div className="text-center">
+                                      <p className="text-[9px] font-black uppercase text-[#666666]">Rev.</p>
+                                      <p className="text-[12px] font-bold text-[#22c55e]">{siteStat.totalRevenue.toFixed(2)}</p>
+                                    </div>
+                                  </div>
+                                  {siteDaily.length > 0 && (
+                                    <div className="overflow-x-auto border border-[#e5e5e5] text-[10px]">
+                                      <table className="w-full">
+                                        <thead>
+                                          <tr className="border-b border-[#e5e5e5] bg-[#F5F3F0]">
+                                            <th className="px-1 py-1 text-left text-[8px] font-black uppercase">Date</th>
+                                            <th className="px-1 py-1 text-right text-[8px] font-black uppercase">Imp</th>
+                                            <th className="px-1 py-1 text-right text-[8px] font-black uppercase">Clk</th>
+                                            <th className="px-1 py-1 text-right text-[8px] font-black uppercase">CTR</th>
+                                            <th className="px-1 py-1 text-right text-[8px] font-black uppercase">Rev</th>
+                                          </tr>
+                                        </thead>
+                                        <tbody>
+                                          {[...siteDaily]
+                                            .sort((a, b) => b.date.localeCompare(a.date))
+                                            .slice(0, 5)
+                                            .map((row) => {
+                                              const rowCtr = row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(1) : '0'
+                                              return (
+                                                <tr key={row.date} className="border-b border-[#e5e5e5] even:bg-[#F5F3F0]">
+                                                  <td className="px-1 py-1 font-bold text-[#141414]">{formatDateLabel(row.date)}</td>
+                                                  <td className="px-1 py-1 text-right text-[#141414]">{row.impressions}</td>
+                                                  <td className="px-1 py-1 text-right text-[#141414]">{row.clicks}</td>
+                                                  <td className="px-1 py-1 text-right text-[#141414]">{rowCtr}%</td>
+                                                  <td className="px-1 py-1 text-right font-bold text-[#22c55e]">{row.revenue.toFixed(3)}</td>
+                                                </tr>
+                                              )
+                                            })}
+                                        </tbody>
+                                      </table>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              {(!siteStat || (siteStat.impressions === 0 && siteStat.clicks === 0)) && (
+                                <div className="text-[10px] text-[#999999] border-t border-[#e5e5e5] pt-2">
+                                  No activity. <button type="button" onClick={() => loadSiteStats(site.siteId, statsDays)} className="underline font-bold">Refresh</button>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))
+                          )
+                        })
                       )}
                     </div>
                   </div>
@@ -1029,29 +1129,106 @@ export default function PublisherDashboard() {
                 >
                   <div className="grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,0.85fr)]">
                     <div className="space-y-4 border-2 border-black bg-[#F5F3F0] p-4">
-                      <div className="flex flex-wrap gap-2">
-                        <button type="button" onClick={() => void copyToClipboard(selectedSite?.siteId || '', 'Site ID copied!')} disabled={!selectedSite?.siteId} className="btn btn-outline btn-sm">Copy site ID</button>
-                        <button type="button" onClick={() => void copyToClipboard(selectedSite?.apiKey || '', 'API key copied!')} disabled={!selectedSite?.apiKey} className="btn btn-outline btn-sm">Copy API key</button>
-                        <button type="button" onClick={() => void copyToClipboard(selectedSecret, 'API secret copied!')} disabled={!selectedSecret} className="btn btn-outline btn-sm">Copy API secret</button>
-                        <button type="button" onClick={() => void copyToClipboard(envBlock, 'Env block copied!')} disabled={!selectedSite} className="btn btn-outline btn-sm">Copy env block</button>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-[11px] font-bold uppercase text-[#666666]">Copy:</span>
+                        <button
+                          type="button"
+                          onClick={() => void copyToClipboard(selectedSite?.siteId || '', 'Site ID copied!')}
+                          disabled={!selectedSite?.siteId}
+                          className="btn btn-outline btn-sm"
+                          title="Copy Site ID"
+                        >
+                          Site ID
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void copyToClipboard(selectedSite?.apiKey || '', 'API key copied!')}
+                          disabled={!selectedSite?.apiKey}
+                          className="btn btn-outline btn-sm"
+                          title="Copy API Key (safe for client-side)"
+                        >
+                          API Key
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void copyToClipboard(envBlock, 'Env block copied!')}
+                          disabled={!selectedSite}
+                          className="btn btn-outline btn-sm"
+                          title="Copy as env variables"
+                        >
+                          .env
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!selectedSite) return
+                            const snippet = `import { SovAds, Banner } from 'sovads-sdk'
+
+const ads = new SovAds({
+  siteId: '${selectedSite.siteId}',
+  apiUrl: 'https://ads.sovseas.xyz'
+})
+
+const banner = new Banner(ads, 'ad-container')
+await banner.render()`
+                            void copyToClipboard(snippet, 'Snippet copied!')
+                          }}
+                          disabled={!selectedSite}
+                          className="btn btn-primary btn-sm"
+                          title="Copy SDK setup code"
+                        >
+                          Copy snippet
+                        </button>
                       </div>
 
                       <div className="space-y-1 text-[12px] text-[#666666]">
-                        <p>API Key: <span className="font-bold text-[#141414] break-all">{selectedSite?.apiKey || 'Select a site to load credentials.'}</span></p>
-                        <p>
-                          API Secret:{' '}
-                          <span className="font-bold text-[#141414] break-all">
-                            {selectedSite
-                              ? showApiSecret[selectedSite.id]
-                                ? newApiSecrets[selectedSite.id] || selectedSite.apiSecret || 'Not available'
-                                : 'Hidden until a new secret is issued.'
-                              : 'No site selected.'}
-                          </span>
-                        </p>
-                        <p>Never expose secrets in NEXT_PUBLIC variables.</p>
+                        <div className="flex items-center justify-between">
+                          <p>API Key: <span className="font-bold text-[#141414] break-all">{selectedSite?.apiKey || 'Select a site to load credentials.'}</span></p>
+                          {selectedSite?.apiKey && (
+                            <button
+                              type="button"
+                              onClick={() => void copyToClipboard(selectedSite?.apiKey || '', 'Copied!')}
+                              className="text-[10px] uppercase font-bold text-black underline"
+                            >
+                              Copy
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <p>
+                            API Secret:{' '}
+                            <span className="font-bold text-[#141414] break-all">
+                              {selectedSite
+                                ? showApiSecret[selectedSite.id]
+                                  ? newApiSecrets[selectedSite.id] || selectedSite.apiSecret || 'Not available'
+                                  : 'Hidden — rotate to reveal'
+                                : 'No site selected.'}
+                            </span>
+                          </p>
+                          {selectedSite && !showApiSecret[selectedSite.id] && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowApiSecret((prev) => ({ ...prev, [selectedSite.id]: true }))
+                              }}
+                              className="text-[10px] uppercase font-bold text-black underline"
+                            >
+                              Show
+                            </button>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-[#999999]">API Secret must stay server-side. Never expose in NEXT_PUBLIC variables.</p>
                       </div>
 
-                      <pre className="overflow-x-auto border-2 border-black bg-[#141414] p-4 text-[11px] leading-5 text-white"><code>{selectedSite ? `import { SovAds, Banner } from 'sovads-sdk'\n\nconst ads = new SovAds({\n  siteId: '${selectedSite.siteId}',\n  apiUrl: 'https://ads.sovseas.xyz'\n})\n\nconst banner = new Banner(ads, 'ad-container')\nawait banner.render()` : `Select a site to reveal the SDK snippet.`}</code></pre>
+                      <pre className="overflow-x-auto border-2 border-black bg-[#141414] p-4 text-[11px] leading-5 text-white"><code>{selectedSite ? `import { SovAds, Banner } from 'sovads-sdk'
+
+const ads = new SovAds({
+  siteId: '${selectedSite.siteId}',
+  apiUrl: 'https://ads.sovseas.xyz'
+})
+
+const banner = new Banner(ads, 'ad-container')
+await banner.render()` : `Select a site to reveal the SDK snippet.`}</code></pre>
                     </div>
 
                     <div className="space-y-4">
@@ -1103,9 +1280,9 @@ export default function PublisherDashboard() {
                             className="w-full"
                           />
                         </div>
-                        <p className="text-[12px] text-[#666666]">Estimated receive: <span className="font-bold text-[#141414]">{exchangeEstimate.toLocaleString()} G$</span></p>
+                        <p className="text-[12px] text-[#666666]">Est. receive: <span className="font-bold text-[#141414]">{exchangeEstimate.toLocaleString()} G$</span></p>
                         <button type="button" onClick={handleTopupSubmit} disabled={isToppingUp || !topupAmount} className="btn btn-primary btn-sm">
-                          {isToppingUp ? 'Processing...' : `Exchange ${topupToken} to G$`}
+                          {isToppingUp ? 'Processing...' : `Exchange ${topupToken}`}
                         </button>
                         {topupSuccess ? <p className="text-[13px] font-semibold text-[#22c55e]">{topupSuccess}</p> : null}
                         {topupError ? <p className="text-[13px] font-semibold text-[#ef4444]">{topupError}</p> : null}
@@ -1117,7 +1294,7 @@ export default function PublisherDashboard() {
                       <div className="mt-4 space-y-3">
                         {campaignCount && Number(campaignCount) > 0 ? (
                           <select value={fundCampaignId} onChange={(event) => void handleCampaignSelect(event.target.value)} className="w-full">
-                            <option value="">Select campaign</option>
+                            <option value="">Select</option>
                             {Array.from({ length: Number(campaignCount) }).map((_, index) => (
                               <option key={index + 1} value={index + 1}>#{index + 1}</option>
                             ))}
@@ -1127,7 +1304,7 @@ export default function PublisherDashboard() {
                         )}
                         <input type="number" value={fundAmount} onChange={(event) => setFundAmount(event.target.value)} placeholder="Amount (G$)" className="w-full" />
                         {selectedCampaignVault ? (
-                          <div className="border border-black bg-[#F5F3F0] p-3 text-[12px] text-[#666666]">
+                          <div className="border border-black bg-[#F5F3F0] p-2 text-[11px] text-[#666666]">
                             <p>Token: <span className="font-bold text-[#141414]">{getTokenInfo(selectedCampaignVault.token)?.symbol ?? selectedCampaignVault.token}</span></p>
                             <p>Funded: <span className="font-bold text-[#141414]">{formatVaultAmount(selectedCampaignVault.totalFunded, selectedCampaignVault.token)}</span></p>
                             <p>Locked: <span className="font-bold text-[#141414]">{formatVaultAmount(selectedCampaignVault.locked, selectedCampaignVault.token)}</span></p>
@@ -1136,7 +1313,7 @@ export default function PublisherDashboard() {
                         ) : null}
                         {fundConfirmPending ? (
                           <div className="space-y-2 border-2 border-black bg-[#fef9c3] p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
-                            <p className="text-[12px] font-bold text-[#141414]">Fund campaign #{fundCampaignId} with {fundAmount} G$?</p>
+                            <p className="text-[12px] font-bold text-[#141414]">Fund #{fundCampaignId} with {fundAmount} G$?</p>
                             <div className="flex gap-2">
                               <button type="button" onClick={handleFundCampaign} disabled={isFunding} className="btn btn-primary btn-sm">
                                 {isFunding ? 'Funding...' : 'Confirm'}
@@ -1146,7 +1323,7 @@ export default function PublisherDashboard() {
                           </div>
                         ) : (
                           <button type="button" onClick={handleFundCampaign} disabled={isFunding || !fundCampaignId || !fundAmount} className="btn btn-primary btn-sm">
-                            Fund with G$
+                            Fund
                           </button>
                         )}
                         {fundSuccess ? <p className="text-[13px] font-semibold text-[#22c55e]">{fundSuccess}</p> : null}
@@ -1158,8 +1335,8 @@ export default function PublisherDashboard() {
                       <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#666666]">Withdraw earnings</p>
                       <div className="mt-4 space-y-3">
                         <div className="border border-black bg-[#F5F3F0] p-3">
-                          <p className="text-[12px] text-[#666666]">Available balance</p>
-                          <p className="mt-1 text-[16px] font-black text-[#141414]">{availableBalance.toFixed(2)} G$</p>
+                          <p className="text-[11px] text-[#666666]">Available balance</p>
+                          <p className="mt-1 text-[18px] font-black text-[#141414]">{availableBalance.toFixed(2)} G$</p>
                         </div>
                         <button type="button" onClick={handleWithdraw} disabled={isWithdrawing || availableBalance <= 0} className="btn btn-primary btn-sm">
                           {isWithdrawing ? 'Processing...' : 'Withdraw all'}

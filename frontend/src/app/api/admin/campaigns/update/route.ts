@@ -70,6 +70,14 @@ export async function PUT(request: NextRequest) {
         // Admin can also toggle active status directly
         if (typeof updates.active === 'boolean') patch.active = updates.active
 
+        // Admin override support for audited adjustments
+        if (updates.budget !== undefined && Number.isFinite(Number(updates.budget))) {
+            patch.budget = Number(updates.budget)
+        }
+        if (updates.spent !== undefined && Number.isFinite(Number(updates.spent))) {
+            patch.spent = Number(updates.spent)
+        }
+
         await campaignsCollection.updateOne({ _id: id }, { $set: patch })
         const updated = await campaignsCollection.findOne({ _id: id })
 

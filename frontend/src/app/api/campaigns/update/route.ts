@@ -56,6 +56,10 @@ export async function PUT(request: NextRequest) {
       patch.bannerUrl = bannerUrl
       const detectedMediaType = detectMediaTypeFromUrl(bannerUrl)
       if (detectedMediaType) patch.mediaType = detectedMediaType
+      // Reset moderation status whenever the creative changes so it is re-reviewed
+      if (bannerUrl !== campaign.bannerUrl) {
+        patch.verificationStatus = 'pending'
+      }
     }
 
     await campaignsCollection.updateOne({ _id: id }, { $set: patch })

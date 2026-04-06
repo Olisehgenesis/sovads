@@ -19,6 +19,7 @@ type CampaignPayload = {
   tags?: string[]
   targetLocations?: string[]
   mediaType?: 'image' | 'video'
+  advertiserId?: string
 }
 
 export default function EditCampaignPage({ params }: { params: Promise<{ id: string }> }) {
@@ -46,6 +47,10 @@ export default function EditCampaignPage({ params }: { params: Promise<{ id: str
       ].join(', ')}).`,
     []
   )
+
+  // live preview derived from current bannerUrl state
+  const previewUrl = bannerUrl.startsWith('http') ? bannerUrl : ''
+  const previewIsVideo = /\.(mp4|webm|ogv|mov)/i.test(bannerUrl)
 
   useEffect(() => {
     const load = async () => {
@@ -123,36 +128,104 @@ export default function EditCampaignPage({ params }: { params: Promise<{ id: str
   }
 
   if (isLoading) {
-    return <div className="min-h-screen p-6">Loading campaign...</div>
+    return (
+      <div className="min-h-screen bg-[#F5F3F0] flex items-center justify-center">
+        <p className="text-[12px] font-black uppercase tracking-widest text-[#666666]">Loading campaign…</p>
+      </div>
+    )
   }
 
   if (!campaign) {
-    return <div className="min-h-screen p-6">Campaign not found.</div>
+    return (
+      <div className="min-h-screen bg-[#F5F3F0] flex items-center justify-center">
+        <div className="border-2 border-black bg-white p-8 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <p className="text-[13px] font-black uppercase text-[#ef4444]">Campaign not found.</p>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="mt-4 border-2 border-black px-4 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-[#F5F3F0]"
+          >
+            Back
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-6 bg-card border border-border rounded-xl shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <button type="button" onClick={() => router.back()} className="btn btn-outline px-4 py-2">
-          Back
-        </button>
-      </div>
-      <h1 className="text-2xl font-bold mb-4">Edit Campaign</h1>
-      <div className="text-xs text-foreground/60 mb-6">{formatHint}</div>
+    <div className="min-h-screen bg-[#F5F3F0] p-6">
+      <div className="max-w-2xl mx-auto">
+        {/* Header */}
+        <div className="border-b-2 border-black pb-4 mb-6 flex items-center justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#666666]">Campaign</p>
+            <h1 className="text-[20px] font-black uppercase tracking-tight text-[#141414]">Edit Campaign</h1>
+          </div>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="border-2 border-black px-3 py-1.5 text-[10px] font-black uppercase tracking-wider hover:bg-[#e8e6e3] bg-white"
+          >
+            ← Back
+          </button>
+        </div>
 
-      <div className="space-y-4">
-        <div>
-          <label className="block text-sm mb-1">Campaign Name</label>
-          <input value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md" />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Description</label>
-          <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full px-3 py-2 border border-border rounded-md" />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Creative URL</label>
-          <input value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md" />
-          <div className="mt-2">
+        <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] p-6 space-y-5">
+          {/* Format hint */}
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#999999]">{formatHint}</p>
+
+          {/* Live creative preview */}
+          {previewUrl && (
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">Creative Preview</p>
+              <div className="border-2 border-black bg-black overflow-hidden" style={{ height: '120px' }}>
+                {previewIsVideo ? (
+                  <video src={previewUrl} className="w-full h-full object-contain" muted playsInline />
+                ) : (
+                  <img src={previewUrl} alt="Creative preview" className="w-full h-full object-contain" />
+                )}
+              </div>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-1">
+              Campaign Name *
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full border-2 border-black px-3 py-2 text-[13px] font-medium focus:outline-none bg-white"
+              placeholder="My Campaign"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-1">
+              Description *
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full border-2 border-black px-3 py-2 text-[13px] font-medium focus:outline-none bg-white resize-none"
+              placeholder="Describe your campaign"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-1">
+              Creative URL *
+            </label>
+            <input
+              value={bannerUrl}
+              onChange={(e) => setBannerUrl(e.target.value)}
+              className="w-full border-2 border-black px-3 py-2 text-[13px] font-medium focus:outline-none bg-white mb-2"
+              placeholder="https://cdn.example.com/banner.png"
+            />
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#999999] mb-1">
+              — or upload a new file —
+            </label>
             <input
               type="file"
               accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/ogg,video/quicktime"
@@ -177,32 +250,93 @@ export default function EditCampaignPage({ params }: { params: Promise<{ id: str
                   setUploading(false)
                 }
               }}
-              className="block w-full text-sm"
+              className="block w-full text-[11px]"
+              disabled={uploading}
+            />
+            {uploading && (
+              <p className="text-[10px] font-black uppercase tracking-wider text-[#666666] mt-1">Uploading…</p>
+            )}
+            <p className="text-[9px] text-[#999999] mt-1">
+              Images: JPG, PNG, WEBP, GIF (max 10 MB). Videos: MP4, WEBM, MOV (max 25 MB, 30 s).
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-1">
+              Target URL *
+            </label>
+            <input
+              value={targetUrl}
+              onChange={(e) => setTargetUrl(e.target.value)}
+              className="w-full border-2 border-black px-3 py-2 text-[13px] font-medium focus:outline-none bg-white"
+              placeholder="https://yoursite.com"
             />
           </div>
-          {uploading ? <p className="text-xs mt-1">Uploading...</p> : null}
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Target URL</label>
-          <input value={targetUrl} onChange={(e) => setTargetUrl(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md" />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Tags (comma separated)</label>
-          <input value={tags} onChange={(e) => setTags(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md" />
-        </div>
-        <div>
-          <label className="block text-sm mb-1">Target Locations (comma separated)</label>
-          <input value={targetLocations} onChange={(e) => setTargetLocations(e.target.value)} className="w-full px-3 py-2 border border-border rounded-md" />
-        </div>
-      </div>
 
-      {error ? <div className="mt-4 text-sm text-red-500">{error}</div> : null}
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-1">
+              Tags (comma-separated)
+            </label>
+            <input
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              className="w-full border-2 border-black px-3 py-2 text-[13px] font-medium focus:outline-none bg-white"
+              placeholder="defi, web3, nft"
+            />
+          </div>
 
-      <div className="mt-6 flex justify-end">
-        <button onClick={onSave} disabled={isSaving || uploading} className="btn btn-primary px-6 py-2">
-          {isSaving ? 'Saving...' : 'Save Campaign'}
-        </button>
+          <div>
+            <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-1">
+              Target Locations (comma-separated)
+            </label>
+            <input
+              value={targetLocations}
+              onChange={(e) => setTargetLocations(e.target.value)}
+              className="w-full border-2 border-black px-3 py-2 text-[13px] font-medium focus:outline-none bg-white"
+              placeholder="US, EU, NG"
+            />
+          </div>
+
+          {!address && (
+            <div className="border-2 border-black bg-[#fef2f2] p-3">
+              <p className="text-[11px] font-black uppercase text-[#ef4444]">Connect your wallet to save changes.</p>
+            </div>
+          )}
+
+          {error && (
+            <div className="border-2 border-black bg-[#fef2f2] p-3 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]">
+              <p className="text-[11px] font-black uppercase text-[#ef4444]">{error}</p>
+            </div>
+          )}
+
+          {bannerUrl !== campaign.bannerUrl && (
+            <div className="border-2 border-black bg-[#fffbeb] p-3">
+              <p className="text-[10px] font-black uppercase text-[#b45309]">
+                ⚠ Changing the creative will submit it for re-moderation. Your campaign will be paused until it is approved.
+              </p>
+            </div>
+          )}
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="border-2 border-black px-4 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-[#F5F3F0] bg-white"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onSave}
+              disabled={isSaving || uploading || !address}
+              className="border-2 border-black bg-black text-white px-6 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-[#222222] disabled:opacity-50 transition-colors shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+            >
+              {isSaving ? 'Saving…' : 'Save Campaign'}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
 }
+

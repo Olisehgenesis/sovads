@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const budget = Number.parseFloat(campaignData.budget)
-    const cpc = Number.parseFloat(campaignData.cpc || '0.002')
+    const cpc = Number.parseFloat(campaignData.cpc || '0.01')
 
     if (Number.isNaN(budget) || budget <= 0) {
       return NextResponse.json({ error: 'Invalid budget amount' }, { status: 400 })

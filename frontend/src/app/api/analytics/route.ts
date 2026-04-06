@@ -6,6 +6,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url)
     const campaignId = searchParams.get('campaignId')
     const publisherId = searchParams.get('publisherId')
+    const siteId = searchParams.get('siteId')
     const daysParam = searchParams.get('days')
     let days = Number.parseInt(daysParam ?? '7', 10)
     let useTimeFilter = true
@@ -30,21 +31,32 @@ export async function GET(request: NextRequest) {
     const campaignsCollection = await collections.campaigns()
     const publishersCollection = await collections.publishers()
 
-    const query: Record<string, unknown> = {}
+    const query: Record<string, unknown>[] = []
     if (useTimeFilter) {
-      query.timestamp = { $gte: startDate }
+      query.push({ timestamp: { $gte: startDate } })
     }
 
     if (campaignId) {
-      query.campaignId = campaignId
+      query.push({ campaignId })
     }
 
     if (publisherId) {
-      query.publisherId = publisherId
+      query.push({ publisherId })
     }
 
+    if (siteId) {
+      query.push({
+        $or: [
+          { siteId: siteId },
+          { publisherSiteId: siteId },
+        ]
+      })
+    }
+
+    const mongoQuery = query.length > 0 ? { $and: query } : {}
+
     const events = await eventsCollection
-      .find(query)
+      .find(mongoQuery)
       .sort({ timestamp: -1 })
       .toArray()
 

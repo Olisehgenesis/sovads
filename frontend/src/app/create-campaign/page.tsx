@@ -1,10 +1,19 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useAccount } from 'wagmi';
+import { useAccount, useReadContract } from 'wagmi';
+import { formatUnits } from 'viem';
 import { useStreamingAds } from '../../hooks/useStreamingAds';
-import { GOODDOLLAR_ADDRESS } from '@/lib/chain-config';
+import { GOODDOLLAR_ADDRESS, chainId } from '@/lib/chain-config';
 import { getTokenInfo, getTokenLabel } from '@/lib/tokens';
+
+const ERC20_BALANCE_ABI = [{
+  name: 'balanceOf',
+  type: 'function',
+  stateMutability: 'view',
+  inputs: [{ name: 'owner', type: 'address' }],
+  outputs: [{ type: 'uint256' }],
+}] as const;
 
 interface CampaignFormData {
   name: string;
@@ -13,7 +22,7 @@ interface CampaignFormData {
   targetUrl: string;
   budget: string;
   cpc: string;
-  duration: string; // in days
+  duration: string;
   tokenAddress: string;
   tags: string;
   targetLocations: string;
@@ -21,12 +30,107 @@ interface CampaignFormData {
   mediaType: 'image' | 'video';
 }
 
+// ─── Collapsible advanced metadata panel ────────────────────────────────────
+function AdvancedMetadata({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (v: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-2 border-black">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 bg-[#F5F3F0] text-[10px] font-black uppercase tracking-[0.2em] hover:bg-[#e8e6e3] transition-colors"
+      >
+        <span>Advanced — Custom Metadata (JSON)</span>
+        <span className="text-[12px]">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="p-4 bg-white border-t-2 border-black space-y-2">
+          <textarea
+            name="metadata"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            rows={4}
+            className="w-full border-2 border-black px-3 py-2 font-mono text-[12px] focus:outline-none bg-white resize-none"
+            placeholder='{"audience": "builders", "cta": "Join the beta"}'
+          />
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#999999]">
+            Optional structured metadata for publisher context. Must be valid JSON.
+          </p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Step indicator ──────────────────────────────────────────────────────────
+const TABS = ['details', 'budget', 'dates'] as const
+type Tab = typeof TABS[number]
+
+function StepBar({
+  active,
+  onSelect,
+}: {
+  active: Tab
+  onSelect: (t: Tab) => void
+}) {
+  return (
+    <div className="flex items-center gap-0 mb-10">
+      {TABS.map((tab, i) => {
+        const done = TABS.indexOf(active) > i
+        const current = active === tab
+        return (
+          <React.Fragment key={tab}>
+            <button
+              type="button"
+              onClick={() => onSelect(tab)}
+              className={[
+                'flex items-center gap-2 px-3 py-2 border-2 border-black text-[10px] font-black uppercase tracking-wider transition-all',
+                current
+                  ? 'bg-black text-white shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] -translate-x-px -translate-y-px'
+                  : done
+                  ? 'bg-[#22c55e] text-white border-black'
+                  : 'bg-white text-[#999999] hover:bg-[#F5F3F0]',
+              ].join(' ')}
+            >
+              <span className="flex h-5 w-5 items-center justify-center border border-current text-[9px] rounded-none">
+                {done ? '✓' : i + 1}
+              </span>
+              <span className="hidden sm:inline">{tab}</span>
+            </button>
+            {i < TABS.length - 1 && (
+              <div className="flex-1 h-0.5 bg-black mx-0 max-w-[32px]" />
+            )}
+          </React.Fragment>
+        )
+      })}
+    </div>
+  )
+}
+
+// ─── Page ────────────────────────────────────────────────────────────────────
 export default function CreateCampaign() {
   const { address } = useAccount();
   const { createStreamingCampaign, isLoading, error } = useStreamingAds();
 
+  const { data: gdollarBalanceRaw } = useReadContract({
+    address: GOODDOLLAR_ADDRESS as `0x${string}`,
+    abi: ERC20_BALANCE_ABI,
+    functionName: 'balanceOf',
+    args: address ? [address as `0x${string}`] : undefined,
+    chainId,
+    query: { enabled: !!address, refetchInterval: 15_000 },
+  });
+  const gdollarBalance = gdollarBalanceRaw != null
+    ? parseFloat(formatUnits(gdollarBalanceRaw as bigint, 18)).toFixed(4)
+    : null;
+
   const [formData, setFormData] = useState<CampaignFormData>(() => {
-    // Check if cloning from URL params
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       if (params.get('clone') === 'true') {
@@ -36,13 +140,13 @@ export default function CreateCampaign() {
           bannerUrl: params.get('bannerUrl') || '',
           targetUrl: params.get('targetUrl') || '',
           budget: params.get('budget') || '',
-          cpc: params.get('cpc') || '0.002',
+          cpc: params.get('cpc') || '0.01',
           duration: '',
           tokenAddress: params.get('tokenAddress') || '',
           tags: params.get('tags') || '',
           targetLocations: params.get('targetLocations') || '',
           metadata: '',
-          mediaType: (params.get('mediaType') as 'image' | 'video') || 'image'
+          mediaType: (params.get('mediaType') as 'image' | 'video') || 'image',
         }
       }
     }
@@ -52,32 +156,33 @@ export default function CreateCampaign() {
       bannerUrl: '',
       targetUrl: '',
       budget: '',
-      cpc: '0.002',
+      cpc: '0.01',
       duration: '',
       tokenAddress: GOODDOLLAR_ADDRESS,
       tags: '',
       targetLocations: '',
       metadata: '',
-      mediaType: 'image'
+      mediaType: 'image',
     }
   });
-  const [startDate, setStartDate] = useState<string>('');
-  const [startTime, setStartTime] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
-  const [endTime, setEndTime] = useState<string>('');
-  const [activeTab, setActiveTab] = useState<'details' | 'budget' | 'dates'>('details');
 
-  // Get token info for selected token
+  const [startDate, setStartDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [activeTab, setActiveTab] = useState<Tab>('details');
+
   const selectedTokenInfo = getTokenInfo(formData.tokenAddress) || { symbol: 'TOKEN', name: 'Token', decimals: 18, address: '' };
 
   const [uploading, setUploading] = useState(false);
-  const [bannerPreview, setBannerPreview] = useState<string>('');
+  const [bannerPreview, setBannerPreview] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  // Generate unique campaign ID in format sovads-mm-dd-xx
-  const generateCampaignId = (): string => {
+  const supportedTokens = [GOODDOLLAR_ADDRESS];
+
+  const generateCampaignId = () => {
     const now = new Date();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -85,15 +190,9 @@ export default function CreateCampaign() {
     return `sovads-${month}-${day}-${random}`;
   };
 
-  // Load supported tokens (default to G$ for now as it's the only one for streaming)
-  const supportedTokens = [GOODDOLLAR_ADDRESS];
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value
-    }));
+    setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const validateForm = (): string | null => {
@@ -103,105 +202,63 @@ export default function CreateCampaign() {
     if (!formData.targetUrl.trim()) return 'Target URL is required';
     if (!formData.budget || parseFloat(formData.budget) < 0.0001) return 'Budget must be at least 0.0001';
     if (!formData.tokenAddress) return 'Token address is required';
-    if (!startDate) return 'Start date is required';
-    if (!startTime) return 'Start time is required';
-    if (!endDate) return 'End date is required';
-    if (!endTime) return 'End time is required';
+    if (!startDate || !startTime) return 'Start date and time are required';
+    if (!endDate || !endTime) return 'End date and time are required';
     const startIso = `${startDate}T${startTime}`;
     const endIso = `${endDate}T${endTime}`;
-    if (new Date(startIso) > new Date(endIso)) return 'Start date/time must be before end date/time';
-
-    // Validate URLs (accept hostnames like example.com by prepending https:// when needed)
-    try {
-      new URL(formData.targetUrl);
-    } catch {
-      try {
-        new URL(`https://${formData.targetUrl}`);
-      } catch {
-        return 'Please enter a valid target URL';
-      }
+    if (new Date(startIso) > new Date(endIso)) return 'Start must be before end';
+    try { new URL(formData.targetUrl) } catch {
+      try { new URL(`https://${formData.targetUrl}`) } catch { return 'Please enter a valid target URL' }
     }
+    return null;
+  };
 
+  const tabForError = (msg: string | null): Tab | null => {
+    if (!msg) return null;
+    if (/name|description|creative|landing|target url/i.test(msg)) return 'details';
+    if (/budget|token/i.test(msg)) return 'budget';
+    if (/start|end|date|time/i.test(msg)) return 'dates';
     return null;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    if (!address) {
-      setSubmitError('Please connect your wallet');
-      return;
-    }
-
+    if (!address) { setSubmitError('Please connect your wallet'); return; }
     const validationError = validateForm();
     if (validationError) {
       setSubmitError(validationError);
+      const targetTab = tabForError(validationError);
+      if (targetTab && targetTab !== activeTab) setActiveTab(targetTab);
       return;
     }
 
     setIsSubmitting(true);
     setSubmitError(null);
-
     try {
-      // Generate unique campaign ID
       const campaignId = generateCampaignId();
-
-      // Prepare metadata for contract
       const startIso = `${startDate}T${startTime}`;
       const endIso = `${endDate}T${endTime}`;
-
-      // Normalize target URL: prefer provided scheme, otherwise default to https://
       const normalizedTargetUrl = /^(https?:)?\/\//i.test(formData.targetUrl)
         ? formData.targetUrl
         : `https://${formData.targetUrl}`;
 
-      const metadata = JSON.stringify({
-        id: campaignId,
-        name: formData.name,
-        description: formData.description,
-        bannerUrl: formData.bannerUrl,
-        targetUrl: normalizedTargetUrl,
-        cpc: formData.cpc,
-        startDate: startIso,
-        endDate: endIso,
-        createdAt: new Date().toISOString()
+      const onChainMetadata = JSON.stringify({
+        id: campaignId, name: formData.name, description: formData.description,
+        bannerUrl: formData.bannerUrl, targetUrl: normalizedTargetUrl,
+        cpc: formData.cpc, startDate: startIso, endDate: endIso,
+        createdAt: new Date().toISOString(),
       });
 
-      // Step 1: Create campaign on contract first
-      console.log('Creating campaign on contract...');
-      const start = new Date(startIso).getTime();
-      const end = new Date(endIso).getTime();
-      const durationSeconds = Math.max(1, Math.floor((end - start) / 1000));
-      const { hash: txHash, id: onChainId } = await createStreamingCampaign(
-        formData.budget,
-        durationSeconds,
-        metadata
-      );
+      const durationSeconds = Math.max(1, Math.floor((new Date(endIso).getTime() - new Date(startIso).getTime()) / 1000));
+      const { hash: txHash, id: onChainId } = await createStreamingCampaign(formData.budget, durationSeconds, onChainMetadata);
 
-      console.log(`Campaign created on contract successfully. ID: ${onChainId}`);
+      const parsedTags = formData.tags.split(',').map((t) => t.trim()).filter(Boolean);
+      const parsedLocations = formData.targetLocations.split(',').map((l) => l.trim()).filter(Boolean);
 
-      // Step 2: Save to database after successful contract interaction
-      console.log('Saving campaign to database...');
-
-      const parsedTags = formData.tags
-        .split(',')
-        .map((tag) => tag.trim())
-        .filter((tag) => tag.length > 0)
-
-      const parsedLocations = formData.targetLocations
-        .split(',')
-        .map((loc) => loc.trim())
-        .filter((loc) => loc.length > 0)
-
-      let metadataObject: Record<string, unknown> | undefined
-      if (formData.metadata.trim().length > 0) {
-        try {
-          metadataObject = JSON.parse(formData.metadata)
-        } catch (err) {
-          console.error('Invalid metadata JSON:', err)
-          setSubmitError('Metadata must be valid JSON')
-          setIsSubmitting(false)
-          return
+      let metadataObject: Record<string, unknown> | undefined;
+      if (formData.metadata.trim()) {
+        try { metadataObject = JSON.parse(formData.metadata) } catch {
+          setSubmitError('Metadata must be valid JSON'); setIsSubmitting(false); return;
         }
       }
 
@@ -209,469 +266,367 @@ export default function CreateCampaign() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          wallet: address as `0x${string}`,
-          campaignData: {
-            ...formData,
-            tags: parsedTags,
-            targetLocations: parsedLocations,
-            metadata: metadataObject,
-          },
+          wallet: address,
+          campaignData: { ...formData, tags: parsedTags, targetLocations: parsedLocations, metadata: metadataObject },
           transactionHash: txHash,
-          contractCampaignId: campaignId, // This is the string ID sovads-mm-dd-xx
-          onChainId: onChainId, // This is the numeric ID from contract
+          contractCampaignId: campaignId,
+          onChainId,
           startDate: startIso,
           endDate: endIso,
           targetUrl: normalizedTargetUrl,
         }),
-      })
+      });
       if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-        const errorMessage = data?.error || data?.details || 'Failed to save campaign to database'
-        console.error('API error response:', data)
-        throw new Error(errorMessage)
+        const data = await resp.json().catch(() => ({}));
+        throw new Error(data?.error || data?.details || 'Failed to save campaign');
       }
-      const result = await resp.json()
-      console.log('Campaign saved to database:', result.campaign.id);
 
       setSuccess(true);
-
-      // Reset form
-      setFormData({
-        name: '',
-        description: '',
-        bannerUrl: '',
-        targetUrl: '',
-        budget: '',
-        cpc: '0.002',
-        duration: '',
-        tokenAddress: supportedTokens[0] || '',
-        tags: '',
-        targetLocations: '',
-        metadata: '',
-        mediaType: 'image'
-      });
-      setStartDate('');
-      setStartTime('');
-      setEndDate('');
-      setEndTime('');
-      setBannerPreview('');
-
+      setFormData({ name: '', description: '', bannerUrl: '', targetUrl: '', budget: '', cpc: '0.01', duration: '', tokenAddress: supportedTokens[0] || '', tags: '', targetLocations: '', metadata: '', mediaType: 'image' });
+      setStartDate(''); setStartTime(''); setEndDate(''); setEndTime(''); setBannerPreview('');
     } catch (err) {
-      console.error('Error creating campaign:', err);
       setSubmitError(err instanceof Error ? err.message : 'Failed to create campaign');
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // ── Success screen ──────────────────────────────────────────────────────
   if (success) {
     return (
-      <div className="max-w-xl mx-auto p-8">
-        <div className="card p-10 bg-white text-center">
-          <div className="inline-flex h-16 w-16 items-center justify-center border-2 border-black bg-[var(--accent-success)] text-white text-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
+      <div className="min-h-screen bg-[#F5F3F0] flex items-center justify-center p-6">
+        <div className="bg-white border-2 border-black p-12 text-center shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] max-w-md w-full">
+          <div className="inline-flex h-16 w-16 items-center justify-center border-2 border-black bg-[#22c55e] text-white text-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] mb-6">
             ✓
           </div>
-          <h1 className="text-2xl font-heading mb-3">Campaign Created</h1>
-          <p className="text-sm text-[var(--text-secondary)] mb-8 max-w-sm mx-auto">
-            Your campaign is live on-chain and saved. It will begin serving once the start date is reached.
+          <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#666666] mb-2">Done</p>
+          <h1 className="text-[22px] font-black uppercase tracking-tight text-[#141414] mb-3">Campaign Created</h1>
+          <p className="text-[13px] text-[#666666] leading-5 mb-8">
+            Your campaign is live on-chain. It will begin serving once the start date is reached.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
-            <button
-              onClick={() => setSuccess(false)}
-              className="btn btn-primary"
-            >
+            <button onClick={() => setSuccess(false)} className="border-2 border-black bg-black text-white px-5 py-2.5 text-[10px] font-black uppercase tracking-wider hover:bg-[#222222]">
               Create Another
             </button>
-            <a href="/advertiser" className="btn btn-outline">Back to Dashboard</a>
+            <a href="/advertiser" className="border-2 border-black bg-white text-black px-5 py-2.5 text-[10px] font-black uppercase tracking-wider hover:bg-[#F5F3F0] text-center">
+              Dashboard
+            </a>
           </div>
         </div>
       </div>
     );
   }
 
+  // ── Form ────────────────────────────────────────────────────────────────
   return (
-    <div className="max-w-xl mx-auto p-8 card">
-      <div className="mb-6 flex items-center justify-between">
-        <button
-          type="button"
-          onClick={() => { if (typeof window !== 'undefined') window.history.back(); }}
-          className="btn btn-outline text-xs"
-        >
-          Back
-        </button>
-      </div>
-      <h1 className="text-3xl font-heading mb-8 uppercase">New Campaign</h1>
+    <div className="min-h-screen bg-[#F5F3F0] py-12 px-4">
+      <div className="max-w-2xl mx-auto">
 
-      {/* Step indicator */}
-      <div className="mb-6 flex gap-2 items-center">
-        {(['details', 'budget', 'dates'] as const).map((tab, i) => (
-          <div key={tab} className="flex items-center gap-2">
-            <div className={`flex h-6 w-6 items-center justify-center border-2 border-black text-[10px] font-black ${
-              activeTab === tab ? 'bg-black text-white shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]' :
-              (['details','budget','dates'].indexOf(activeTab) > i) ? 'bg-[var(--accent-success)] text-white border-black' :
-              'bg-white text-black'
-            }`}>{(['details','budget','dates'].indexOf(activeTab) > i) ? '✓' : i + 1}</div>
-            <span className={`text-[10px] font-black uppercase tracking-wider hidden sm:inline ${
-              activeTab === tab ? 'text-black' : 'text-[var(--text-tertiary)]'
-            }`}>{tab}</span>
-            {i < 2 && <span className="text-[var(--text-tertiary)] text-xs mx-1">—</span>}
+        {/* Page header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[#666666]">Advertiser</p>
+            <h1 className="text-[26px] font-black uppercase tracking-tight text-[#141414]">New Campaign</h1>
           </div>
-        ))}
-      </div>
-
-      {/* Tabs */}
-      <div className="mb-8 flex gap-3">
-        <button
-          type="button"
-          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'details' ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:-translate-x-0.5 hover:-translate-y-0.5'}`}
-          onClick={() => setActiveTab('details')}
-        >
-          Details
-        </button>
-        <button
-          type="button"
-          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'budget' ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:-translate-x-0.5 hover:-translate-y-0.5'}`}
-          onClick={() => setActiveTab('budget')}
-        >
-          Budget
-        </button>
-        <button
-          type="button"
-          className={`py-2 px-4 font-heading text-xs uppercase border-2 border-black transition-all shadow-[2px_2px_0px_0px_rgba(0,0,0,1)] ${activeTab === 'dates' ? 'bg-black text-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]' : 'bg-white text-black hover:-translate-x-0.5 hover:-translate-y-0.5'}`}
-          onClick={() => setActiveTab('dates')}
-        >
-          Dates
-        </button>
-      </div>
-
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {activeTab === 'details' && (
-          <>
-            {/* Campaign Name */}
-            <div>
-              <label htmlFor="name" className="block text-xs font-bold uppercase mb-2">
-                Name *
-              </label>
-              <input
-                type="text"
-                id="name"
-                name="name"
-                value={formData.name}
-                onChange={handleInputChange}
-                className="w-full"
-                placeholder="Campaign name"
-                required
-              />
-            </div>
-
-            {/* Description */}
-            <div>
-              <label htmlFor="description" className="block text-xs font-bold uppercase mb-2">
-                Description *
-              </label>
-              <textarea
-                id="description"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                rows={2}
-                className="w-full"
-                placeholder="Describe your campaign"
-                required
-              />
-            </div>
-
-            {/* Creative Media Upload */}
-            <div>
-              <label className="block text-sm font-medium text-foreground/80 mb-2">
-                Creative (image, GIF, or short video) *
-              </label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="file"
-                  accept="image/*,video/*,.gif"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]
-                    if (!file) return
-                    setUploading(true)
-                    setSubmitError(null)
-                    try {
-                      const form = new FormData()
-                      form.append('image', file)
-                      const res = await fetch('/api/uploads/image', { method: 'POST', body: form })
-                      if (!res.ok) {
-                        const errorData = await res.json().catch(() => ({}))
-                        throw new Error(errorData.error || 'Upload failed')
-                      }
-                      const data = await res.json()
-                      setFormData(prev => ({
-                        ...prev,
-                        bannerUrl: data.url,
-                        mediaType: data.mediaType === 'video' ? 'video' : 'image'
-                      }))
-                      setBannerPreview(data.url)
-                    } catch (err) {
-                      console.error('Upload error', err)
-                      setSubmitError(err instanceof Error ? err.message : 'Failed to upload media')
-                    } finally {
-                      setUploading(false)
-                    }
-                  }}
-                  className="block w-full text-sm file:mr-4 file:rounded-full file:border-0 file:bg-primary file:px-4 file:py-2 file:text-primary-foreground hover:file:bg-primary/90"
-                  disabled={uploading}
-                  required
-                />
-              </div>
-              {uploading && (
-                <div className="mt-2 flex items-center gap-2">
-                  <div className="h-4 w-4 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
-                  <p className="text-sm text-foreground/60">Uploading media...</p>
-                </div>
-              )}
-              {bannerPreview && !uploading && (
-                <div className="mt-4 border-4 border-black bg-white overflow-hidden shadow-[4px_4px_0px_0px_black]">
-                  {formData.mediaType === 'video' ? (
-                    <video
-                      src={bannerPreview}
-                      className="max-h-48 w-full object-contain bg-black"
-                      controls
-                      playsInline
-                      muted
-                    />
-                  ) : (
-                    <img
-                      src={bannerPreview}
-                      alt="Preview"
-                      className="max-h-48 w-full object-contain bg-black"
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-
-            {/* Target URL */}
-            <div>
-              <label htmlFor="targetUrl" className="block text-xs font-bold uppercase mb-2">
-                URL *
-              </label>
-              <input
-                type="url"
-                id="targetUrl"
-                name="targetUrl"
-                value={formData.targetUrl}
-                onChange={handleInputChange}
-                className="w-full"
-                placeholder="https://example.com"
-                required
-              />
-            </div>
-
-            {/* Tags */}
-            <div>
-              <label htmlFor="tags" className="block text-xs font-bold uppercase mb-2">
-                Tags (comma separated)
-              </label>
-              <input
-                type="text"
-                id="tags"
-                name="tags"
-                value={formData.tags}
-                onChange={handleInputChange}
-                className="w-full"
-                placeholder="DeFi, NFTs, web3 gaming"
-              />
-              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                Add keywords that describe your campaign.
-              </p>
-            </div>
-
-            {/* Target Locations */}
-            <div>
-              <label htmlFor="targetLocations" className="block text-xs font-bold uppercase mb-2">
-                Geo
-              </label>
-              <input
-                type="text"
-                id="targetLocations"
-                name="targetLocations"
-                value={formData.targetLocations}
-                onChange={handleInputChange}
-                className="w-full"
-                placeholder="Global, US, UK"
-              />
-            </div>
-
-            {/* Metadata */}
-            <div>
-              <label htmlFor="metadata" className="block text-xs font-bold uppercase mb-2">
-                Additional Metadata (JSON)
-              </label>
-              <textarea
-                id="metadata"
-                name="metadata"
-                value={formData.metadata}
-                onChange={handleInputChange}
-                rows={3}
-                className="w-full font-mono text-sm"
-                placeholder='{"audience": "builders", "cta": "Join the beta"}'
-              />
-              <p className="mt-1 text-xs text-[var(--text-tertiary)]">
-                Optional structured metadata for publisher context.
-              </p>
-            </div>
-          </>
-        )}
-
-        {activeTab === 'budget' && (
-          <>
-            {/* Token first */}
-            <div>
-              <label htmlFor="tokenAddress" className="block text-xs font-bold uppercase mb-2">
-                Payment Token *
-              </label>
-              <select
-                id="tokenAddress"
-                name="tokenAddress"
-                value={formData.tokenAddress}
-                onChange={handleInputChange}
-                className="w-full"
-                required
-              >
-                <option value="">Select a token</option>
-                {supportedTokens.map((token, index) => {
-                  const label = getTokenLabel(token);
-                  return (
-                    <option key={index} value={token}>{label}</option>
-                  );
-                })}
-              </select>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label htmlFor="budget" className="block text-xs font-bold uppercase mb-2">
-                  Budget ({selectedTokenInfo.symbol}) *
-                </label>
-                <input
-                  type="number"
-                  id="budget"
-                  name="budget"
-                  value={formData.budget}
-                  onChange={handleInputChange}
-                  step="0.0001"
-                  min="0.0001"
-                  className="w-full"
-                  placeholder="1.0"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="cpc" className="block text-xs font-bold uppercase mb-2">
-                  Cost Per Click ({selectedTokenInfo.symbol})
-                </label>
-                <input
-                  type="number"
-                  id="cpc"
-                  name="cpc"
-                  value={formData.cpc}
-                  readOnly
-                  disabled
-                  className="w-full opacity-60"
-                />
-                <p className="text-xs text-[var(--text-tertiary)] mt-1">Fixed at 0.002 {selectedTokenInfo.symbol}.</p>
-              </div>
-            </div>
-
-            {/* Duration removed; computed from Start and End dates */}
-          </>
-        )}
-
-        {activeTab === 'dates' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-bold uppercase mb-2">Start Date *</label>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full"
-                required
-              />
-              <label className="block text-xs font-bold uppercase mt-4 mb-2">Start Time *</label>
-              <input
-                type="time"
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold uppercase mb-2">End Date *</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="w-full"
-                required
-              />
-              <label className="block text-xs font-bold uppercase mt-4 mb-2">End Time *</label>
-              <input
-                type="time"
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full"
-                required
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Error Messages */}
-        {(error || submitError) && (
-          <div className="border-2 border-black bg-red-100 p-4 font-bold text-xs uppercase text-red-700">
-            {error || submitError}
-          </div>
-        )}
-
-        {/* Wizard Controls */}
-        <div className="flex items-center justify-between gap-4 pt-4">
           <button
             type="button"
-            className="btn btn-outline text-xs"
-            onClick={() => {
-              if (activeTab === 'budget') setActiveTab('details')
-              else if (activeTab === 'dates') setActiveTab('budget')
-            }}
-            disabled={activeTab === 'details'}
-          >Back</button>
-
-          {activeTab !== 'dates' ? (
-            <button
-              type="button"
-              className="btn btn-primary text-xs"
-              onClick={() => {
-                if (activeTab === 'details') setActiveTab('budget')
-                else if (activeTab === 'budget') setActiveTab('dates')
-              }}
-            >Next</button>
-          ) : (
-            <button
-              type="submit"
-              disabled={isSubmitting || isLoading || !address}
-              className="btn btn-primary text-xs"
-            >
-              {isSubmitting ? '...' : 'Create'}
-            </button>
-          )}
+            onClick={() => { if (typeof window !== 'undefined') window.history.back(); }}
+            className="border-2 border-black px-3 py-1.5 text-[10px] font-black uppercase tracking-wider hover:bg-[#e8e6e3] bg-white"
+          >
+            ← Back
+          </button>
         </div>
 
-        {!address && (
-          <p className="text-center text-xs font-bold uppercase text-[var(--text-secondary)] border-2 border-black bg-[#F5F3F0] p-3">
-            Connect your wallet to create a campaign
-          </p>
-        )}
-      </form>
+        {/* Step bar */}
+        <StepBar active={activeTab} onSelect={setActiveTab} />
+
+        {/* Form card */}
+        <div className="bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+          <form onSubmit={handleSubmit}>
+
+            {/* ── Details ── */}
+            {activeTab === 'details' && (
+              <div className="p-8 space-y-7">
+                <div>
+                  <label htmlFor="name" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                    Campaign Name *
+                  </label>
+                  <input
+                    type="text"
+                    id="name"
+                    name="name"
+                    value={formData.name}
+                    onChange={handleInputChange}
+                    className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white"
+                    placeholder="My Campaign"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label htmlFor="description" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                    Description *
+                  </label>
+                  <textarea
+                    id="description"
+                    name="description"
+                    value={formData.description}
+                    onChange={handleInputChange}
+                    rows={3}
+                    className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white resize-none"
+                    placeholder="Describe your campaign"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                    Creative (image, GIF, or video) *
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*,video/*,.gif"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploading(true);
+                      setSubmitError(null);
+                      try {
+                        const form = new FormData();
+                        form.append('image', file);
+                        const res = await fetch('/api/uploads/image', { method: 'POST', body: form });
+                        if (!res.ok) {
+                          const errorData = await res.json().catch(() => ({}));
+                          throw new Error(errorData.error || 'Upload failed');
+                        }
+                        const data = await res.json();
+                        setFormData((prev) => ({ ...prev, bannerUrl: data.url, mediaType: data.mediaType === 'video' ? 'video' : 'image' }));
+                        setBannerPreview(data.url);
+                      } catch (err) {
+                        setSubmitError(err instanceof Error ? err.message : 'Failed to upload media');
+                      } finally {
+                        setUploading(false);
+                      }
+                    }}
+                    className="block w-full text-[12px] border-2 border-black px-3 py-2 bg-[#F5F3F0] cursor-pointer file:mr-3 file:border-0 file:bg-black file:text-white file:px-3 file:py-1 file:text-[10px] file:font-black file:uppercase file:cursor-pointer hover:bg-[#e8e6e3]"
+                    disabled={uploading}
+                  />
+                  {uploading && (
+                    <p className="mt-2 text-[10px] font-black uppercase tracking-widest text-[#666666]">Uploading…</p>
+                  )}
+                  {bannerPreview && !uploading && (
+                    <div className="mt-4 border-2 border-black bg-black overflow-hidden" style={{ maxHeight: '160px' }}>
+                      {formData.mediaType === 'video' ? (
+                        <video src={bannerPreview} className="w-full h-full object-contain" controls playsInline muted style={{ maxHeight: '160px' }} />
+                      ) : (
+                        <img src={bannerPreview} alt="Preview" className="w-full object-contain" style={{ maxHeight: '160px' }} />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label htmlFor="targetUrl" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                    Landing URL *
+                  </label>
+                  <input
+                    type="url"
+                    id="targetUrl"
+                    name="targetUrl"
+                    value={formData.targetUrl}
+                    onChange={handleInputChange}
+                    className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white"
+                    placeholder="https://example.com"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label htmlFor="tags" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                      Tags
+                    </label>
+                    <input
+                      type="text"
+                      id="tags"
+                      name="tags"
+                      value={formData.tags}
+                      onChange={handleInputChange}
+                      className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white"
+                      placeholder="DeFi, NFTs, web3"
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="targetLocations" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                      Geo
+                    </label>
+                    <input
+                      type="text"
+                      id="targetLocations"
+                      name="targetLocations"
+                      value={formData.targetLocations}
+                      onChange={handleInputChange}
+                      className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white"
+                      placeholder="Global, US, UK"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Budget ── */}
+            {activeTab === 'budget' && (
+              <div className="p-8 space-y-7">
+                <div>
+                  <label htmlFor="tokenAddress" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                    Payment Token *
+                  </label>
+                  <select
+                    id="tokenAddress"
+                    name="tokenAddress"
+                    value={formData.tokenAddress}
+                    onChange={handleInputChange}
+                    className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white"
+                    required
+                  >
+                    <option value="">Select a token</option>
+                    {supportedTokens.map((token, i) => (
+                      <option key={i} value={token}>{getTokenLabel(token)}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label htmlFor="budget" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                      Budget ({selectedTokenInfo.symbol}) *
+                      {gdollarBalance !== null && (
+                        <span className="ml-2 normal-case tracking-normal font-medium text-[#666666]">
+                          — Balance: <span className="text-[#141414] font-black">{gdollarBalance} G$</span>
+                        </span>
+                      )}
+                    </label>
+                    <input
+                      type="number"
+                      id="budget"
+                      name="budget"
+                      value={formData.budget}
+                      onChange={handleInputChange}
+                      step="0.0001"
+                      min="0.0001"
+                      max={gdollarBalance ?? undefined}
+                      className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white"
+                      placeholder="1.0"
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label htmlFor="cpc" className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">
+                      Cost Per Click ({selectedTokenInfo.symbol})
+                    </label>
+                    <input
+                      type="number"
+                      id="cpc"
+                      name="cpc"
+                      value={formData.cpc}
+                      readOnly
+                      disabled
+                      className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium bg-[#F5F3F0] opacity-60"
+                    />
+                    <p className="text-[9px] font-black uppercase tracking-widest text-[#999999] mt-1.5">Fixed at 0.002 {selectedTokenInfo.symbol}.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Dates ── */}
+            {activeTab === 'dates' && (
+              <div className="p-8 space-y-7">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">Start Date *</label>
+                      <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white" required />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">Start Time *</label>
+                      <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white" required />
+                    </div>
+                  </div>
+                  <div className="space-y-5">
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">End Date *</label>
+                      <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white" required />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-black uppercase tracking-[0.2em] text-[#666666] mb-2">End Time *</label>
+                      <input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="w-full border-2 border-black px-3 py-2.5 text-[13px] font-medium focus:outline-none bg-white" required />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Error */}
+            {(error || submitError) && (
+              <div className="mx-8 mb-6 border-2 border-black bg-[#fef2f2] px-4 py-3">
+                <p className="text-[11px] font-black uppercase text-[#ef4444]">{error || submitError}</p>
+              </div>
+            )}
+
+            {/* Footer controls */}
+            <div className="border-t-2 border-black px-8 py-5 flex items-center justify-between gap-4 bg-[#F5F3F0]">
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeTab === 'budget') setActiveTab('details');
+                  else if (activeTab === 'dates') setActiveTab('budget');
+                }}
+                disabled={activeTab === 'details'}
+                className="border-2 border-black px-4 py-2 text-[10px] font-black uppercase tracking-wider bg-white hover:bg-[#e8e6e3] disabled:opacity-30 disabled:cursor-not-allowed"
+              >
+                ← Back
+              </button>
+
+              <div className="flex items-center gap-3">
+                {!address && (
+                  <span className="text-[10px] font-black uppercase text-[#ef4444]">Connect wallet first</span>
+                )}
+                {activeTab !== 'dates' ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (activeTab === 'details') setActiveTab('budget');
+                      else if (activeTab === 'budget') setActiveTab('dates');
+                    }}
+                    className="border-2 border-black bg-black text-white px-5 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-[#222222] shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                  >
+                    Next →
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={isSubmitting || isLoading || !address}
+                    className="border-2 border-black bg-black text-white px-6 py-2 text-[10px] font-black uppercase tracking-wider hover:bg-[#222222] disabled:opacity-50 shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+                  >
+                    {isSubmitting ? 'Creating…' : 'Create Campaign'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {/* Advanced metadata — lives outside the main form card */}
+        <div className="mt-4">
+          <AdvancedMetadata
+            value={formData.metadata}
+            onChange={(v) => setFormData((prev) => ({ ...prev, metadata: v }))}
+          />
+        </div>
+
+      </div>
     </div>
   );
 }
+

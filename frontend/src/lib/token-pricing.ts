@@ -39,8 +39,10 @@ export async function fetchTokenPricesUsd(
     const id = COINGECKO_ID_BY_SYMBOL[token.symbol]
     const remote = id ? remotePrices[id]?.usd : undefined
     const fallback =
-      token.symbol === 'USDC' || token.symbol === 'USDT' || token.symbol === 'cUSD' || token.symbol === 'G$'
+      token.symbol === 'USDC' || token.symbol === 'USDT' || token.symbol === 'cUSD'
         ? 1
+        : token.symbol === 'G$'
+        ? 0.000116
         : 0
     const usd = typeof override === 'number' && override > 0 ? override : (remote ?? fallback)
 

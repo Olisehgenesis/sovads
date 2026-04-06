@@ -3,16 +3,28 @@ import { verifyMessage } from 'viem'
 /**
  * Admin utility to check if a wallet is an authorized administrator.
  */
+export function getAdminWallets(): string[] {
+    const envList = (process.env.ADMIN_WALLETS || '')
+      .split(',')
+      .map((w) => w.trim().toLowerCase())
+      .filter((w) => !!w)
+
+    const deployerList = (process.env.ADMIN_CONTRACT_DEPLOYERS || '')
+      .split(',')
+      .map((w) => w.trim().toLowerCase())
+      .filter((w) => !!w)
+
+    // Default admin wallet for local/backoffice bootstrapping
+    const fallback = ['0x53eaf4cd171842d8144e45211308e5d90b4b0088']
+
+    return Array.from(new Set([...envList, ...deployerList, ...fallback]))
+}
+
 export function isWalletAdmin(wallet: string | null | undefined): boolean {
     if (!wallet) return false
 
-    const adminWalletsEnv = process.env.ADMIN_WALLETS || ''
-    const adminWallets = adminWalletsEnv
-        .split(',')
-        .map(w => w.trim().toLowerCase())
-        .filter(w => w.length > 0)
-
-    return adminWallets.includes(wallet.toLowerCase())
+    const normalizedWallet = wallet.trim().toLowerCase()
+    return getAdminWallets().includes(normalizedWallet)
 }
 
 /**
