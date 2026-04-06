@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { isWalletAdmin, verifyAdminSignature } from '@/lib/admin'
 
 /**
@@ -33,22 +33,16 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized: Invalid signature or not an admin' }, { status: 403 })
         }
 
-        const campaignsCollection = await collections.campaigns()
-
         // 2. Update Campaign Status
-        const result = await campaignsCollection.updateOne(
-            { _id: campaignId },
-            {
-                $set: {
-                    verificationStatus: status,
-                    updatedAt: new Date()
-                }
-            }
-        )
-
-        if (result.matchedCount === 0) {
+        const existing = await prisma.campaign.findFirst({ where: { id: campaignId } })
+        if (!existing) {
             return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
         }
+
+        await prisma.campaign.update({
+            where: { id: campaignId },
+            data: { verificationStatus: status },
+        })
 
         return NextResponse.json({
             success: true,

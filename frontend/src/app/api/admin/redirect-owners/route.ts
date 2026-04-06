@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 function normalizeDomain(value: string): string {
   return value
@@ -31,30 +31,20 @@ export async function GET(request: NextRequest) {
     }
 
     const targetDomain = normalizeDomain(redirect)
-    const [campaignsCollection, advertisersCollection] = await Promise.all([
-      collections.campaigns(),
-      collections.advertisers(),
-    ])
 
-    const campaigns = await campaignsCollection.find({}).toArray()
-    const matched = campaigns.filter((campaign) => domainFromUrl(String(campaign.targetUrl || '')) === targetDomain)
-    const advertiserIds = Array.from(new Set(matched.map((campaign) => campaign.advertiserId)))
-    const advertisers = advertiserIds.length
-      ? await advertisersCollection.find({ _id: { $in: advertiserIds } }).toArray()
-      : []
-    const advertiserById = new Map(advertisers.map((advertiser) => [advertiser._id, advertiser] as const))
-
-    const rows = matched.map((campaign) => {
-      const owner = advertiserById.get(campaign.advertiserId)
-      return {
-        campaignId: campaign._id,
-        campaignName: campaign.name,
-        active: campaign.active,
-        targetUrl: campaign.targetUrl,
-        advertiserId: campaign.advertiserId,
-        advertiserWallet: owner?.wallet || null,
-      }
+    const campaigns = await prisma.campaign.findMany({
+      include: { advertiser: { select: { id: true, wallet: true } } },
     })
+    const matched = campaigns.filter(c => domainFromUrl(String(c.targetUrl || '')) === targetDomain)
+
+    const rows = matched.map((campaign) => ({
+      campaignId: campaign.id,
+      campaignName: campaign.name,
+      active: campaign.active,
+      targetUrl: campaign.targetUrl,
+      advertiserId: campaign.advertiserId,
+      advertiserWallet: campaign.advertiser?.wallet || null,
+    }))
 
     return NextResponse.json({
       redirect: targetDomain,

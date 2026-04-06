@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { isWalletAdmin } from '@/lib/admin'
 
 /**
@@ -15,40 +15,26 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
         }
 
-        const [campaignsCollection, publishersCollection] = await Promise.all([
-            collections.campaigns(),
-            collections.publishers()
+        const [recentCampaigns, recentPublishers] = await Promise.all([
+            prisma.campaign.findMany({ orderBy: { createdAt: 'desc' }, take: 10 }),
+            prisma.publisher.findMany({ orderBy: { createdAt: 'desc' }, take: 10 }),
         ])
 
-        // Get recent campaigns
-        const recentCampaigns = await campaignsCollection.find({})
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .toArray()
-
-        // Get recent publishers
-        const recentPublishers = await publishersCollection.find({})
-            .sort({ createdAt: -1 })
-            .limit(10)
-            .toArray()
-
-        // Merge and format activity
         const activities = [
             ...recentCampaigns.map(c => ({
-                id: c._id,
+                id: c.id,
                 type: 'CAMPAIGN_CREATED',
                 message: `New campaign created: ${c.name}`,
-                timestamp: c.createdAt || new Date(),
+                timestamp: c.createdAt,
             })),
             ...recentPublishers.map(p => ({
-                id: p._id,
+                id: p.id,
                 type: 'PUBLISHER_REGISTERED',
                 message: `Publisher registered: ${p.domain || p.wallet}`,
-                timestamp: p.createdAt || new Date(),
-            }))
+                timestamp: p.createdAt,
+            })),
         ]
 
-        // Sort by timestamp descending
         activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
 
         return NextResponse.json({ activities: activities.slice(0, 10) })

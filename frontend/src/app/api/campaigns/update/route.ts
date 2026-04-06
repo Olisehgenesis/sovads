@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import {
   detectMediaTypeFromUrl,
   getAllowedCreativeFormatLabel,
@@ -22,14 +22,12 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'wallet, id and updates are required' }, { status: 400 })
     }
 
-    const advertisersCollection = await collections.advertisers()
-    const campaignsCollection = await collections.campaigns()
-    const advertiser = await advertisersCollection.findOne({ wallet })
+    const advertiser = await prisma.advertiser.findFirst({ where: { wallet } })
     if (!advertiser) {
       return NextResponse.json({ error: 'Advertiser not found' }, { status: 404 })
     }
 
-    const campaign = await campaignsCollection.findOne({ _id: id, advertiserId: advertiser._id })
+    const campaign = await prisma.campaign.findFirst({ where: { id, advertiserId: advertiser.id } })
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
@@ -62,14 +60,14 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    await campaignsCollection.updateOne({ _id: id }, { $set: patch })
-    const updated = await campaignsCollection.findOne({ _id: id })
+    await prisma.campaign.update({ where: { id }, data: patch })
+    const updated = await prisma.campaign.findFirst({ where: { id } })
 
     return NextResponse.json({
       success: true,
       campaign: updated
         ? {
-            id: updated._id,
+            id: updated.id,
             name: updated.name,
             description: updated.description ?? '',
             bannerUrl: updated.bannerUrl,

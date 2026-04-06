@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,41 +10,37 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Missing wallet parameter' }, { status: 400 })
     }
 
-    const advertisersCollection = await collections.advertisers()
-    const campaignsCollection = await collections.campaigns()
-
-    const advertiser = await advertisersCollection.findOne({ wallet })
+    const advertiser = await prisma.advertiser.findFirst({ where: { wallet } })
 
     if (!advertiser) {
       return NextResponse.json({ campaigns: [] }, { status: 200 })
     }
 
-    const campaignsCursor = campaignsCollection
-      .find({ advertiserId: advertiser._id })
-      .sort({ createdAt: -1 })
+    const campaignDocs = await prisma.campaign.findMany({
+      where: { advertiserId: advertiser.id },
+      orderBy: { createdAt: 'desc' },
+    })
 
-    const campaigns = await campaignsCursor
-      .map((campaign) => ({
-        id: campaign._id,
-        name: campaign.name,
-        description: campaign.description ?? undefined,
-        bannerUrl: campaign.bannerUrl,
-        targetUrl: campaign.targetUrl,
-        budget: campaign.budget,
-        spent: campaign.spent,
-        cpc: campaign.cpc,
-        active: campaign.active,
-        tokenAddress: campaign.tokenAddress ?? undefined,
-        tags: campaign.tags ?? [],
-        targetLocations: campaign.targetLocations ?? [],
-        metadata: campaign.metadata ?? undefined,
-        startDate: campaign.startDate ?? null,
-        endDate: campaign.endDate ?? null,
-        mediaType: campaign.mediaType ?? 'image',
-        onChainId: campaign.onChainId ?? undefined,
-        verificationStatus: campaign.verificationStatus ?? 'approved', // Legacy ads are approved
-      }))
-      .toArray()
+    const campaigns = campaignDocs.map((campaign) => ({
+      id: campaign.id,
+      name: campaign.name,
+      description: campaign.description ?? undefined,
+      bannerUrl: campaign.bannerUrl,
+      targetUrl: campaign.targetUrl,
+      budget: campaign.budget,
+      spent: campaign.spent,
+      cpc: campaign.cpc,
+      active: campaign.active,
+      tokenAddress: campaign.tokenAddress ?? undefined,
+      tags: campaign.tags ?? [],
+      targetLocations: campaign.targetLocations ?? [],
+      metadata: campaign.metadata ?? undefined,
+      startDate: campaign.startDate ?? null,
+      endDate: campaign.endDate ?? null,
+      mediaType: campaign.mediaType ?? 'image',
+      onChainId: campaign.onChainId ?? undefined,
+      verificationStatus: campaign.verificationStatus ?? 'approved',
+    }))
 
     return NextResponse.json({ campaigns }, { status: 200 })
   } catch (error) {

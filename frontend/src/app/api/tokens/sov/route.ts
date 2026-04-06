@@ -1,49 +1,19 @@
 import { NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
-import { getCollection } from '@/lib/mongo'
+import { prisma } from '@/lib/prisma'
 
 const isAddress = (value: unknown): value is string =>
   typeof value === 'string' && /^0x[a-fA-F0-9]{40}$/.test(value)
 
 export async function GET() {
   try {
-    // 1) Preferred source: dedicated tokens collection
-    const tokensCollection = await getCollection<{
-      symbol?: string
-      address?: string
-      name?: string
-      decimals?: number
-      active?: boolean
-    }>('tokens')
-
-    const tokenDoc = await tokensCollection.findOne({
-      symbol: { $regex: /^SOV$/i },
-      address: { $type: 'string' },
-    })
-
-    if (isAddress(tokenDoc?.address)) {
-      return NextResponse.json({
-        symbol: 'SOV',
-        address: tokenDoc.address,
-        name: tokenDoc.name || 'SovAds Token',
-        decimals: typeof tokenDoc.decimals === 'number' ? tokenDoc.decimals : 18,
-        source: 'tokens',
-      })
-    }
-
-    // 2) Fallback: campaigns carrying SOV metadata + tokenAddress
-    const campaignsCollection = await collections.campaigns()
-    const campaign = await campaignsCollection.findOne(
-      {
-        tokenAddress: { $type: 'string' },
-        $or: [
-          { 'metadata.symbol': { $regex: /^SOV$/i } },
-          { 'metadata.tokenSymbol': { $regex: /^SOV$/i } },
-          { name: { $regex: /\bSOV\b/i } },
-        ],
+    // 1) Fallback: campaigns carrying SOV name
+    const campaign = await prisma.campaign.findFirst({
+      where: {
+        tokenAddress: { not: null },
+        name: { contains: 'SOV', mode: 'insensitive' },
       },
-      { projection: { tokenAddress: 1 } }
-    )
+      select: { tokenAddress: true },
+    })
 
     if (isAddress(campaign?.tokenAddress)) {
       return NextResponse.json({
@@ -55,21 +25,16 @@ export async function GET() {
       })
     }
 
-    // 3) Fallback: exchange/topup records that used SOV
-    const [exchangesCollection, topupsCollection] = await Promise.all([
-      collections.exchanges(),
-      collections.topups(),
-    ])
-
+    // 2) Fallback: exchange/topup records that used SOV
     const [exchange, topup] = await Promise.all([
-      exchangesCollection.findOne(
-        { fromToken: { $regex: /^SOV$/i }, tokenAddress: { $type: 'string' } },
-        { projection: { tokenAddress: 1 } }
-      ),
-      topupsCollection.findOne(
-        { token: { $regex: /^SOV$/i }, tokenAddress: { $type: 'string' } },
-        { projection: { tokenAddress: 1 } }
-      ),
+      prisma.exchange.findFirst({
+        where: { fromToken: { equals: 'SOV', mode: 'insensitive' }, tokenAddress: { not: null } },
+        select: { tokenAddress: true },
+      }),
+      prisma.topup.findFirst({
+        where: { token: { equals: 'SOV', mode: 'insensitive' }, tokenAddress: { not: null } },
+        select: { tokenAddress: true },
+      }),
     ])
 
     const fallbackAddress = exchange?.tokenAddress || topup?.tokenAddress

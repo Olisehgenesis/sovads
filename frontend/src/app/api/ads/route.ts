@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { createTrackingToken } from '@/lib/tracking-token'
 
 // CORS headers helper
@@ -60,28 +60,27 @@ export async function GET(request: NextRequest) {
       isUnverifiedSite = true
     }
 
-    // Try to access MongoDB
-    let publisherSitesCollection, publishersCollection, campaignsCollection
-    try {
-      publisherSitesCollection = await collections.publisherSites()
-      publishersCollection = await collections.publishers()
-      campaignsCollection = await collections.campaigns()
-    } catch (dbError) {
-      console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({ error: 'Database unavailable' }, { status: 503, headers: corsHeaders })
-    }
-
-    const publisherSite = await publisherSitesCollection.findOne({ siteId })
+    // Try to access DB
+    let publisherSite = null
     let publisher = null
-    if (publisherSite) {
-      publisher = await publishersCollection.findOne({ _id: publisherSite.publisherId })
-    }
+    try {
+      if (!isUnverifiedSite) {
+        publisherSite = await prisma.publisherSite.findFirst({ where: { siteId } })
+        if (publisherSite) {
+          publisher = await prisma.publisher.findFirst({ where: { id: publisherSite.publisherId } })
+        }
+      }
 
-    // Fallback: check if siteId is a direct publisher ID or domain
-    if (!publisher) {
-      publisher = await publishersCollection.findOne({
-        $or: [{ _id: siteId }, { _id: siteId.replace('site_', '') }, { domain: siteId }],
-      })
+      if (!publisher) {
+        publisher = await prisma.publisher.findFirst({
+          where: {
+            OR: [{ id: siteId }, { id: siteId.replace('site_', '') }, { domain: siteId }],
+          },
+        })
+      }
+    } catch (dbError) {
+      console.error('Database connection error:', dbError)
+      return NextResponse.json({ error: 'Database unavailable' }, { status: 503, headers: corsHeaders })
     }
 
     if (publisher && !publisher.verified) {
@@ -92,12 +91,11 @@ export async function GET(request: NextRequest) {
     }
 
     // Get active campaigns with budget remaining and approved verification status
-    const candidatesCursor = campaignsCollection
-      .find({ active: true })
-      .sort({ createdAt: -1 })
-      .limit(100)
-
-    const candidateCampaigns = await candidatesCursor.toArray()
+    const candidateCampaigns = await prisma.campaign.findMany({
+      where: { active: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    })
     const campaigns = candidateCampaigns
       .filter((campaign) => campaign.budget > campaign.spent)
       .filter((campaign: any) => {
@@ -161,8 +159,8 @@ export async function GET(request: NextRequest) {
 
     // Create ad response
     const ad = {
-      id: `ad_${randomCampaign._id}`,
-      campaignId: randomCampaign._id,
+      id: `ad_${randomCampaign.id}`,
+      campaignId: randomCampaign.id,
       name: randomCampaign.name,
       description: randomCampaign.description ?? '',
       bannerUrl: normalizeHttpUrl(randomCampaign.bannerUrl),
@@ -177,8 +175,8 @@ export async function GET(request: NextRequest) {
       placement: placement || undefined,
       size: size || undefined,
       trackingToken: createTrackingToken({
-        adId: `ad_${randomCampaign._id}`,
-        campaignId: randomCampaign._id,
+        adId: `ad_${randomCampaign.id}`,
+        campaignId: randomCampaign.id,
         siteId,
         exp: Date.now() + 15 * 60 * 1000,
         placement: placement || undefined,

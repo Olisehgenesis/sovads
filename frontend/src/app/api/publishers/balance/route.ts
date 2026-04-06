@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 /**
  * GET - Publisher available balance (earnings + topups - withdrawn)
@@ -14,34 +14,32 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'wallet required' }, { status: 400 })
     }
 
-    const publishersCollection = await collections.publishers()
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
     // Earnings from ad clicks (last 365 days)
-    const eventsCollection = await collections.events()
-    const campaignsCollection = await collections.campaigns()
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - 365)
 
-    const events = await eventsCollection
-      .find({
-        publisherId: publisher._id,
+    const events = await prisma.event.findMany({
+      where: {
+        publisherId: publisher.id,
         type: 'CLICK',
-        timestamp: { $gte: startDate }
-      })
-      .toArray()
+        timestamp: { gte: startDate },
+      },
+      select: { campaignId: true },
+    })
 
     const campaignIds = [...new Set(events.map((e) => e.campaignId))]
-    const campaigns = await campaignsCollection
-      .find({ _id: { $in: campaignIds } })
-      .project({ cpc: 1 })
-      .toArray()
+    const campaigns = await prisma.campaign.findMany({
+      where: { id: { in: campaignIds } },
+      select: { id: true, cpc: true },
+    })
 
-    const cpcMap = new Map(campaigns.map((c) => [c._id, c.cpc ?? 0]))
+    const cpcMap = new Map(campaigns.map((c) => [c.id, c.cpc ?? 0]))
     const earnings = events.reduce(
       (sum, e) => sum + (cpcMap.get(e.campaignId) ?? 0),
       0

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { verifyAdminSignature } from '@/lib/admin'
 import {
     detectMediaTypeFromUrl,
@@ -37,13 +37,12 @@ export async function PUT(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized: Invalid signature or not an admin' }, { status: 403 })
         }
 
-        const campaignsCollection = await collections.campaigns()
-        const campaign = await campaignsCollection.findOne({ _id: id })
+        const campaign = await prisma.campaign.findFirst({ where: { id } })
         if (!campaign) {
             return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
         }
 
-        const patch: Record<string, any> = { updatedAt: new Date() }
+        const patch: Record<string, unknown> = {}
 
         if (typeof updates.name === 'string') patch.name = updates.name.trim()
         if (typeof updates.description === 'string') patch.description = updates.description.trim()
@@ -78,8 +77,8 @@ export async function PUT(request: NextRequest) {
             patch.spent = Number(updates.spent)
         }
 
-        await campaignsCollection.updateOne({ _id: id }, { $set: patch })
-        const updated = await campaignsCollection.findOne({ _id: id })
+        await prisma.campaign.update({ where: { id }, data: patch })
+        const updated = await prisma.campaign.findFirst({ where: { id } })
 
         return NextResponse.json({
             success: true,

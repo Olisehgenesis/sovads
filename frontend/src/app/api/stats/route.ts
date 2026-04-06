@@ -1,82 +1,37 @@
-import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { NextResponse } from 'next/server'
+import { prisma } from '@/lib/prisma'
 
 /**
  * Get platform-wide statistics
  */
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const [eventsCollection, campaignsCollection, publishersCollection] = await Promise.all([
-      collections.events(),
-      collections.campaigns(),
-      collections.publishers(),
+    const [totalAds, totalPublishers, activeCampaigns, totalImpressions, totalClicks] = await Promise.all([
+      prisma.campaign.count(),
+      prisma.publisher.count(),
+      prisma.campaign.count({ where: { active: true } }),
+      prisma.event.count({ where: { type: { equals: 'IMPRESSION', mode: 'insensitive' } } }),
+      prisma.event.count({ where: { type: { equals: 'CLICK', mode: 'insensitive' } } }),
     ])
 
-    // Total campaigns (ads)
-    const totalAds = await campaignsCollection.countDocuments({})
-
-    // Total event stats (impressions + clicks), case-insensitive
-    const eventStats = await eventsCollection.aggregate([
-      {
-        $match: {
-          type: { $regex: /^(IMPRESSION|CLICK)$/i },
-        },
-      },
-      {
-        $group: {
-          _id: { $toUpper: '$type' },
-          count: { $sum: 1 },
-        },
-      },
-    ]).toArray()
-
-    const totalImpressions = eventStats.find((s) => s._id === 'IMPRESSION')?.count ?? 0
-    const totalClicks = eventStats.find((s) => s._id === 'CLICK')?.count ?? 0
     const totalEvents = totalImpressions + totalClicks
     const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0
 
     // Total unique impressions (distinct fingerprints)
-    const uniqueImpressionsResult = await eventsCollection.aggregate([
-      {
-        $match: {
-          type: { $regex: /^IMPRESSION$/i },
-          fingerprint: { $exists: true, $ne: null },
-        },
-      },
-      {
-        $group: {
-          _id: '$fingerprint',
-        },
-      },
-      {
-        $count: 'unique',
-      },
-    ]).toArray()
-
-    const totalUniqueImpressions = uniqueImpressionsResult[0]?.unique ?? 0
-
-    // Total publishers
-    const totalPublishers = await publishersCollection.countDocuments({})
-
-    // Active campaigns
-    const activeCampaigns = await campaignsCollection.countDocuments({
-      active: true,
+    const uniqueFingerprints = await prisma.event.findMany({
+      where: { type: { equals: 'IMPRESSION', mode: 'insensitive' }, fingerprint: { not: null } },
+      select: { fingerprint: true },
+      distinct: ['fingerprint'],
     })
+    const totalUniqueImpressions = uniqueFingerprints.length
 
-    // Total revenue (sum of spent from campaigns)
-    const revenueResult = await campaignsCollection.aggregate([
-      {
-        $group: {
-          _id: null,
-          totalSpent: { $sum: '$spent' },
-          totalBudget: { $sum: '$budget' },
-        },
-      },
-    ]).toArray()
-
-    const totalRevenue = revenueResult[0]?.totalSpent ?? 0
-    const totalBudget = revenueResult[0]?.totalBudget ?? 0
-    const totalPublisherBudget = totalRevenue // publisher budget is approximated by spent amount
+    // Total revenue (sum of spent and budget from campaigns)
+    const revenueResult = await prisma.campaign.aggregate({
+      _sum: { spent: true, budget: true },
+    })
+    const totalRevenue = revenueResult._sum.spent ?? 0
+    const totalBudget = revenueResult._sum.budget ?? 0
+    const totalPublisherBudget = totalRevenue
 
     return NextResponse.json({
       campaignCount: totalAds,

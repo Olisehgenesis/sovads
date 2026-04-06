@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import {
   detectMediaTypeFromUrl,
   getAllowedCreativeFormatLabel,
@@ -24,32 +24,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
     }
 
-    const advertisersCollection = await collections.advertisers()
-    const campaignsCollection = await collections.campaigns()
-
-    let advertiser = await advertisersCollection.findOne({ wallet })
+    let advertiser = await prisma.advertiser.findFirst({ where: { wallet } })
     const now = new Date()
 
     if (!advertiser) {
-      advertiser = {
-        _id: randomUUID(),
-        wallet,
-        name: `Advertiser ${wallet.slice(0, 6)}...`,
-        subscriptionActive: true,
-        subscriptionDate: now,
-        subscriptionPlan: 'basic',
-        totalSpent: 0,
-        createdAt: now,
-        updatedAt: now,
-        email: undefined,
-        company: undefined,
-      }
-      await advertisersCollection.insertOne(advertiser)
+      advertiser = await prisma.advertiser.create({
+        data: {
+          wallet,
+          name: `Advertiser ${wallet.slice(0, 6)}...`,
+          subscriptionActive: true,
+          subscriptionDate: now,
+          subscriptionPlan: 'basic',
+          totalSpent: 0,
+        },
+      })
     } else {
-      await advertisersCollection.updateOne(
-        { _id: advertiser._id },
-        { $set: { updatedAt: now } }
-      )
+      await prisma.advertiser.update({ where: { id: advertiser.id }, data: {} })
     }
 
     const budget = Number.parseFloat(campaignData.budget)
@@ -105,50 +95,48 @@ export async function POST(request: NextRequest) {
     const startDateValue = startDate ? new Date(startDate) : undefined
     const endDateValue = endDate ? new Date(endDate) : undefined
 
-    const campaignDoc = {
-      _id: campaignId,
-      advertiserId: advertiser._id,
-      name: campaignData.name,
-      description: campaignData.description || null,
-      bannerUrl: campaignData.bannerUrl,
-      targetUrl: campaignData.targetUrl,
-      budget,
-      spent: 0,
-      cpc,
-      active: true,
-      tokenAddress: campaignData.tokenAddress || null,
-      onChainId: (onChainId !== undefined && onChainId !== null) ? Number(onChainId) : undefined,
-      metadataURI: JSON.stringify({
-        contractCampaignId,
-        transactionHash,
-        startDate: startDateValue?.toISOString(),
-        endDate: endDateValue?.toISOString(),
+    const campaign = await prisma.campaign.create({
+      data: {
+        id: campaignId,
+        advertiserId: advertiser.id,
+        name: campaignData.name,
+        description: campaignData.description || null,
+        bannerUrl: campaignData.bannerUrl,
+        targetUrl: campaignData.targetUrl,
+        budget,
+        spent: 0,
+        cpc,
+        active: true,
+        tokenAddress: campaignData.tokenAddress || null,
+        onChainId: (onChainId !== undefined && onChainId !== null) ? Number(onChainId) : undefined,
+        metadataURI: JSON.stringify({
+          contractCampaignId,
+          transactionHash,
+          startDate: startDateValue?.toISOString(),
+          endDate: endDateValue?.toISOString(),
+          tags,
+          targetLocations,
+          metadata,
+          mediaType,
+        }),
         tags,
         targetLocations,
-        metadata,
+        metadata: metadata ?? undefined,
+        startDate: startDateValue,
+        endDate: endDateValue,
         mediaType,
-      }),
-      tags,
-      targetLocations,
-      metadata,
-      startDate: startDateValue,
-      endDate: endDateValue,
-      mediaType,
-      verificationStatus: 'pending',
-      createdAt: now,
-      updatedAt: now,
-    }
-
-    await campaignsCollection.insertOne(campaignDoc as any)
+        verificationStatus: 'pending',
+      },
+    })
 
     return NextResponse.json(
       {
         success: true,
         campaign: {
-          id: campaignId,
-          name: campaignDoc.name,
-          budget: campaignDoc.budget,
-          active: campaignDoc.active,
+          id: campaign.id,
+          name: campaign.name,
+          budget: campaign.budget,
+          active: campaign.active,
           tags,
           targetLocations,
           mediaType,

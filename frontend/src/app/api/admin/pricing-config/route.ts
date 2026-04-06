@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { fetchTokenPricesUsd } from '@/lib/token-pricing'
 
 const DEFAULT_IMPRESSION_USD = 0.0002
 
 export async function GET() {
   try {
-    const pricingCollection = await collections.pricingConfig()
-    const config = await pricingCollection.findOne({ _id: 'global' })
+    const config = await prisma.pricingConfig.findFirst()
     const impressionUsd = config?.impressionUsd ?? DEFAULT_IMPRESSION_USD
-    const tokenOverrides = config?.tokenOverrides ?? {}
+    const tokenOverrides = (config?.tokenOverrides as Record<string, number>) ?? {}
     const tokens = await fetchTokenPricesUsd(tokenOverrides)
     return NextResponse.json({ impressionUsd, tokenOverrides, tokens })
   } catch (error) {
@@ -38,18 +37,17 @@ export async function PUT(request: NextRequest) {
       }
     }
 
-    const pricingCollection = await collections.pricingConfig()
-    await pricingCollection.updateOne(
-      { _id: 'global' },
-      {
-        $set: {
-          impressionUsd: impressionUsdRaw,
-          tokenOverrides,
-          updatedAt: new Date(),
-        },
-      },
-      { upsert: true }
-    )
+    const existing = await prisma.pricingConfig.findFirst()
+    if (existing) {
+      await prisma.pricingConfig.update({
+        where: { id: existing.id },
+        data: { impressionUsd: impressionUsdRaw, tokenOverrides },
+      })
+    } else {
+      await prisma.pricingConfig.create({
+        data: { impressionUsd: impressionUsdRaw, tokenOverrides },
+      })
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {

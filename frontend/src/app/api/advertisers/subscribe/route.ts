@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,47 +11,36 @@ export async function POST(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const advertisersCollection = await collections.advertisers()
-    let advertiser = await advertisersCollection.findOne({ wallet })
+    const existing = await prisma.advertiser.findFirst({ where: { wallet } })
 
-    if (advertiser) {
-      // Update subscription plan
-      await advertisersCollection.updateOne(
-        { wallet },
-        {
-          $set: {
-            email,
-            company,
-            subscriptionPlan: plan,
-            subscriptionActive: true,
-            subscriptionDate: new Date(),
-            updatedAt: new Date(),
-          },
-        }
-      )
-      advertiser = await advertisersCollection.findOne({ wallet })
+    if (existing) {
+      const advertiser = await prisma.advertiser.update({
+        where: { id: existing.id },
+        data: {
+          email,
+          company,
+          subscriptionPlan: plan,
+          subscriptionActive: true,
+          subscriptionDate: new Date(),
+        },
+      })
       return NextResponse.json({ 
         message: 'Subscription updated successfully', 
         advertiser 
       }, { status: 200 })
     }
 
-    // Create new advertiser subscription
-    const now = new Date()
-    advertiser = {
-      _id: randomUUID(),
-      wallet,
-      email,
-      company,
-      subscriptionPlan: plan,
-      subscriptionActive: true,
-      subscriptionDate: now,
-      totalSpent: 0,
-      createdAt: now,
-      updatedAt: now,
-      name: undefined,
-    }
-    await advertisersCollection.insertOne(advertiser)
+    const advertiser = await prisma.advertiser.create({
+      data: {
+        wallet,
+        email,
+        company,
+        subscriptionPlan: plan,
+        subscriptionActive: true,
+        subscriptionDate: new Date(),
+        totalSpent: 0,
+      },
+    })
 
     return NextResponse.json({ 
       message: 'Subscription created successfully', 
@@ -77,8 +65,7 @@ export async function GET(request: NextRequest) {
       }, { status: 400 })
     }
 
-    const advertisersCollection = await collections.advertisers()
-    const advertiser = await advertisersCollection.findOne({ wallet })
+    const advertiser = await prisma.advertiser.findFirst({ where: { wallet } })
 
     if (!advertiser) {
       return NextResponse.json({ 

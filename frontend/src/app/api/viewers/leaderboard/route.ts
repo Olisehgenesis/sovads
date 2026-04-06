@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 const corsHeaders = {
     'Access-Control-Allow-Origin': '*',
@@ -13,14 +13,10 @@ export async function OPTIONS() {
 
 export async function GET() {
     try {
-        const viewerPointsCollection = await collections.viewerPoints()
-
-        // Fetch top 50 viewers by total points
-        const topViewers = await viewerPointsCollection
-            .find({})
-            .sort({ totalPoints: -1 })
-            .limit(50)
-            .toArray()
+        const topViewers = await prisma.viewerPoints.findMany({
+            orderBy: { totalPoints: 'desc' },
+            take: 50,
+        })
 
         const entries = topViewers.map((v, index) => {
             const display = v.wallet

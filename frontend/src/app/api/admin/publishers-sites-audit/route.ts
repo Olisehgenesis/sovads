@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { SOVADS_MANAGER_ADDRESS } from '@/lib/chain-config'
 import { sovAdsManagerAbi } from '@/contract/abi'
 import { createPublicClient, http, parseAbiItem } from 'viem'
@@ -102,14 +102,9 @@ export async function GET(request: NextRequest) {
     const domainFilter = searchParams.get('domain')?.trim().toLowerCase()
     const includeUnverified = searchParams.get('includeUnverified') === 'true'
 
-    const [publishersCollection, publisherSitesCollection] = await Promise.all([
-      collections.publishers(),
-      collections.publisherSites(),
-    ])
-
     const [publishers, sites] = await Promise.all([
-      publishersCollection.find({}).toArray(),
-      publisherSitesCollection.find({}).toArray(),
+      prisma.publisher.findMany(),
+      prisma.publisherSite.findMany(),
     ])
 
     const wallets = publishers
@@ -118,7 +113,7 @@ export async function GET(request: NextRequest) {
     const onChain = await buildOnChainLookup(wallets)
 
     const publisherById = new Map(
-      publishers.map((publisher) => [publisher._id, publisher] as const)
+      publishers.map((p) => [p.id, p] as const)
     )
 
     const domainOwners = new Map<string, Set<string>>()
@@ -140,7 +135,7 @@ export async function GET(request: NextRequest) {
 
         return {
           siteId: site.siteId,
-          siteRecordId: site._id,
+          siteRecordId: site.id,
           domain: site.domain,
           normalizedDomain,
           verifiedInDb: Boolean(site.verified),

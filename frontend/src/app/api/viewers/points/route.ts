@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { randomUUID } from 'crypto'
 
 // CORS headers
@@ -25,16 +25,12 @@ export async function GET(request: NextRequest) {
     }
 
     const normalizedWallet = wallet?.toLowerCase()
-    const viewerPointsCollection = await collections.viewerPoints()
 
     let viewer = null
     if (normalizedWallet) {
-      viewer = await viewerPointsCollection.findOne({ wallet: normalizedWallet })
+      viewer = await prisma.viewerPoints.findFirst({ where: { wallet: normalizedWallet } })
     } else if (fingerprint) {
-      viewer = await viewerPointsCollection.findOne({
-        fingerprint,
-        $or: [{ wallet: null }, { wallet: { $exists: false } }] as any
-      })
+      viewer = await prisma.viewerPoints.findFirst({ where: { fingerprint, wallet: null } })
     }
 
     if (!viewer) {
@@ -49,7 +45,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({
-      id: viewer._id,
+      id: viewer.id,
       wallet: viewer.wallet,
       fingerprint: viewer.fingerprint,
       totalPoints: viewer.totalPoints,
@@ -77,77 +73,55 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400, headers: corsHeaders })
     }
 
-    const viewerPointsCollection = await collections.viewerPoints()
-    const viewerRewardsCollection = await collections.viewerRewards()
-
-    // Find or create viewer
     let viewer = null
     if (wallet) {
-      viewer = await viewerPointsCollection.findOne({ wallet })
+      viewer = await prisma.viewerPoints.findFirst({ where: { wallet } })
     } else {
-      viewer = await viewerPointsCollection.findOne({
-        fingerprint,
-        $or: [{ wallet: null }, { wallet: { $exists: false } }] as any
-      })
+      viewer = await prisma.viewerPoints.findFirst({ where: { fingerprint, wallet: null } })
     }
 
     const now = new Date()
     if (!viewer) {
-      // Create new viewer
-      const viewerId = randomUUID()
-      viewer = {
-        _id: viewerId,
-        wallet: wallet || null,
-        fingerprint: fingerprint || null,
-        totalPoints: points,
-        claimedPoints: 0,
-        pendingPoints: points,
-        lastInteraction: now,
-        createdAt: now,
-        updatedAt: now,
-      }
-      await viewerPointsCollection.insertOne(viewer)
+      viewer = await prisma.viewerPoints.create({
+        data: {
+          wallet: wallet || null,
+          fingerprint: fingerprint || 'unknown',
+          totalPoints: points,
+          claimedPoints: 0,
+          pendingPoints: points,
+          lastInteraction: now,
+        },
+      })
     } else {
-      // Update existing viewer
-      await viewerPointsCollection.updateOne(
-        { _id: viewer._id },
-        {
-          $inc: { totalPoints: points, pendingPoints: points },
-          $set: { lastInteraction: now, updatedAt: now },
-        }
-      )
-      viewer.totalPoints += points
-      viewer.pendingPoints += points
+      await prisma.viewerPoints.update({
+        where: { id: viewer.id },
+        data: {
+          totalPoints: { increment: points },
+          pendingPoints: { increment: points },
+          lastInteraction: now,
+        },
+      })
+      viewer = { ...viewer, totalPoints: viewer.totalPoints + points, pendingPoints: viewer.pendingPoints + points }
     }
 
-    // Create reward record
-    const reward = {
-      _id: randomUUID(),
-      viewerId: viewer._id,
-      wallet: wallet || null,
-      fingerprint: fingerprint || null,
-      type,
-      campaignId,
-      adId,
-      siteId,
-      points,
-      claimed: false,
-      timestamp: now,
-    }
-    await viewerRewardsCollection.insertOne(reward)
+    const reward = await prisma.viewerReward.create({
+      data: {
+        viewerId: viewer.id,
+        wallet: wallet || null,
+        fingerprint: fingerprint || null,
+        type,
+        campaignId,
+        adId,
+        siteId,
+        points,
+        claimed: false,
+      },
+    })
 
     return NextResponse.json({
       success: true,
-      viewer: {
-        id: viewer._id,
-        totalPoints: viewer.totalPoints,
-        pendingPoints: viewer.pendingPoints,
-      },
-      reward: {
-        id: reward._id,
-        points: reward.points,
-        type: reward.type,
-      },
+      viewer: { id: viewer.id, totalPoints: viewer.totalPoints, pendingPoints: viewer.pendingPoints },
+      reward: { id: reward.id, points: reward.points, type: reward.type },
     }, { headers: corsHeaders })
   } catch (error) {
     console.error('Error awarding points:', error)

@@ -2,19 +2,17 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-import { collections } from './src/lib/db';
+import { prisma } from './src/lib/prisma';
 
 async function listAll() {
     try {
-        const advertisersCursor = await collections.advertisers();
-        const allAdvertisers = await advertisersCursor.find({}).toArray();
-        const advertiserMap = Object.fromEntries(allAdvertisers.map(a => [a._id, a.wallet]));
+        const allAdvertisers = await prisma.advertiser.findMany()
+        const advertiserMap = Object.fromEntries(allAdvertisers.map(a => [a.id, a.wallet]));
         console.log('Advertisers:', advertiserMap);
 
-        const campaignsCursor = await collections.campaigns();
-        const allCampaigns = await campaignsCursor.find({}).toArray();
+        const allCampaigns = await prisma.campaign.findMany({ orderBy: { createdAt: 'desc' } })
         console.log('Campaigns:', JSON.stringify(allCampaigns.map(c => ({
-            id: c._id,
+            id: c.id,
             name: c.name,
             advertiser: advertiserMap[c.advertiserId] || 'Unknown',
             status: c.verificationStatus

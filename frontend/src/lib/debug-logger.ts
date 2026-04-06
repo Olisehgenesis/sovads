@@ -1,7 +1,6 @@
 import 'server-only'
-import { collections } from './db'
+import { prisma } from './prisma'
 import { NextRequest } from 'next/server'
-import type { SdkRequest, SdkInteraction, ApiRouteCall, CallbackLog } from './models'
 
 const MAX_RESPONSE_LOG_LENGTH = 10_000
 
@@ -95,28 +94,25 @@ export function getIpAddress(request: NextRequest): string | undefined {
  */
 export async function logSdkRequest(data: SdkRequestLog): Promise<string> {
   try {
-    const sdkRequests = await collections.sdkRequests()
-    const createdAt = new Date()
-    const doc: Omit<SdkRequest, '_id'> = {
-      type: data.type,
-      endpoint: data.endpoint,
-      method: data.method,
-      siteId: data.siteId,
-      domain: data.domain,
-      pageUrl: data.pageUrl,
-      userAgent: data.userAgent,
-      ipAddress: data.ipAddress,
-      fingerprint: data.fingerprint,
-      requestBody: safeStringify(data.requestBody),
-      responseStatus: data.responseStatus,
-      responseBody: safeStringify(data.responseBody),
-      error: data.error,
-      duration: data.duration,
-      timestamp: createdAt,
-    }
-    // MongoDB will auto-generate _id if not provided
-    const insertResult = await sdkRequests.insertOne(doc as SdkRequest)
-    return insertResult.insertedId ? String(insertResult.insertedId) : ''
+    const record = await prisma.sdkRequest.create({
+      data: {
+        type: data.type,
+        endpoint: data.endpoint,
+        method: data.method,
+        siteId: data.siteId,
+        domain: data.domain,
+        pageUrl: data.pageUrl,
+        userAgent: data.userAgent,
+        ipAddress: data.ipAddress,
+        fingerprint: data.fingerprint,
+        requestBody: data.requestBody !== undefined ? (safeStringify(data.requestBody) ?? undefined) : undefined,
+        responseStatus: data.responseStatus,
+        responseBody: data.responseBody !== undefined ? (safeStringify(data.responseBody) ?? undefined) : undefined,
+        error: data.error,
+        duration: data.duration,
+      },
+    })
+    return record.id
   } catch (error) {
     console.error('Error logging SDK request:', error)
     return ''
@@ -128,20 +124,18 @@ export async function logSdkRequest(data: SdkRequestLog): Promise<string> {
  */
 export async function logSdkInteraction(data: SdkInteractionLog): Promise<void> {
   try {
-    const interactions = await collections.sdkInteractions()
-    const doc: Omit<SdkInteraction, '_id'> = {
-      requestId: data.requestId,
-      type: data.type,
-      adId: data.adId,
-      campaignId: data.campaignId,
-      siteId: data.siteId,
-      pageUrl: data.pageUrl,
-      elementType: data.elementType,
-      metadata: data.metadata ?? null,
-      timestamp: new Date(),
-    }
-    // MongoDB will auto-generate _id if not provided
-    await interactions.insertOne(doc as SdkInteraction)
+    await prisma.sdkInteraction.create({
+      data: {
+        requestId: data.requestId,
+        type: data.type,
+        adId: data.adId,
+        campaignId: data.campaignId,
+        siteId: data.siteId,
+        pageUrl: data.pageUrl,
+        elementType: data.elementType,
+        metadata: data.metadata ? (data.metadata as object) : undefined,
+      },
+    })
   } catch (error) {
     console.error('Error logging SDK interaction:', error)
   }
@@ -158,21 +152,19 @@ export async function logApiRouteCall(data: ApiRouteCallLog): Promise<void> {
         ? `${responseBodyString.substring(0, MAX_RESPONSE_LOG_LENGTH)}... [truncated]`
         : responseBodyString
 
-    const apiRouteCalls = await collections.apiRouteCalls()
-    const doc: Omit<ApiRouteCall, '_id'> = {
-      route: data.route,
-      method: data.method,
-      statusCode: data.statusCode,
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent,
-      requestBody: safeStringify(data.requestBody),
-      responseBody: truncatedResponseBody,
-      error: data.error,
-      duration: data.duration,
-      timestamp: new Date(),
-    }
-    // MongoDB will auto-generate _id if not provided
-    await apiRouteCalls.insertOne(doc as ApiRouteCall)
+    await prisma.apiRouteCall.create({
+      data: {
+        route: data.route,
+        method: data.method,
+        statusCode: data.statusCode,
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
+        requestBody: data.requestBody !== undefined ? (safeStringify(data.requestBody) ?? undefined) : undefined,
+        responseBody: truncatedResponseBody ?? undefined,
+        error: data.error,
+        duration: data.duration,
+      },
+    })
   } catch (error) {
     console.error('Error logging API route call:', error)
   }
@@ -183,20 +175,18 @@ export async function logApiRouteCall(data: ApiRouteCallLog): Promise<void> {
  */
 export async function logCallback(data: CallbackLogData): Promise<void> {
   try {
-    const callbackLogs = await collections.callbackLogs()
-    const doc: Omit<CallbackLog, '_id'> = {
-      type: data.type,
-      endpoint: data.endpoint,
-      payload: safeStringify(data.payload) ?? '',
-      ipAddress: data.ipAddress,
-      userAgent: data.userAgent,
-      fingerprint: data.fingerprint,
-      statusCode: data.statusCode,
-      error: data.error,
-      timestamp: new Date(),
-    }
-    // MongoDB will auto-generate _id if not provided
-    await callbackLogs.insertOne(doc as CallbackLog)
+    await prisma.callbackLog.create({
+      data: {
+        type: data.type,
+        endpoint: data.endpoint,
+        payload: safeStringify(data.payload) ?? '',
+        ipAddress: data.ipAddress,
+        userAgent: data.userAgent,
+        fingerprint: data.fingerprint,
+        statusCode: data.statusCode,
+        error: data.error,
+      },
+    })
   } catch (error) {
     console.error('Error logging callback:', error)
   }

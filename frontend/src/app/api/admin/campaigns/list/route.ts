@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { isWalletAdmin } from '@/lib/admin'
 
 /**
  * GET /api/admin/campaigns/list
  * Query: ?adminWallet=0x...
- * 
+ *
  * Secure API to fetch all campaigns for management.
  */
 export async function GET(request: NextRequest) {
@@ -17,22 +17,14 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
         }
 
-        const campaignsCollection = await collections.campaigns()
-        const advertisersCollection = await collections.advertisers()
+        const allCampaigns = await prisma.campaign.findMany({
+            orderBy: { createdAt: 'desc' },
+            include: { advertiser: { select: { wallet: true } } },
+        })
 
-        // Find ALL campaigns
-        const allCampaigns = await campaignsCollection.find({})
-            .sort({ createdAt: -1 })
-            .toArray()
-
-        // Enrich with advertiser info
-        const enrichedCampaigns = await Promise.all(allCampaigns.map(async (campaign) => {
-            const advertiser = await advertisersCollection.findOne({ _id: campaign.advertiserId })
-            return {
-                ...campaign,
-                id: campaign._id,
-                advertiserWallet: advertiser?.wallet || 'Unknown'
-            }
+        const enrichedCampaigns = allCampaigns.map(campaign => ({
+            ...campaign,
+            advertiserWallet: campaign.advertiser?.wallet || 'Unknown',
         }))
 
         return NextResponse.json({ campaigns: enrichedCampaigns })

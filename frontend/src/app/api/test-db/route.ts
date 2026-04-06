@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 export async function GET() {
   const start = Date.now()
   try {
     const [advertisers, campaigns, publishers, sites] = await Promise.all([
-      (await collections.advertisers()).countDocuments(),
-      (await collections.campaigns()).countDocuments(),
-      (await collections.publishers()).countDocuments(),
-      (await collections.publisherSites()).countDocuments(),
+      prisma.advertiser.count(),
+      prisma.campaign.count(),
+      prisma.publisher.count(),
+      prisma.publisherSite.count(),
     ])
 
     return NextResponse.json({

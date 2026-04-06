@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 export async function GET(request: NextRequest) {
   try {
@@ -16,76 +16,48 @@ export async function GET(request: NextRequest) {
       days = 0
     }
 
-    // if neither campaign nor publisher specified, return global analytics
-    // (everything is covered by timestamp filter below)
-    // if (!campaignId && !publisherId) {
-    //   return NextResponse.json({ error: 'Campaign ID or Publisher ID is required' }, { status: 400 })
-    // }
-
     const startDate = new Date()
     if (useTimeFilter) {
       startDate.setDate(startDate.getDate() - days)
     }
 
-    const eventsCollection = await collections.events()
-    const campaignsCollection = await collections.campaigns()
-    const publishersCollection = await collections.publishers()
+    const where: Record<string, unknown> = {}
+    if (useTimeFilter) where.timestamp = { gte: startDate }
+    if (campaignId) where.campaignId = campaignId
+    if (publisherId) where.publisherId = publisherId
+    if (siteId) where.OR = [{ siteId }, { publisherSiteId: siteId }]
 
-    const query: Record<string, unknown>[] = []
-    if (useTimeFilter) {
-      query.push({ timestamp: { $gte: startDate } })
-    }
+    const events = await prisma.event.findMany({
+      where,
+      orderBy: { timestamp: 'desc' },
+    })
 
-    if (campaignId) {
-      query.push({ campaignId })
-    }
-
-    if (publisherId) {
-      query.push({ publisherId })
-    }
-
-    if (siteId) {
-      query.push({
-        $or: [
-          { siteId: siteId },
-          { publisherSiteId: siteId },
-        ]
-      })
-    }
-
-    const mongoQuery = query.length > 0 ? { $and: query } : {}
-
-    const events = await eventsCollection
-      .find(mongoQuery)
-      .sort({ timestamp: -1 })
-      .toArray()
-
-    const campaignIds = Array.from(new Set(events.map((event) => event.campaignId)))
-    const publisherIds = Array.from(new Set(events.map((event) => event.publisherId)))
+    const campaignIds = Array.from(new Set(events.map((e) => e.campaignId)))
+    const publisherIds = Array.from(new Set(events.map((e) => e.publisherId)))
 
     const [campaignDocs, publisherDocs] = await Promise.all([
       campaignIds.length
-        ? campaignsCollection
-            .find({ _id: { $in: campaignIds } })
-            .project({ _id: 1, name: 1, cpc: 1 })
-            .toArray()
+        ? prisma.campaign.findMany({
+            where: { id: { in: campaignIds } },
+            select: { id: true, name: true, cpc: true },
+          })
         : [],
       publisherIds.length
-        ? publishersCollection
-            .find({ _id: { $in: publisherIds } })
-            .project({ _id: 1, domain: 1 })
-            .toArray()
+        ? prisma.publisher.findMany({
+            where: { id: { in: publisherIds } },
+            select: { id: true, domain: true },
+          })
         : [],
     ])
 
-    const campaignMap = new Map<string, { name?: string; cpc?: number }>()
+    const campaignMap = new Map<string, { name?: string | null; cpc?: number | null }>()
     campaignDocs.forEach((doc) => {
-      campaignMap.set(doc._id, { name: doc.name, cpc: doc.cpc })
+      campaignMap.set(doc.id, { name: doc.name, cpc: doc.cpc })
     })
 
     const publisherMap = new Map<string, { domain?: string }>()
     publisherDocs.forEach((doc) => {
-      publisherMap.set(doc._id, { domain: doc.domain })
+      publisherMap.set(doc.id, { domain: doc.domain })
     })
 
     // Calculate metrics
@@ -130,7 +102,7 @@ export async function GET(request: NextRequest) {
       totalRevenue: parseFloat(totalRevenue.toFixed(6)),
       dailyStats,
       events: events.map((event) => ({
-        id: event._id,
+        id: event.id,
         type: event.type,
         timestamp: event.timestamp,
         campaignName: campaignMap.get(event.campaignId)?.name ?? 'Unknown Campaign',
@@ -158,29 +130,23 @@ export async function POST(request: NextRequest) {
     nextDay.setDate(nextDay.getDate() + 1)
 
     // Get all events for the day
-    const eventsCollection = await collections.events()
-    const campaignsCollection = await collections.campaigns()
+    const events = await prisma.event.findMany({
+      where: {
+        timestamp: { gte: targetDate, lt: nextDay },
+      },
+    })
 
-    const events = await eventsCollection
-      .find({
-        timestamp: {
-          $gte: targetDate,
-          $lt: nextDay,
-        },
-      })
-      .toArray()
-
-    const campaignIds = Array.from(new Set(events.map((event) => event.campaignId)))
+    const campaignIds = Array.from(new Set(events.map((e) => e.campaignId)))
     const campaignDocs = campaignIds.length
-      ? await campaignsCollection
-          .find({ _id: { $in: campaignIds } })
-          .project({ _id: 1, cpc: 1 })
-          .toArray()
+      ? await prisma.campaign.findMany({
+          where: { id: { in: campaignIds } },
+          select: { id: true, cpc: true },
+        })
       : []
 
-    const campaignMap = new Map<string, { cpc?: number }>()
+    const campaignMap = new Map<string, { cpc?: number | null }>()
     campaignDocs.forEach((doc) => {
-      campaignMap.set(doc._id, { cpc: doc.cpc })
+      campaignMap.set(doc.id, { cpc: doc.cpc })
     })
 
     // Aggregate by campaign and publisher
@@ -188,20 +154,20 @@ export async function POST(request: NextRequest) {
     const publisherStats = new Map()
 
     events.forEach((event) => {
-      const campaignId = event.campaignId
-      const publisherId = event.publisherId
+      const evCampaignId = event.campaignId
+      const evPublisherId = event.publisherId
 
       // Campaign stats
-      if (!campaignStats.has(campaignId)) {
-        campaignStats.set(campaignId, {
-          campaignId,
+      if (!campaignStats.has(evCampaignId)) {
+        campaignStats.set(evCampaignId, {
+          campaignId: evCampaignId,
           impressions: 0,
           clicks: 0,
           revenue: 0
         })
       }
 
-      const campaignStat = campaignStats.get(campaignId)
+      const campaignStat = campaignStats.get(evCampaignId)
       if (event.type === 'IMPRESSION') {
         campaignStat.impressions++
       } else if (event.type === 'CLICK') {
@@ -210,16 +176,16 @@ export async function POST(request: NextRequest) {
       }
 
       // Publisher stats
-      if (!publisherStats.has(publisherId)) {
-        publisherStats.set(publisherId, {
-          publisherId,
+      if (!publisherStats.has(evPublisherId)) {
+        publisherStats.set(evPublisherId, {
+          publisherId: evPublisherId,
           impressions: 0,
           clicks: 0,
           revenue: 0
         })
       }
 
-      const publisherStat = publisherStats.get(publisherId)
+      const publisherStat = publisherStats.get(evPublisherId)
       if (event.type === 'IMPRESSION') {
         publisherStat.impressions++
       } else if (event.type === 'CLICK') {
@@ -235,8 +201,6 @@ export async function POST(request: NextRequest) {
       totalEvents: events.length
     }
 
-    // Generate hash for on-chain storage (placeholder)
-    // Note: In production, you might want to store aggregated data in a separate table
     const hash = `0x${Buffer.from(JSON.stringify(aggregatedData)).toString('hex').slice(0, 64)}`
 
     return NextResponse.json({
@@ -249,3 +213,4 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
+

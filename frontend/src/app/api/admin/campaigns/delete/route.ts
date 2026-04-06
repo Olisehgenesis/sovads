@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { verifyAdminSignature } from '@/lib/admin'
 
 export async function POST(request: NextRequest) {
@@ -21,16 +21,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
-    const campaignsCollection = await collections.campaigns()
-    const campaign = await campaignsCollection.findOne({ _id: campaignId })
+    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId } })
     if (!campaign) {
       return NextResponse.json({ error: 'Campaign not found' }, { status: 404 })
     }
 
-    await campaignsCollection.updateOne(
-      { _id: campaignId },
-      { $set: { active: false, deleted: true, updatedAt: new Date() } }
-    )
+    await prisma.campaign.update({
+      where: { id: campaignId },
+      data: { active: false },
+    })
 
     return NextResponse.json({ success: true })
   } catch (error) {

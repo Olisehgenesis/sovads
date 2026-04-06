@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 // CORS headers helper
 const corsHeaders = {
@@ -75,20 +75,14 @@ export async function POST(request: NextRequest) {
       }, { status: 400, headers: corsHeaders })
     }
 
-    let publisherSitesCollection, publishersCollection
+    let publisherSite = null
+    let publisherSites: any[] = []
     try {
-      publisherSitesCollection = await collections.publisherSites()
-      publishersCollection = await collections.publishers()
-
-      await publisherSitesCollection.findOne({}, { limit: 1 })
+      publisherSites = await prisma.publisherSite.findMany()
+      await prisma.publisherSite.findFirst({}) // connectivity check
     } catch (dbError) {
-      console.error('MongoDB connection error in site detection:', dbError)
+      console.error('Database connection error in site detection:', dbError)
       const errorDetails = dbError instanceof Error ? dbError.message : String(dbError)
-      const errorStack = dbError instanceof Error ? dbError.stack : undefined
-
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Full MongoDB error:', { errorDetails, errorStack })
-      }
 
       const encodedDomain = Buffer.from(host).toString('base64')
       const tempSiteId = `temp_${encodedDomain.substring(0, 8)}_${Date.now()}`
@@ -101,11 +95,10 @@ export async function POST(request: NextRequest) {
         verified: false,
         message: 'Database unavailable - using temporary site ID',
         error: process.env.NODE_ENV === 'development' ? errorDetails : undefined,
-        stack: process.env.NODE_ENV === 'development' ? errorStack : undefined
       }, { headers: corsHeaders })
     }
 
-    const allSites = await publisherSitesCollection.find({}).toArray()
+    const allSites = publisherSites
     const matchingPublisherSites = allSites
       .map((site) => ({
         site,
@@ -117,7 +110,7 @@ export async function POST(request: NextRequest) {
 
     const selected = matchingPublisherSites[0]
     if (selected) {
-      const publisher = await publishersCollection.findOne({ _id: selected.site.publisherId })
+      const publisher = await prisma.publisher.findFirst({ where: { id: selected.site.publisherId } })
       return NextResponse.json({
         siteId: selected.site.siteId,
         domain: selected.site.domain,
@@ -127,14 +120,11 @@ export async function POST(request: NextRequest) {
       }, { headers: corsHeaders })
     }
 
-    const site = await publishersCollection.findOne({
-      domain: host,
-      verified: true
-    })
+    const site = await prisma.publisher.findFirst({ where: { domain: host, verified: true } })
 
     if (site) {
       return NextResponse.json({
-        siteId: site._id,
+        siteId: site.id,
         domain: site.domain,
         host,
         pathPrefix: '/',
@@ -142,14 +132,11 @@ export async function POST(request: NextRequest) {
       }, { headers: corsHeaders })
     }
 
-    const unverifiedSite = await publishersCollection.findOne({
-      domain: host,
-      verified: false
-    })
+    const unverifiedSite = await prisma.publisher.findFirst({ where: { domain: host, verified: false } })
 
     if (unverifiedSite) {
       return NextResponse.json({
-        siteId: unverifiedSite._id,
+        siteId: unverifiedSite.id,
         domain: unverifiedSite.domain,
         host,
         pathPrefix: '/',
@@ -191,21 +178,12 @@ export async function GET(request: NextRequest) {
       }, { status: 400, headers: corsHeaders })
     }
 
-    const publishersCollection = await collections.publishers()
-    const site = await publishersCollection.findOne(
-      { domain: normalizeHost(domain) },
-      {
-        projection: {
-          _id: 1,
-          domain: 1,
-          verified: 1,
-          totalEarned: 1,
-          createdAt: 1,
-        },
-      }
-    )
+    const publisherSiteForGet = await prisma.publisher.findFirst({
+      where: { domain: normalizeHost(domain) },
+      select: { id: true, domain: true, verified: true, totalEarned: true, createdAt: true },
+    })
 
-    if (!site) {
+    if (!publisherSiteForGet) {
       return NextResponse.json({
         error: 'Site not found'
       }, { status: 404, headers: corsHeaders })
@@ -213,11 +191,11 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       site: {
-        id: site._id,
-        domain: site.domain,
-        verified: site.verified,
-        totalEarned: site.totalEarned,
-        createdAt: site.createdAt,
+        id: publisherSiteForGet.id,
+        domain: publisherSiteForGet.domain,
+        verified: publisherSiteForGet.verified,
+        totalEarned: publisherSiteForGet.totalEarned,
+        createdAt: publisherSiteForGet.createdAt,
       }
     }, { headers: corsHeaders })
   } catch (error) {

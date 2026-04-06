@@ -33,6 +33,9 @@ async function initializeClient(): Promise<MongoClient> {
   const client = new MongoClient(mongoUri, {
     serverSelectionTimeoutMS: 5000, // Timeout after 5 seconds
     connectTimeoutMS: 10000, // Connection timeout
+    tls: true,
+    tlsAllowInvalidCertificates: process.env.NODE_ENV !== 'production',
+    tlsAllowInvalidHostnames: process.env.NODE_ENV !== 'production',
   })
   
   try {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { TREASURY_ADDRESS } from '@/lib/treasury-tokens'
 import { SUPPORTED_EXCHANGE_TOKENS } from '@/lib/treasury-tokens'
 
@@ -34,8 +33,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const publishersCollection = await collections.publishers()
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
@@ -45,51 +43,39 @@ export async function POST(request: NextRequest) {
     const gsPerUnit = tokenInfo.gsPerUnit ?? 10_000
     const gsReceived = amount * gsPerUnit
 
-    const now = new Date()
-
-    // Record exchange
-    const exchangeDoc = {
-      _id: randomUUID(),
-      publisherId: publisher._id,
-      wallet,
-      fromToken: token,
-      fromAmount: amount,
-      gsReceived,
-      tokenAddress: tokenInfo.address,
-      txHash: txHash || undefined,
-      status: 'completed' as const,
-      createdAt: now,
-      updatedAt: now
-    }
-    const exchangesCollection = await collections.exchanges()
-    await exchangesCollection.insertOne(exchangeDoc)
-
-    // Also record topup for balance (backward compat)
-    const topupsCollection = await collections.topups()
-    await topupsCollection.insertOne({
-      _id: randomUUID(),
-      publisherId: publisher._id,
-      wallet,
-      amount: gsReceived,
-      token,
-      tokenAddress: tokenInfo.address,
-      txHash: txHash || undefined,
-      status: 'approved',
-      createdAt: now,
-      updatedAt: now
-    })
-
-    await publishersCollection.updateOne(
-      { _id: publisher._id },
-      {
-        $inc: { totalTopup: gsReceived },
-        $set: { updatedAt: now }
-      }
-    )
+    const [exchange] = await prisma.$transaction([
+      prisma.exchange.create({
+        data: {
+          publisherId: publisher.id,
+          wallet,
+          fromToken: token,
+          fromAmount: amount,
+          gsReceived,
+          tokenAddress: tokenInfo.address,
+          txHash: txHash || undefined,
+          status: 'completed',
+        },
+      }),
+      prisma.topup.create({
+        data: {
+          publisherId: publisher.id,
+          wallet,
+          amount: gsReceived,
+          token,
+          tokenAddress: tokenInfo.address,
+          txHash: txHash || undefined,
+          status: 'approved',
+        },
+      }),
+      prisma.publisher.update({
+        where: { id: publisher.id },
+        data: { totalTopup: { increment: gsReceived } },
+      }),
+    ])
 
     return NextResponse.json({
       success: true,
-      exchangeId: exchangeDoc._id,
+      exchangeId: exchange.id,
       fromToken: token,
       fromAmount: amount,
       gsReceived,
@@ -118,22 +104,20 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'wallet required' }, { status: 400 })
     }
 
-    const publishersCol = await collections.publishers()
-    const publisher = await publishersCol.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
-    const exchangesCol = await collections.exchanges()
-    const exchanges = await exchangesCol
-      .find({ publisherId: publisher._id })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .toArray()
+    const exchanges = await prisma.exchange.findMany({
+      where: { publisherId: publisher.id },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
 
     return NextResponse.json({
       exchanges: exchanges.map((e) => ({
-        id: e._id,
+        id: e.id,
         fromToken: e.fromToken,
         fromAmount: e.fromAmount,
         gsReceived: e.gsReceived,
@@ -150,3 +134,9 @@ export async function GET(request: NextRequest) {
     )
   }
 }
+
+/**
+ * POST - Record token → G$ exchange
+ * 1 USDC/cUSD/USDT ($1) = 10,000 G$
+ * Body: { wallet, amount, token, txHash? }
+ */

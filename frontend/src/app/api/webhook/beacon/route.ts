@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { logCallback, getIpAddress } from '@/lib/debug-logger'
-import type { Event } from '@/lib/models'
 
 const EVENT_TYPES = ['IMPRESSION', 'CLICK'] as const
 type EventType = (typeof EVENT_TYPES)[number]
@@ -74,21 +72,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Verify site ID exists and is valid
-    // First check PublisherSite (new structure)
-    const publisherSitesCollection = await collections.publisherSites()
-    const publisherSite = await publisherSitesCollection.findOne({ siteId })
-
-    const publishersCollection = await collections.publishers()
+    const publisherSite = await prisma.publisherSite.findFirst({ where: { siteId } })
 
     // If not found, check legacy Publisher structure
     let publisher = null
     if (!publisherSite) {
-      // Try to find by ID pattern or domain
-      publisher = await publishersCollection.findOne({
-        $or: [{ _id: siteId }, { domain: siteId }],
+      publisher = await prisma.publisher.findFirst({
+        where: { OR: [{ id: siteId }, { domain: siteId }] },
       })
     } else {
-      publisher = await publishersCollection.findOne({ _id: publisherSite.publisherId })
+      publisher = await prisma.publisher.findFirst({ where: { id: publisherSite.publisherId } })
     }
 
     // Allow temp site IDs for development/testing
@@ -110,8 +103,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Get campaign
-    const campaignsCollection = await collections.campaigns()
-    const campaign = await campaignsCollection.findOne({ _id: campaignId })
+    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId } })
 
     if (!campaign || !campaign.active) {
       return NextResponse.json({ 
@@ -129,34 +121,33 @@ export async function POST(request: NextRequest) {
     // 2. Check for duplicate events
     // In development: skip duplicate check (allow testing)
     // In production: For impressions: check within 1 minute, For clicks: check within 5 minutes
-    const eventsCollection = await collections.events()
+    const eventsCollection = prisma.event
     if (process.env.NODE_ENV !== 'development') {
       const duplicateWindow = type === 'IMPRESSION' ? 60 * 1000 : 5 * 60 * 1000
       const duplicateWindowStart = new Date(Date.now() - duplicateWindow)
-      const existingEvent = await eventsCollection.findOne({
-        type,
-        campaignId,
-        adId,
-        siteId,
-        ...(fingerprint !== null && fingerprint !== undefined && { fingerprint }),
-        timestamp: { $gte: duplicateWindowStart },
+      const existingEvent = await prisma.event.findFirst({
+        where: {
+          type,
+          campaignId,
+          adId,
+          siteId,
+          ...(fingerprint != null ? { fingerprint } : {}),
+          timestamp: { gte: duplicateWindowStart },
+        },
       })
       
       if (existingEvent) {
         return NextResponse.json({ 
           error: 'Duplicate event detected',
-          eventId: existingEvent._id
+          eventId: existingEvent.id
         }, { status: 409 })
       }
     }
 
     // 3. Rate limiting per campaign per site (100 events/hour)
     const oneHourAgo = new Date(Date.now() - 3600 * 1000)
-    const recentEvents = await eventsCollection.countDocuments({
-      type,
-      campaignId,
-      siteId,
-      timestamp: { $gte: oneHourAgo },
+    const recentEvents = await prisma.event.count({
+      where: { type, campaignId, siteId, timestamp: { gte: oneHourAgo } },
     })
 
     if (recentEvents > 100) {
@@ -166,8 +157,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Determine publisher ID
-    const publisherId = publisherSite?.publisherId || publisher?._id || null
-    
+    const publisherId = publisherSite?.publisherId || publisher?.id || null
+
     if (!publisherId && process.env.NODE_ENV !== 'development') {
       return NextResponse.json({ 
         error: 'Publisher not found for site ID' 
@@ -175,95 +166,81 @@ export async function POST(request: NextRequest) {
     }
 
     // Create event with enhanced metadata
-    const now = new Date()
-    const eventDoc: Omit<Event, '_id'> = {
-      type,
-      campaignId,
-      publisherId: publisherId ?? 'temp',
-      siteId,
-      adId,
-      ipAddress,
-      userAgent: clientUserAgent ?? userAgent,
-      ...(fingerprint !== null && fingerprint !== undefined && { fingerprint }),
-      verified: renderVerified && viewportVisible !== false,
-      ...(publisherSite?._id && { publisherSiteId: publisherSite._id }),
-      timestamp: now,
-    }
-    // MongoDB will auto-generate _id if not provided
-    const insertResult = await eventsCollection.insertOne(eventDoc as Event)
-    const eventId = String(insertResult.insertedId)
+    const event = await prisma.event.create({
+      data: {
+        type,
+        campaignId,
+        publisherId: publisherId ?? 'temp',
+        siteId,
+        adId,
+        ipAddress,
+        userAgent: clientUserAgent ?? userAgent,
+        fingerprint: fingerprint != null ? fingerprint : undefined,
+        verified: renderVerified && viewportVisible !== false,
+        publisherSiteId: publisherSite?.id ?? undefined,
+      },
+    })
+    const eventId = event.id
 
     // Update campaign spent amount for clicks
     if (type === 'CLICK') {
-      await campaignsCollection.updateOne(
-        { _id: campaignId },
-        {
-          $inc: { spent: campaign.cpc },
-          $set: { updatedAt: new Date() },
-        }
-      )
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { spent: { increment: campaign.cpc } },
+      })
     }
 
     // Award viewer points for ad interaction (async, don't block response)
     ;(async () => {
       try {
-        const pointsPerImpression = 1 // 1 SOV point per impression
-        const pointsPerClick = 5 // 5 SOV points per click
+        const pointsPerImpression = 1
+        const pointsPerClick = 5
         const points = type === 'CLICK' ? pointsPerClick : pointsPerImpression
 
-        if (!fingerprint) return // Need fingerprint to track anonymous users
-
-        const viewerPointsCollection = await collections.viewerPoints()
-        const viewerRewardsCollection = await collections.viewerRewards()
+        if (!fingerprint) return
 
         // Find or create viewer
-        let viewer = await viewerPointsCollection.findOne({ 
-          fingerprint, 
-          wallet: null 
+        let viewer = await prisma.viewerPoints.findFirst({
+          where: { fingerprint, wallet: null },
         })
 
         const now = new Date()
         if (!viewer) {
-          // Create new viewer
-          const viewerId = randomUUID()
-          viewer = {
-            _id: viewerId,
-            wallet: null,
-            fingerprint: fingerprint,
-            totalPoints: points,
-            claimedPoints: 0,
-            pendingPoints: points,
-            lastInteraction: now,
-            createdAt: now,
-            updatedAt: now,
-          }
-          await viewerPointsCollection.insertOne(viewer)
+          viewer = await prisma.viewerPoints.create({
+            data: {
+              wallet: null,
+              fingerprint,
+              totalPoints: points,
+              claimedPoints: 0,
+              pendingPoints: points,
+              lastInteraction: now,
+            },
+          })
         } else {
-          // Update existing viewer
-          await viewerPointsCollection.updateOne(
-            { _id: viewer._id },
-            {
-              $inc: { totalPoints: points, pendingPoints: points },
-              $set: { lastInteraction: now, updatedAt: now },
-            }
-          )
+          await prisma.viewerPoints.update({
+            where: { id: viewer.id },
+            data: {
+              totalPoints: { increment: points },
+              pendingPoints: { increment: points },
+              lastInteraction: now,
+            },
+          })
         }
 
         // Create reward record
-        const reward = {
-          _id: randomUUID(),
-          viewerId: viewer._id,
-          wallet: undefined,
-          fingerprint: fingerprint,
-          type,
-          campaignId,
-          adId,
-          siteId,
-          points,
-          claimed: false,
-          timestamp: now,
-        }
-        await viewerRewardsCollection.insertOne(reward as any)
+        await prisma.viewerReward.create({
+          data: {
+            viewerId: viewer.id,
+            wallet: undefined,
+            fingerprint,
+            type,
+            campaignId,
+            adId,
+            siteId,
+            points,
+            claimed: false,
+          },
+        })
       } catch (error) {
         // Silently fail - points awarding shouldn't break the main flow
         console.error('Error awarding viewer points:', error)

@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { decryptPayloadServer, verifySignatureServer } from '@/lib/crypto-server'
 import { verifyTrackingToken } from '@/lib/tracking-token'
-import type { Event } from '@/lib/models'
 
 const EVENT_TYPES = ['IMPRESSION', 'CLICK'] as const
 type EventType = (typeof EVENT_TYPES)[number]
@@ -102,16 +100,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Request timestamp too old or too far in future' }, { status: 400 })
     }
 
-    const [publisherSitesCollection, publishersCollection, campaignsCollection, eventsCollection] = await Promise.all([
-      collections.publisherSites(),
-      collections.publishers(),
-      collections.campaigns(),
-      collections.events(),
-    ])
+    const [publisherSitesCollection, publishersCollection, campaignsCollection, eventsCollection] = [
+      prisma.publisherSite,
+      prisma.publisher,
+      prisma.campaign,
+      prisma.event,
+    ]
 
     const site = tokenClaims
-      ? await publisherSitesCollection.findOne({ siteId: tokenClaims.siteId })
-      : await publisherSitesCollection.findOne({ apiKey })
+      ? await prisma.publisherSite.findFirst({ where: { siteId: tokenClaims.siteId } })
+      : await prisma.publisherSite.findFirst({ where: { apiKey } })
 
     // Ghost-site mode: tracking token is cryptographically valid but site record was
     // lost from DB (e.g. after a data recovery). Allow tracking with half points so
@@ -163,13 +161,11 @@ export async function POST(request: NextRequest) {
     // Resolve Identity
     const explicitWallet = payloadWallet?.toLowerCase() || tokenClaims?.walletAddress?.toLowerCase()
     let attributedWallet = explicitWallet
-    const viewerPointsCollection = await collections.viewerPoints()
 
     if (!attributedWallet && fingerprint) {
       // Fallback: Check if device is linked to a wallet
-      const mapping = await viewerPointsCollection.findOne({
-        fingerprint: fingerprint as string,
-        wallet: { $ne: null }
+      const mapping = await prisma.viewerPoints.findFirst({
+        where: { fingerprint: fingerprint as string, wallet: { not: null } },
       })
       if (mapping) {
         attributedWallet = mapping.wallet as string
@@ -178,23 +174,21 @@ export async function POST(request: NextRequest) {
 
     // Security: Linkage Cooldown and Limits
     if (explicitWallet && fingerprint) {
-      const existingMapping = await viewerPointsCollection.findOne({
-        fingerprint: fingerprint as string,
-        wallet: { $ne: null }
+      const existingMapping = await prisma.viewerPoints.findFirst({
+        where: { fingerprint: fingerprint as string, wallet: { not: null } },
       })
       const nowTs = new Date()
 
       if (existingMapping && existingMapping.wallet !== explicitWallet) {
-        const cooldownMs = 13 * 60 * 60 * 1000 // 13 hours
+        const cooldownMs = 13 * 60 * 60 * 1000
         const lastChange = existingMapping.lastWalletChange ? new Date(existingMapping.lastWalletChange).getTime() : 0
         if (nowTs.getTime() - lastChange < cooldownMs) {
-          // Block rotating wallets too fast on one device
           return NextResponse.json({ error: 'Device linkage cooldown in effect' }, { status: 403 })
         }
       }
 
       // Check wallet device quota (max 10)
-      const linkedDevicesCount = await viewerPointsCollection.countDocuments({ wallet: explicitWallet })
+      const linkedDevicesCount = await prisma.viewerPoints.count({ where: { wallet: explicitWallet } })
       if (linkedDevicesCount >= 10 && (!existingMapping || existingMapping.wallet !== explicitWallet)) {
         return NextResponse.json({ error: 'Wallet device quota exceeded' }, { status: 403 })
       }
@@ -212,31 +206,30 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const campaign = await campaignsCollection.findOne({ _id: campaignId })
+    const campaign = await prisma.campaign.findFirst({ where: { id: campaignId } })
     if (!campaign || !campaign.active) {
       return NextResponse.json({ error: 'Campaign not found or inactive' }, { status: 404 })
     }
 
     const duplicateWindow = type === 'IMPRESSION' ? 60 * 1000 : 5 * 60 * 1000
     const duplicateWindowStart = new Date(Date.now() - duplicateWindow)
-    const existingEvent = await eventsCollection.findOne({
-      type,
-      campaignId,
-      adId,
-      siteId,
-      ...(fingerprint ? { fingerprint } : {}),
-      timestamp: { $gte: duplicateWindowStart },
+    const existingEvent = await prisma.event.findFirst({
+      where: {
+        type,
+        campaignId,
+        adId,
+        siteId,
+        ...(fingerprint ? { fingerprint } : {}),
+        timestamp: { gte: duplicateWindowStart },
+      },
     })
     if (existingEvent) {
-      return NextResponse.json({ error: 'Duplicate event detected', eventId: existingEvent._id }, { status: 409 })
+      return NextResponse.json({ error: 'Duplicate event detected', eventId: existingEvent.id }, { status: 409 })
     }
 
     const oneHourAgo = new Date(Date.now() - 3600 * 1000)
-    const recentEvents = await eventsCollection.countDocuments({
-      type,
-      campaignId,
-      siteId,
-      timestamp: { $gte: oneHourAgo },
+    const recentEvents = await prisma.event.count({
+      where: { type, campaignId, siteId, timestamp: { gte: oneHourAgo } },
     })
     if (recentEvents > 100) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
@@ -246,51 +239,43 @@ export async function POST(request: NextRequest) {
     if (fingerprint) {
       const perDeviceWindow = type === 'IMPRESSION' ? 60 * 1000 : 24 * 60 * 60 * 1000
       const maxPerDevice = type === 'IMPRESSION' ? 1 : 100
-      const deviceRecentEvents = await eventsCollection.countDocuments({
-        fingerprint,
-        type,
-        timestamp: { $gte: new Date(Date.now() - perDeviceWindow) }
+      const deviceRecentEvents = await prisma.event.count({
+        where: { fingerprint, type, timestamp: { gte: new Date(Date.now() - perDeviceWindow) } },
       })
       if (deviceRecentEvents >= maxPerDevice) {
         return NextResponse.json({ error: `Velocity limit exceeded for this device (${type})` }, { status: 429 })
       }
     }
 
-    const publisher = site ? await publishersCollection.findOne({ _id: site.publisherId }) : null
+    const publisher = site ? await prisma.publisher.findFirst({ where: { id: site.publisherId } }) : null
     const resolvedSiteId = site?.siteId ?? tokenClaims?.siteId ?? siteId
-    const resolvedSiteDbId = site?._id ?? resolvedSiteId
-    const eventDoc: Event = {
-      _id: randomUUID(),
-      type,
-      campaignId,
-      publisherId: publisher?._id ?? site?.publisherId ?? 'ghost',
-      siteId: resolvedSiteId,
-      adId,
-      ipAddress: getIp(request),
-      userAgent: payloadUserAgent ?? (request.headers.get('user-agent') || 'unknown'),
-      ...(fingerprint ? { fingerprint } : {}),
-      viewerWallet: attributedWallet || undefined,
-      verified: rendered === true && viewportVisible !== false,
-      publisherSiteId: resolvedSiteDbId,
-      timestamp: new Date(),
-    }
-
-    await eventsCollection.insertOne(eventDoc)
+    const resolvedSiteDbId = site?.id ?? resolvedSiteId
+    const eventDoc = await prisma.event.create({
+      data: {
+        type,
+        campaignId,
+        publisherId: publisher?.id ?? site?.publisherId ?? 'ghost',
+        siteId: resolvedSiteId,
+        adId,
+        ipAddress: getIp(request),
+        userAgent: payloadUserAgent ?? (request.headers.get('user-agent') || 'unknown'),
+        fingerprint: fingerprint || undefined,
+        viewerWallet: attributedWallet || undefined,
+        verified: rendered === true && viewportVisible !== false,
+        publisherSiteId: resolvedSiteDbId,
+      },
+    })
 
     if (type === 'CLICK') {
-      await campaignsCollection.updateOne(
-        { _id: campaignId },
-        { $inc: { spent: campaign.cpc }, $set: { updatedAt: new Date() } }
-      )
+      await prisma.campaign.update({
+        where: { id: campaignId },
+        data: { spent: { increment: campaign.cpc } },
+      })
     }
 
     ; (async () => {
       try {
         if (!fingerprint && !attributedWallet) return
-        const [vPointsCollection, viewerRewardsCollection] = await Promise.all([
-          collections.viewerPoints(),
-          collections.viewerRewards(),
-        ])
         // Ghost sites (DB record lost) earn half points as a grace period
         const points = isGhostSite
           ? (type === 'CLICK' ? 3 : 1)
@@ -299,120 +284,118 @@ export async function POST(request: NextRequest) {
 
         // 1. Update/Create Identity Mapping
         let viewer = attributedWallet
-          ? await vPointsCollection.findOne({ wallet: attributedWallet as string })
-          : await vPointsCollection.findOne({
-            fingerprint: fingerprint as string,
-            wallet: { $eq: null }
-          } as any)
+          ? await prisma.viewerPoints.findFirst({ where: { wallet: attributedWallet as string } })
+          : await prisma.viewerPoints.findFirst({
+              where: { fingerprint: fingerprint as string, wallet: null },
+            })
 
         if (!viewer) {
-          viewer = {
-            _id: randomUUID(),
-            wallet: attributedWallet || null,
-            fingerprint: fingerprint || 'unknown',
-            totalPoints: points,
-            claimedPoints: 0,
-            pendingPoints: points,
-            lastInteraction: nowTs,
-            linkedDevices: fingerprint ? [fingerprint] : [],
-            createdAt: nowTs,
-            updatedAt: nowTs,
-          }
-          await vPointsCollection.insertOne(viewer)
+          viewer = await prisma.viewerPoints.create({
+            data: {
+              wallet: attributedWallet || null,
+              fingerprint: fingerprint || 'unknown',
+              totalPoints: points,
+              claimedPoints: 0,
+              pendingPoints: points,
+              lastInteraction: nowTs,
+              linkedDevices: fingerprint ? [fingerprint] : [],
+            },
+          })
         } else {
-          const update: any = {
-            $inc: { totalPoints: points, pendingPoints: points },
-            $set: { lastInteraction: nowTs, updatedAt: nowTs }
+          const dataUpdate: any = {
+            totalPoints: { increment: points },
+            pendingPoints: { increment: points },
+            lastInteraction: nowTs,
           }
 
           if (explicitWallet) {
-            update.$set.wallet = explicitWallet
-            update.$set.lastWalletChange = nowTs
-            update.$addToSet = { linkedDevices: fingerprint }
+            dataUpdate.wallet = explicitWallet
+            dataUpdate.lastWalletChange = nowTs
+            // Add fingerprint to linkedDevices (deduplicated)
+            if (fingerprint && !viewer.linkedDevices.includes(fingerprint)) {
+              dataUpdate.linkedDevices = { push: fingerprint }
+            }
 
-            // Merge Logic: If this is a wallet record, check if there's a separate 
-            // anonymous record for this device that should be merged into this wallet.
+            // Merge Logic: merge anonymous record into wallet record
             if (viewer.wallet === explicitWallet) {
-              const anonRecord = await vPointsCollection.findOne({
-                fingerprint: fingerprint as string,
-                wallet: { $eq: null }
-              } as any)
+              const anonRecord = await prisma.viewerPoints.findFirst({
+                where: { fingerprint: fingerprint as string, wallet: null },
+              })
 
-              if (anonRecord && anonRecord._id !== viewer._id) {
-                // Transfer anonymous points to the wallet record
-                update.$inc.totalPoints += (anonRecord.totalPoints || 0)
-                update.$inc.pendingPoints += (anonRecord.pendingPoints || 0)
-                // Delete the anonymous record to prevent double-claiming
-                await vPointsCollection.deleteOne({ _id: anonRecord._id })
+              if (anonRecord && anonRecord.id !== viewer.id) {
+                dataUpdate.totalPoints = { increment: points + (anonRecord.totalPoints || 0) }
+                dataUpdate.pendingPoints = { increment: points + (anonRecord.pendingPoints || 0) }
+                await prisma.viewerPoints.delete({ where: { id: anonRecord.id } })
               }
             }
           }
 
-          await vPointsCollection.updateOne({ _id: viewer._id }, update)
+          await prisma.viewerPoints.update({ where: { id: viewer.id }, data: dataUpdate })
         }
 
         // 2. Insert Reward Record
-        await viewerRewardsCollection.insertOne({
-          _id: randomUUID(),
-          viewerId: viewer._id,
-          wallet: attributedWallet || undefined,
-          fingerprint,
-          type,
-          campaignId,
-          adId,
-          siteId,
-          points,
-          claimed: false,
-          timestamp: nowTs,
-        } as any)
+        await prisma.viewerReward.create({
+          data: {
+            viewerId: viewer.id,
+            wallet: attributedWallet || undefined,
+            fingerprint,
+            type,
+            campaignId,
+            adId,
+            siteId,
+            points,
+            claimed: false,
+          },
+        })
 
         // 3. Award Commission to Publisher
         if (publisher && publisher.wallet) {
           const publisherWallet = publisher.wallet.toLowerCase()
-          const commissionPoints = type === 'CLICK' ? 5 : 1 // Same as viewer for now
+          const commissionPoints = type === 'CLICK' ? 5 : 1
 
-          let pubViewer = await vPointsCollection.findOne({ wallet: publisherWallet })
+          let pubViewer = await prisma.viewerPoints.findFirst({ where: { wallet: publisherWallet } })
           if (!pubViewer) {
-            await vPointsCollection.insertOne({
-              _id: randomUUID(),
-              wallet: publisherWallet,
-              totalPoints: commissionPoints,
-              claimedPoints: 0,
-              pendingPoints: commissionPoints,
-              lastInteraction: nowTs,
-              createdAt: nowTs,
-              updatedAt: nowTs,
-            } as any)
+            pubViewer = await prisma.viewerPoints.create({
+              data: {
+                wallet: publisherWallet,
+                fingerprint: publisherWallet,
+                totalPoints: commissionPoints,
+                claimedPoints: 0,
+                pendingPoints: commissionPoints,
+                lastInteraction: nowTs,
+              },
+            })
           } else {
-            await vPointsCollection.updateOne(
-              { _id: pubViewer._id },
-              {
-                $inc: { totalPoints: commissionPoints, pendingPoints: commissionPoints },
-                $set: { lastInteraction: nowTs, updatedAt: nowTs }
-              }
-            )
+            await prisma.viewerPoints.update({
+              where: { id: pubViewer.id },
+              data: {
+                totalPoints: { increment: commissionPoints },
+                pendingPoints: { increment: commissionPoints },
+                lastInteraction: nowTs,
+              },
+            })
           }
 
           // Add reward record for publisher too
-          await viewerRewardsCollection.insertOne({
-            _id: randomUUID(),
-            viewerId: pubViewer ? pubViewer._id : 'pending_id', // Handle newly created above properly in real scenario if needed
-            wallet: publisherWallet,
-            type: `${type}_COMMISSION`,
-            campaignId,
-            adId,
-            siteId,
-            points: commissionPoints,
-            claimed: false,
-            timestamp: nowTs,
-          } as any)
+          await prisma.viewerReward.create({
+            data: {
+              viewerId: pubViewer.id,
+              wallet: publisherWallet,
+              type: `${type}_COMMISSION`,
+              campaignId,
+              adId,
+              siteId,
+              points: commissionPoints,
+              claimed: false,
+            },
+          })
         }
       } catch (error) {
         console.error('Error awarding viewer points:', error)
       }
     })()
 
-    return NextResponse.json({ success: true, eventId: eventDoc._id })
+    return NextResponse.json({ success: true, eventId: eventDoc.id })
   } catch (error) {
     console.error('Error in webhook track:', error)
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

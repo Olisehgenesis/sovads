@@ -1,0 +1,307 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+model Advertiser {
+  id                 String     @id @default(uuid())
+  wallet             String     @unique
+  name               String?
+  email              String?
+  company            String?
+  subscriptionPlan   String?
+  subscriptionActive Boolean    @default(false)
+  subscriptionDate   DateTime?
+  totalSpent         Float      @default(0)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  campaigns          Campaign[]
+
+  @@map("advertisers")
+}
+
+model Publisher {
+  id             String          @id @default(uuid())
+  wallet         String          @unique
+  domain         String
+  verified       Boolean         @default(false)
+  totalEarned    Float           @default(0)
+  totalTopup     Float?
+  totalWithdrawn Float?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  sites          PublisherSite[]
+  payouts        Payout[]
+  topups         Topup[]
+  exchanges      Exchange[]
+  withdrawals    Withdrawal[]
+
+  @@map("publishers")
+}
+
+model PublisherSite {
+  id          String    @id @default(uuid())
+  publisherId String
+  domain      String
+  host        String?
+  pathPrefix  String?
+  matchType   String?
+  siteId      String    @unique
+  apiKey      String
+  apiSecret   String
+  verified    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publisher   Publisher @relation(fields: [publisherId], references: [id])
+
+  @@map("publisher_sites")
+}
+
+model Campaign {
+  id                 String     @id @default(uuid())
+  advertiserId       String
+  name               String
+  description        String?
+  bannerUrl          String
+  targetUrl          String
+  budget             Float
+  spent              Float      @default(0)
+  cpc                Float      @default(0)
+  active             Boolean    @default(true)
+  tokenAddress       String?
+  onChainId          Int?
+  metadataURI        String?
+  mediaType          String     @default("image")
+  tags               String[]
+  targetLocations    String[]
+  metadata           Json?
+  verificationStatus String?
+  startDate          DateTime?
+  endDate            DateTime?
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+  advertiser         Advertiser @relation(fields: [advertiserId], references: [id])
+  events             Event[]
+
+  @@map("campaigns")
+}
+
+model Event {
+  id              String   @id @default(uuid())
+  type            String
+  campaignId      String
+  publisherId     String
+  siteId          String?
+  publisherSiteId String?
+  adId            String
+  ipAddress       String?
+  userAgent       String?
+  timestamp       DateTime @default(now())
+  fingerprint     String?
+  viewerWallet    String?
+  verified        Boolean  @default(false)
+  campaign        Campaign @relation(fields: [campaignId], references: [id])
+
+  @@map("events")
+}
+
+model AnalyticsHash {
+  id        String   @id @default(uuid())
+  date      DateTime
+  hash      String
+  createdAt DateTime @default(now())
+
+  @@map("analytics_hashes")
+}
+
+model Asset {
+  id          String   @id @default(uuid())
+  filename    String?
+  contentType String
+  dataBase64  String
+  createdAt   DateTime @default(now())
+
+  @@map("assets")
+}
+
+model Payout {
+  id              String    @id @default(uuid())
+  publisherId     String
+  publisherWallet String
+  amount          Float
+  proof           String
+  date            String
+  status          String
+  txHash          String?
+  error           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  publisher       Publisher @relation(fields: [publisherId], references: [id])
+
+  @@map("payouts")
+}
+
+model Topup {
+  id          String    @id @default(uuid())
+  publisherId String
+  wallet      String
+  amount      Float
+  token       String
+  tokenAddress String?
+  gsReceived  Float?
+  txHash      String?
+  status      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publisher   Publisher @relation(fields: [publisherId], references: [id])
+
+  @@map("topups")
+}
+
+model Exchange {
+  id          String    @id @default(uuid())
+  publisherId String
+  wallet      String
+  fromToken   String
+  fromAmount  Float
+  gsReceived  Float
+  tokenAddress String?
+  txHash      String?
+  status      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publisher   Publisher @relation(fields: [publisherId], references: [id])
+
+  @@map("exchanges")
+}
+
+model Withdrawal {
+  id          String    @id @default(uuid())
+  publisherId String
+  wallet      String
+  amount      Float
+  txHash      String?
+  status      String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  publisher   Publisher @relation(fields: [publisherId], references: [id])
+
+  @@map("withdrawals")
+}
+
+model SdkRequest {
+  id             String   @id @default(uuid())
+  type           String
+  endpoint       String
+  method         String
+  siteId         String?
+  domain         String?
+  pageUrl        String?
+  userAgent      String?
+  ipAddress      String?
+  fingerprint    String?
+  requestBody    Json?
+  responseStatus Int?
+  responseBody   Json?
+  error          String?
+  duration       Float?
+  timestamp      DateTime @default(now())
+
+  @@map("sdk_requests")
+}
+
+model SdkInteraction {
+  id          String   @id @default(uuid())
+  requestId   String?
+  type        String
+  adId        String?
+  campaignId  String?
+  siteId      String?
+  pageUrl     String?
+  elementType String?
+  metadata    Json?
+  timestamp   DateTime @default(now())
+
+  @@map("sdk_interactions")
+}
+
+model ApiRouteCall {
+  id           String   @id @default(uuid())
+  route        String
+  method       String
+  statusCode   Int
+  ipAddress    String?
+  userAgent    String?
+  requestBody  Json?
+  responseBody Json?
+  error        String?
+  duration     Float?
+  timestamp    DateTime @default(now())
+
+  @@map("api_route_calls")
+}
+
+model CallbackLog {
+  id          String   @id @default(uuid())
+  type        String
+  endpoint    String
+  payload     Json
+  ipAddress   String?
+  userAgent   String?
+  fingerprint String?
+  statusCode  Int?
+  error       String?
+  timestamp   DateTime @default(now())
+
+  @@map("callback_logs")
+}
+
+model ViewerPoints {
+  id               String         @id @default(uuid())
+  wallet           String?
+  fingerprint      String
+  totalPoints      Float          @default(0)
+  claimedPoints    Float          @default(0)
+  pendingPoints    Float          @default(0)
+  lastInteraction  DateTime       @default(now())
+  linkedDevices    String[]
+  lastWalletChange DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  rewards          ViewerReward[]
+
+  @@map("viewer_points")
+}
+
+model ViewerReward {
+  id          String       @id @default(uuid())
+  viewerId    String
+  wallet      String?
+  fingerprint String?
+  type        String
+  campaignId  String
+  adId        String
+  siteId      String
+  points      Float
+  claimed     Boolean      @default(false)
+  claimedAt   DateTime?
+  claimTxHash String?
+  timestamp   DateTime     @default(now())
+  viewer      ViewerPoints @relation(fields: [viewerId], references: [id])
+
+  @@map("viewer_rewards")
+}
+
+model PricingConfig {
+  id             String   @id @default(uuid())
+  impressionUsd  Float
+  tokenOverrides Json?
+  updatedAt      DateTime @updatedAt
+
+  @@map("pricing_config")
+}

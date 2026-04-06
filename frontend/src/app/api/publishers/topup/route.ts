@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { TREASURY_ADDRESS } from '@/lib/treasury-tokens'
 import { SUPPORTED_EXCHANGE_TOKENS } from '@/lib/treasury-tokens'
 
@@ -34,8 +33,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const publishersCollection = await collections.publishers()
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
@@ -44,34 +42,27 @@ export async function POST(request: NextRequest) {
     const gsPerUnit = tokenInfo.gsPerUnit ?? 10_000
     const gsReceived = amount * gsPerUnit
 
-    const topupsCollection = await collections.topups()
-    const now = new Date()
-    const topupDoc = {
-      _id: randomUUID(),
-      publisherId: publisher._id,
-      wallet,
-      amount,
-      token,
-      tokenAddress: tokenInfo.address,
-      gsReceived,
-      txHash: txHash || undefined,
-      status: 'approved' as const,
-      createdAt: now,
-      updatedAt: now
-    }
-    await topupsCollection.insertOne(topupDoc)
+    const topup = await prisma.topup.create({
+      data: {
+        publisherId: publisher.id,
+        wallet,
+        amount,
+        token,
+        tokenAddress: tokenInfo.address,
+        gsReceived,
+        txHash: txHash || undefined,
+        status: 'approved',
+      },
+    })
 
-    await publishersCollection.updateOne(
-      { _id: publisher._id },
-      {
-        $inc: { totalTopup: gsReceived },
-        $set: { updatedAt: now }
-      }
-    )
+    await prisma.publisher.update({
+      where: { id: publisher.id },
+      data: { totalTopup: { increment: gsReceived } },
+    })
 
     return NextResponse.json({
       success: true,
-      topupId: topupDoc._id,
+      topupId: topup.id,
       amount,
       token,
       gsReceived,

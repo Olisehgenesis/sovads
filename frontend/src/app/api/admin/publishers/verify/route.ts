@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { isWalletAdmin, verifyAdminSignature } from '@/lib/admin'
 
 export async function POST(request: NextRequest) {
@@ -15,15 +15,15 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid signature' }, { status: 403 })
         }
 
-        const publishersCollection = await collections.publishers()
-        const result = await publishersCollection.updateOne(
-            { _id: publisherId },
-            { $set: { verified: Boolean(verified), updatedAt: new Date() } }
-        )
-
-        if (result.matchedCount === 0) {
+        const existing = await prisma.publisher.findFirst({ where: { id: publisherId } })
+        if (!existing) {
             return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
         }
+
+        await prisma.publisher.update({
+            where: { id: publisherId },
+            data: { verified: Boolean(verified) },
+        })
 
         return NextResponse.json({ success: true }, { status: 200 })
     } catch (error) {

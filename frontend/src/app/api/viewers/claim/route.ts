@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { payoutG$, isSovadGsConfigured } from '@/lib/sovadgs'
 
 const corsHeaders = {
@@ -25,21 +25,13 @@ export async function POST(request: NextRequest) {
     const normalizedWallet = wallet?.toLowerCase()
     if (!isSovadGsConfigured) {
       console.warn('G$ payouts not configured, points will be marked as claimed in DB only')
-      // we'll still let the request continue; the client will see configured=false
     }
 
-    const viewerPointsCollection = await collections.viewerPoints()
-    const viewerRewardsCollection = await collections.viewerRewards()
-
-    // Find viewer
     let viewer = null
     if (normalizedWallet) {
-      viewer = await viewerPointsCollection.findOne({ wallet: normalizedWallet })
+      viewer = await prisma.viewerPoints.findFirst({ where: { wallet: normalizedWallet } })
     } else {
-      viewer = await viewerPointsCollection.findOne({
-        fingerprint,
-        $or: [{ wallet: null }, { wallet: { $exists: false } }] as any
-      })
+      viewer = await prisma.viewerPoints.findFirst({ where: { fingerprint, wallet: null } })
     }
 
     if (!viewer || viewer.pendingPoints === 0) {
@@ -51,7 +43,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Insufficient pending points' }, { status: 400, headers: corsHeaders })
     }
 
-    // Execute actual payout if wallet is connected and G$ payout is configured
     let txHash = null
     if (normalizedWallet && isSovadGsConfigured) {
       try {
@@ -67,25 +58,18 @@ export async function POST(request: NextRequest) {
 
     const now = new Date()
 
-    // Update viewer points
-    await viewerPointsCollection.updateOne(
-      { _id: viewer._id },
-      {
-        $inc: { pendingPoints: -claimAmount, claimedPoints: claimAmount },
-        $set: { updatedAt: now },
-      }
-    )
-
-    // Mark rewards as claimed
-    await viewerRewardsCollection.updateMany(
-      {
-        viewerId: viewer._id,
-        claimed: false,
+    await prisma.viewerPoints.update({
+      where: { id: viewer.id },
+      data: {
+        pendingPoints: { decrement: claimAmount },
+        claimedPoints: { increment: claimAmount },
       },
-      {
-        $set: { claimed: true, claimedAt: now, txHash },
-      }
-    )
+    })
+
+    await prisma.viewerReward.updateMany({
+      where: { viewerId: viewer.id, claimed: false },
+      data: { claimed: true, claimedAt: now, claimTxHash: txHash },
+    })
 
     return NextResponse.json({
       success: true,

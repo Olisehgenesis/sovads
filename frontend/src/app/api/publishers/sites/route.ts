@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { generateApiKeyServer, generateSecretServer } from '@/lib/crypto-server'
 import { verifyMessage } from 'viem'
 import { buildPublisherAuthMessage, isPublisherAuthTimestampValid } from '@/lib/publisher-auth'
@@ -51,7 +50,7 @@ const isPathOverlap = (left: string, right: string): boolean =>
   pathPrefixMatches(left, right) || pathPrefixMatches(right, left)
 
 const toSiteView = (site: any) => ({
-  id: site._id,
+  id: site.id,
   domain: site.domain,
   host: normalizeHost(String(site.host ?? site.domain ?? '')),
   pathPrefix: normalizePathPrefix(String(site.pathPrefix ?? '/')),
@@ -107,28 +106,16 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
     }
 
-    let publishersCollection, publisherSitesCollection
-    try {
-      publishersCollection = await collections.publishers()
-      publisherSitesCollection = await collections.publisherSites()
-    } catch (dbError) {
-      console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({
-        error: 'Database connection failed',
-        details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
-      }, { status: 500 })
-    }
-
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
-    const sites = await publisherSitesCollection
-      .find({ publisherId: publisher._id })
-      .sort({ createdAt: -1 })
-      .toArray()
+    const sites = await prisma.publisherSite.findMany({
+      where: { publisherId: publisher.id },
+      orderBy: { createdAt: 'desc' },
+    })
 
     return NextResponse.json({ sites: sites.map(toSiteView) })
   } catch (error) {
@@ -173,24 +160,12 @@ export async function POST(request: NextRequest) {
     const authError = await verifyPublisherRequest(request, wallet)
     if (authError) return authError
 
-    let publishersCollection, publisherSitesCollection
-    try {
-      publishersCollection = await collections.publishers()
-      publisherSitesCollection = await collections.publisherSites()
-    } catch (dbError) {
-      console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({
-        error: 'Database connection failed',
-        details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
-      }, { status: 500 })
-    }
-
     const [allSites, allPublishers] = await Promise.all([
-      publisherSitesCollection.find({}).toArray(),
-      publishersCollection.find({}).toArray(),
+      prisma.publisherSite.findMany(),
+      prisma.publisher.findMany(),
     ])
-    const publisherById = new Map(allPublishers.map((publisher) => [publisher._id, publisher] as const))
-    const existingPublisher = await publishersCollection.findOne({ wallet })
+    const publisherById = new Map(allPublishers.map((p) => [p.id, p] as const))
+    const existingPublisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     const overlappingSite = allSites.find((site) => {
       const siteHost = normalizeHost(String((site as { host?: string }).host ?? site.domain ?? ''))
@@ -198,7 +173,7 @@ export async function POST(request: NextRequest) {
       return siteHost === host && isPathOverlap(sitePathPrefix, pathPrefix)
     })
 
-    if (overlappingSite && overlappingSite.publisherId !== existingPublisher?._id) {
+    if (overlappingSite && overlappingSite.publisherId !== existingPublisher?.id) {
       const owner = publisherById.get(overlappingSite.publisherId)
       return NextResponse.json({
         error: 'Host/path already registered by another publisher',
@@ -214,42 +189,27 @@ export async function POST(request: NextRequest) {
     }
 
     if (!existingPublisher) {
-      const now = new Date()
-      const publisherId = randomUUID()
-      const newPublisher = {
-        _id: publisherId,
-        wallet,
-        domain: host,
-        verified: false,
-        totalEarned: 0,
-        createdAt: now,
-        updatedAt: now,
-        sites: [],
-      }
-      await publishersCollection.insertOne(newPublisher)
+      const newPublisher = await prisma.publisher.create({
+        data: { wallet, domain: host, verified: false, totalEarned: 0 },
+      })
 
       const apiKey = generateApiKeyServer()
       const apiSecret = generateSecretServer()
 
-      const siteId = randomUUID()
-      const newSite = {
-        _id: siteId,
-        publisherId,
-        domain: host,
-        host,
-        pathPrefix,
-        matchType: 'PREFIX' as const,
-        siteId: `site_${publisherId}_0`,
-        apiKey,
-        apiSecret,
-        verified: true,
-        createdAt: now,
-        updatedAt: now,
-      }
-      await Promise.all([
-        publisherSitesCollection.insertOne(newSite),
-        publishersCollection.updateOne({ _id: publisherId }, { $set: { verified: true } }),
-      ])
+      const newSite = await prisma.publisherSite.create({
+        data: {
+          publisherId: newPublisher.id,
+          domain: host,
+          host,
+          pathPrefix,
+          matchType: 'PREFIX',
+          siteId: `site_${newPublisher.id}_0`,
+          apiKey,
+          apiSecret,
+          verified: true,
+        },
+      })
+      await prisma.publisher.update({ where: { id: newPublisher.id }, data: { verified: true } })
 
       return NextResponse.json({
         success: true,
@@ -260,9 +220,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const sites = await publisherSitesCollection
-      .find({ publisherId: existingPublisher._id })
-      .toArray()
+    const sites = await prisma.publisherSite.findMany({ where: { publisherId: existingPublisher.id } })
 
     const existingSite = sites.find((site) => {
       const siteHost = normalizeHost(String((site as { host?: string }).host ?? site.domain ?? ''))
@@ -274,7 +232,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         error: 'Site already registered',
         site: {
-          id: existingSite._id,
+          id: existingSite.id,
           domain: existingSite.domain,
           host: normalizeHost(String((existingSite as { host?: string }).host ?? existingSite.domain ?? '')),
           pathPrefix: normalizePathPrefix(String((existingSite as { pathPrefix?: string }).pathPrefix ?? '/')),
@@ -288,24 +246,20 @@ export async function POST(request: NextRequest) {
     const apiSecret = generateSecretServer()
 
     const siteCount = sites.length
-    const newSite = {
-      _id: randomUUID(),
-      publisherId: existingPublisher._id,
-      domain: host,
-      host,
-      pathPrefix,
-      matchType: 'PREFIX' as const,
-      siteId: `site_${existingPublisher._id}_${siteCount}`,
-      apiKey,
-      apiSecret,
-      verified: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    }
-    await Promise.all([
-      publisherSitesCollection.insertOne(newSite),
-      publishersCollection.updateOne({ _id: existingPublisher._id }, { $set: { verified: true } }),
-    ])
+    const newSite = await prisma.publisherSite.create({
+      data: {
+        publisherId: existingPublisher.id,
+        domain: host,
+        host,
+        pathPrefix,
+        matchType: 'PREFIX',
+        siteId: `site_${existingPublisher.id}_${siteCount}`,
+        apiKey,
+        apiSecret,
+        verified: true,
+      },
+    })
+    await prisma.publisher.update({ where: { id: existingPublisher.id }, data: { verified: true } })
 
     return NextResponse.json({
       success: true,
@@ -337,27 +291,22 @@ export async function PATCH(request: NextRequest) {
     const authError = await verifyPublisherRequest(request, wallet)
     if (authError) return authError
 
-    const [publisherSitesCollection, publishersCollection] = await Promise.all([
-      collections.publisherSites(),
-      collections.publishers(),
-    ])
-
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
-    const site = await publisherSitesCollection.findOne({ _id: siteId, publisherId: publisher._id })
+    const site = await prisma.publisherSite.findFirst({ where: { id: siteId, publisherId: publisher.id } })
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 })
     }
 
     const apiKey = generateApiKeyServer()
     const apiSecret = generateSecretServer()
-    await publisherSitesCollection.updateOne(
-      { _id: siteId, publisherId: publisher._id },
-      { $set: { apiKey, apiSecret, updatedAt: new Date() } }
-    )
+    await prisma.publisherSite.update({
+      where: { id: siteId },
+      data: { apiKey, apiSecret },
+    })
 
     return NextResponse.json({
       success: true,
@@ -387,23 +336,18 @@ export async function DELETE(request: NextRequest) {
     const authError = await verifyPublisherRequest(request, wallet)
     if (authError) return authError
 
-    const [publisherSitesCollection, publishersCollection] = await Promise.all([
-      collections.publisherSites(),
-      collections.publishers(),
-    ])
-
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
-    const site = await publisherSitesCollection.findOne({ _id: siteId, publisherId: publisher._id })
+    const site = await prisma.publisherSite.findFirst({ where: { id: siteId, publisherId: publisher.id } })
 
     if (!site) {
       return NextResponse.json({ error: 'Site not found' }, { status: 404 })
     }
 
-    await publisherSitesCollection.deleteOne({ _id: siteId })
+    await prisma.publisherSite.delete({ where: { id: siteId } })
 
     return NextResponse.json({ success: true, message: 'Site removed successfully' })
   } catch (error) {

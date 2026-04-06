@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 
 /**
  * Publisher registration API
@@ -19,45 +18,32 @@ export async function POST(request: NextRequest) {
 
     let publishersCollection
     try {
-      publishersCollection = await collections.publishers()
+      publishersCollection = prisma.publisher
     } catch (dbError) {
-      console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({ 
-        error: 'Database connection failed',
-        details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
-      }, { status: 500 })
+      console.error('DB connection error:', dbError)
+      return NextResponse.json({ error: 'Database connection failed' }, { status: 500 })
     }
 
-    const existingPublisher = await publishersCollection.findOne({ wallet })
+    const existingPublisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (existingPublisher) {
-      return NextResponse.json({ 
-        success: true, 
-        id: existingPublisher._id,
-        siteId: `site_${existingPublisher._id}`,
+      return NextResponse.json({
+        success: true,
+        id: existingPublisher.id,
+        siteId: `site_${existingPublisher.id}`,
         domain: existingPublisher.domain,
-        verified: existingPublisher.verified 
+        verified: existingPublisher.verified
       })
     }
 
-    // Create new publisher in database
-    // NOTE: To register on-chain, call subscribePublisher from useAds hook
-    const now = new Date()
-    const publisher = {
-      _id: randomUUID(),
-      wallet,
-      domain,
-      verified: false,
-      totalEarned: 0,
-      createdAt: now,
-      updatedAt: now,
-    }
-    await publishersCollection.insertOne(publisher)
+    const publisher = await prisma.publisher.create({
+      data: { wallet, domain, verified: false, totalEarned: 0 },
+    })
 
-    return NextResponse.json({ 
+    return NextResponse.json({
       success: true,
-      id: publisher._id,
-      siteId: `site_${publisher._id}`,
+      id: publisher.id,
+      siteId: `site_${publisher.id}`,
       domain: publisher.domain,
       verified: false,
       note: 'Register on-chain using subscribePublisher from useAds hook'
@@ -81,25 +67,22 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Wallet address is required' }, { status: 400 })
     }
 
-    let publishersCollection
+    let publishersCollection2
     try {
-      publishersCollection = await collections.publishers()
+      publishersCollection2 = prisma.publisher
     } catch (dbError) {
-      console.error('MongoDB connection error:', dbError)
-      return NextResponse.json({ 
-        error: 'Database connection failed',
-        details: process.env.NODE_ENV === 'development' ? (dbError instanceof Error ? dbError.message : String(dbError)) : undefined
-      }, { status: 500 })
+      console.error('DB connection error:', dbError)
+      return NextResponse.json({ error: 'Database connection failed' }, { status: 500 })
     }
 
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
     return NextResponse.json({
-      id: publisher._id,
+      id: publisher.id,
       wallet: publisher.wallet,
       domain: publisher.domain,
       verified: publisher.verified,

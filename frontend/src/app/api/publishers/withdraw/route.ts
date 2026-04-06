@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { randomUUID } from 'crypto'
-import { collections } from '@/lib/db'
+import { prisma } from '@/lib/prisma'
 import { payoutG$, getTreasuryBalance, isSovadGsConfigured } from '@/lib/sovadgs'
 
 /**
@@ -26,34 +25,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const publishersCollection = await collections.publishers()
-    const publisher = await publishersCollection.findOne({ wallet })
+    const publisher = await prisma.publisher.findFirst({ where: { wallet } })
 
     if (!publisher) {
       return NextResponse.json({ error: 'Publisher not found' }, { status: 404 })
     }
 
     // Available = earnings + topups - withdrawn
-    const eventsCollection = await collections.events()
-    const campaignsCollection = await collections.campaigns()
     const startDate = new Date()
     startDate.setDate(startDate.getDate() - 365)
 
-    const events = await eventsCollection
-      .find({
-        publisherId: publisher._id,
+    const events = await prisma.event.findMany({
+      where: {
+        publisherId: publisher.id,
         type: 'CLICK',
-        timestamp: { $gte: startDate }
-      })
-      .toArray()
+        timestamp: { gte: startDate },
+      },
+      select: { campaignId: true },
+    })
 
     const campaignIds = [...new Set(events.map((e) => e.campaignId))]
-    const campaigns = await campaignsCollection
-      .find({ _id: { $in: campaignIds } })
-      .project({ cpc: 1 })
-      .toArray()
+    const campaigns = await prisma.campaign.findMany({
+      where: { id: { in: campaignIds } },
+      select: { id: true, cpc: true },
+    })
 
-    const cpcMap = new Map(campaigns.map((c) => [c._id, c.cpc ?? 0]))
+    const cpcMap = new Map(campaigns.map((c) => [c.id, c.cpc ?? 0]))
     const earnings = events.reduce(
       (sum, e) => sum + (cpcMap.get(e.campaignId) ?? 0),
       0
@@ -80,25 +77,21 @@ export async function POST(request: NextRequest) {
 
     const txHash = await payoutG$(wallet, amount)
 
-    const withdrawalsCol = await collections.withdrawals()
-    await withdrawalsCol.insertOne({
-      _id: randomUUID(),
-      publisherId: publisher._id,
-      wallet,
-      amount,
-      txHash,
-      status: 'completed',
-      createdAt: new Date(),
-      updatedAt: new Date()
-    })
-
-    await publishersCollection.updateOne(
-      { _id: publisher._id },
-      {
-        $inc: { totalWithdrawn: amount },
-        $set: { updatedAt: new Date() }
-      }
-    )
+    await prisma.$transaction([
+      prisma.withdrawal.create({
+        data: {
+          publisherId: publisher.id,
+          wallet,
+          amount,
+          txHash,
+          status: 'completed',
+        },
+      }),
+      prisma.publisher.update({
+        where: { id: publisher.id },
+        data: { totalWithdrawn: { increment: amount } },
+      }),
+    ])
 
     return NextResponse.json({
       success: true,
@@ -134,3 +127,8 @@ export async function GET() {
     })
   }
 }
+
+/**
+ * POST - Request G$ withdrawal (1 SovPoint = 1 G$)
+ * Body: { wallet, amount }
+ */
