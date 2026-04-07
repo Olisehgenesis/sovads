@@ -1,0 +1,9 @@
+Retrieving project…
+Deploying olisehgenesis-projects/sovads
+Uploading [--------------------] (0.0B/62B)
+Uploading [====================] (62.0B/62B)
+Inspect: https://vercel.com/olisehgenesis-projects/sovads/7TQeKA9GkjjVDhNfQ6uAA2p33Dqn [3s]
+Preview: https://sovads-9qh3z69yl-olisehgenesis-projects.vercel.app [3s]
+Building...
+Building...
+Error: Command "pnpm run build" exited with 1
