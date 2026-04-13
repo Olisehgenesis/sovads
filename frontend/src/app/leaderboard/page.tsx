@@ -6,6 +6,7 @@ import { useAccount } from 'wagmi'
 
 interface LeaderboardEntry {
     wallet: string
+    fullWallet: string | null
     points: number
     rank: number
 }
@@ -35,11 +36,15 @@ export default function LeaderboardPage() {
     const { address, isConnected } = useAccount()
     const [entries, setEntries] = useState<LeaderboardEntry[]>([])
     const [loading, setLoading] = useState(true)
+    const [myOutOfBoardRank, setMyOutOfBoardRank] = useState<{ rank: number; points: number } | null>(null)
 
     useEffect(() => {
         const fetchLeaderboard = async () => {
             try {
-                const response = await fetch('/api/viewers/leaderboard')
+                const url = address
+                    ? `/api/viewers/leaderboard?wallet=${address.toLowerCase()}`
+                    : '/api/viewers/leaderboard'
+                const response = await fetch(url)
                 if (response.ok) {
                     const data = await response.json()
                     // sort descending by points
@@ -49,6 +54,7 @@ export default function LeaderboardPage() {
                     // re-assign rank after sort
                     sorted.forEach((e, i) => { e.rank = i + 1 })
                     setEntries(sorted)
+                    setMyOutOfBoardRank(data.myRank || null)
                 } else {
                     setEntries([])
                 }
@@ -61,12 +67,16 @@ export default function LeaderboardPage() {
         fetchLeaderboard()
         const interval = setInterval(fetchLeaderboard, 30000)
         return () => clearInterval(interval)
-    }, [])
+    }, [address])
 
     const connectedWallet = address?.toLowerCase()
     const myEntry = connectedWallet
-        ? entries.find(e => e.wallet.toLowerCase() === connectedWallet)
+        ? entries.find(e => e.fullWallet?.toLowerCase() === connectedWallet)
         : null
+    // Effective rank/points — either from top-50 entry or from the out-of-board lookup
+    const myRankData = myEntry
+        ? { rank: myEntry.rank, points: myEntry.points }
+        : myOutOfBoardRank
 
     return (
         <div className="max-w-4xl mx-auto px-4 py-16">
@@ -74,31 +84,45 @@ export default function LeaderboardPage() {
             <div className="text-center mb-10">
                 <h1 className="brutal-title text-6xl">LEADERBOARD</h1>
                 <p className="text-sm font-bold uppercase tracking-widest text-black/60 mt-2">
-                    Top SovPoints Earners · {entries.length} participants
+                    Top SovPoints Earners · {entries.length} participants · points are redeemable 1:1 for G$
                 </p>
             </div>
 
             {/* Connected wallet banner */}
             {isConnected && (
-                <div className={`mb-6 p-5 border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${myEntry ? 'bg-yellow-50' : 'bg-white'}`}>
+                <div className={`mb-6 p-5 border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] ${myRankData ? 'bg-yellow-50' : 'bg-white'}`}>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                         <div className="flex items-center gap-3">
                             <span className="text-xs font-bold uppercase tracking-widest text-black/50">Your wallet</span>
                             <span className="font-mono text-sm font-bold">{shortWallet(address!)}</span>
                         </div>
-                        {myEntry ? (
+                        {myRankData ? (
                             <div className="flex items-center gap-4">
                                 <div className="text-left sm:text-right">
                                     <p className="text-xs font-bold uppercase text-black/50">Rank</p>
                                     <p className="font-heading text-2xl">
-                                        #{myEntry.rank} {rankEmoji(myEntry.rank)}
+                                        #{myRankData.rank} {rankEmoji(myRankData.rank)}
                                     </p>
                                 </div>
                                 <div className="w-px h-10 bg-black/20 hidden sm:block" />
                                 <div className="text-left sm:text-right">
                                     <p className="text-xs font-bold uppercase text-black/50">Points</p>
-                                    <p className="font-heading text-2xl">{myEntry.points.toLocaleString()}</p>
+                                    <p className="font-heading text-2xl">{myRankData.points.toLocaleString()}</p>
                                 </div>
+                                <div className="w-px h-10 bg-black/20 hidden sm:block" />
+                                <div className="text-left sm:text-right">
+                                    <p className="text-xs font-bold uppercase text-black/50 flex items-center gap-1">
+                                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                                      <img src="https://gooddollar.org/wp-content/uploads/2021/06/GD-Logo-Icon.svg" alt="G$" className="w-3 h-3" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+                                      Redeemable G$
+                                    </p>
+                                    <p className="font-heading text-2xl text-green-700">{myRankData.points.toLocaleString()} G$</p>
+                                </div>
+                                {!myEntry && (
+                                    <div className="text-left sm:text-right">
+                                        <p className="text-[10px] font-bold uppercase text-black/40 italic">outside top 50</p>
+                                    </div>
+                                )}
                             </div>
                         ) : (
                             <span className="text-xs font-bold uppercase text-black/40 italic">Not on the board yet — start earning!</span>
@@ -115,24 +139,31 @@ export default function LeaderboardPage() {
                             <th className="px-4 py-4 font-heading uppercase text-xs tracking-widest w-16">#</th>
                             <th className="px-4 py-4 font-heading uppercase text-xs tracking-widest">Wallet</th>
                             <th className="px-4 py-4 font-heading uppercase text-xs tracking-widest text-right">Points</th>
+                            <th className="px-4 py-4 font-heading uppercase text-xs tracking-widest text-right">
+                              <span className="flex items-center justify-end gap-1">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src="https://gooddollar.org/wp-content/uploads/2021/06/GD-Logo-Icon.svg" alt="G$" className="w-4 h-4" onError={(e) => { (e.target as HTMLImageElement).style.display='none' }} />
+                                Redeemable G$
+                              </span>
+                            </th>
                         </tr>
                     </thead>
                     <tbody>
                         {loading ? (
                             <tr>
-                                <td colSpan={3} className="px-6 py-12 text-center font-bold text-xs uppercase animate-pulse tracking-widest">
+                                <td colSpan={4} className="px-6 py-12 text-center font-bold text-xs uppercase animate-pulse tracking-widest">
                                     Scanning the chain...
                                 </td>
                             </tr>
                         ) : entries.length === 0 ? (
                             <tr>
-                                <td colSpan={3} className="px-6 py-12 text-center font-bold text-xs uppercase text-black/40">
+                                <td colSpan={4} className="px-6 py-12 text-center font-bold text-xs uppercase text-black/40">
                                     No entries yet
                                 </td>
                             </tr>
                         ) : (
                             entries.map((entry) => {
-                                const isMe = connectedWallet && entry.wallet.toLowerCase() === connectedWallet
+                                const isMe = connectedWallet && entry.fullWallet?.toLowerCase() === connectedWallet
                                 return (
                                     <tr
                                         key={`${entry.rank}-${entry.wallet}`}
@@ -166,6 +197,10 @@ export default function LeaderboardPage() {
                                             {entry.points.toLocaleString()}
                                             <span className="text-xs font-bold text-black/40 ml-1">pts</span>
                                         </td>
+                                        <td className="px-4 py-3 text-right font-heading text-base text-green-700">
+                                            {entry.points.toLocaleString()}
+                                            <span className="text-xs font-bold text-black/40 ml-1">G$</span>
+                                        </td>
                                     </tr>
                                 )
                             })
@@ -179,7 +214,7 @@ export default function LeaderboardPage() {
                 <div className="flex flex-col md:flex-row items-center justify-between gap-6">
                     <div>
                         <h3 className="text-2xl font-heading mb-1 uppercase text-white">
-                            {isConnected ? (myEntry ? `You're ranked #${myEntry.rank}` : 'Not on the board yet') : 'Connect to see your rank'}
+                            {isConnected ? (myRankData ? `You're ranked #${myRankData.rank}` : 'Not on the board yet') : 'Connect to see your rank'}
                         </h3>
                         <p className="text-xs uppercase font-bold opacity-60 text-white">
                             {isConnected ? 'Keep earning SovPoints to climb the ranks' : 'Connect your wallet to track your position'}

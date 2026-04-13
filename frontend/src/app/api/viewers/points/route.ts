@@ -44,13 +44,15 @@ export async function GET(request: NextRequest) {
       }, { headers: corsHeaders })
     }
 
+    const effectivePendingPoints = Math.max(viewer.pendingPoints, viewer.totalPoints - viewer.claimedPoints, 0)
+
     return NextResponse.json({
       id: viewer.id,
       wallet: viewer.wallet,
       fingerprint: viewer.fingerprint,
       totalPoints: viewer.totalPoints,
       claimedPoints: viewer.claimedPoints,
-      pendingPoints: viewer.pendingPoints,
+      pendingPoints: effectivePendingPoints,
       lastInteraction: viewer.lastInteraction,
     }, { headers: corsHeaders })
   } catch (error) {

@@ -20,6 +20,7 @@ interface AnalyticsStats {
   campaignCount: number
   publisherCount: number
   totalBudget: bigint
+  remainingBudget: bigint
   totalPublisherBudget: bigint
   totalStakerBudget: bigint
   activeAdminFlows: number
@@ -74,10 +75,12 @@ export default function AnalyticsPage() {
         const dbTotalBudget = Number(dbData.totalBudget ?? 0)
         const dbTotalPublisherBudget = Number(dbData.totalPublisherBudget ?? 0)
 
+        const dbRemainingBudget = Number(dbData.remainingBudget ?? (dbTotalBudget - Number(dbData.totalRevenue ?? 0)))
         const s: AnalyticsStats = {
           campaignCount: Number(dbData.campaignCount ?? dbData.totalAds ?? 0),
           publisherCount: Number(dbData.publisherCount ?? dbData.totalPublishers ?? 0),
           totalBudget: BigInt(Math.floor(dbTotalBudget * 1e18)),
+          remainingBudget: BigInt(Math.floor(dbRemainingBudget * 1e18)),
           totalPublisherBudget: BigInt(Math.floor(dbTotalPublisherBudget * 1e18)),
           totalStakerBudget: 0n,
           activeAdminFlows: 0,
@@ -99,6 +102,7 @@ export default function AnalyticsPage() {
             campaignCount: count,
             publisherCount: s.publisherCount,
             totalBudget: 0n,
+            remainingBudget: 0n,
             totalPublisherBudget: 0n,
             totalStakerBudget: 0n,
             activeAdminFlows: 0,
@@ -128,6 +132,7 @@ export default function AnalyticsPage() {
 
           s.campaignCount = fallback.campaignCount
           s.totalBudget = fallback.totalBudget > 0n ? fallback.totalBudget : s.totalBudget
+          s.remainingBudget = fallback.totalBudget > 0n ? fallback.totalBudget : s.remainingBudget
           s.totalPublisherBudget = fallback.totalPublisherBudget > 0n ? fallback.totalPublisherBudget : s.totalPublisherBudget
           // keep staker/flow values in fallback struct but not shown in UI
           s.totalStakerBudget = fallback.totalStakerBudget
@@ -152,6 +157,7 @@ export default function AnalyticsPage() {
           campaignCount: count,
           publisherCount: 0,
           totalBudget: 0n,
+          remainingBudget: 0n,
           totalPublisherBudget: 0n,
           totalStakerBudget: 0n,
           activeAdminFlows: 0,
@@ -275,8 +281,12 @@ export default function AnalyticsPage() {
             <p className="text-4xl font-heading">{stats.publisherCount}</p>
           </div>
           <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
-            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Total Budgets</p>
-            <p className="text-2xl font-heading break-all">{formatG(stats.totalBudget)}</p>
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Budget Remaining</p>
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://gooddollar.org/wp-content/uploads/2021/06/GD-Logo-Icon.svg" alt="G$" className="w-6 h-6 flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <p className="text-2xl font-heading break-all">{formatG(stats.remainingBudget)}</p>
+            </div>
           </div>
         </div>
 

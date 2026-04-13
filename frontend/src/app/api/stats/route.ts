@@ -8,7 +8,7 @@ export async function GET() {
   try {
     const [totalAds, totalPublishers, activeCampaigns, totalImpressions, totalClicks] = await Promise.all([
       prisma.campaign.count(),
-      prisma.publisher.count(),
+      prisma.publisherSite.count(),
       prisma.campaign.count({ where: { active: true } }),
       prisma.event.count({ where: { type: { equals: 'IMPRESSION', mode: 'insensitive' } } }),
       prisma.event.count({ where: { type: { equals: 'CLICK', mode: 'insensitive' } } }),
@@ -31,6 +31,7 @@ export async function GET() {
     })
     const totalRevenue = revenueResult._sum.spent ?? 0
     const totalBudget = revenueResult._sum.budget ?? 0
+    const remainingBudget = totalBudget - totalRevenue
     const totalPublisherBudget = totalRevenue
 
     return NextResponse.json({
@@ -46,6 +47,7 @@ export async function GET() {
       activeCampaigns,
       totalRevenue,
       totalBudget,
+      remainingBudget,
       totalPublisherBudget,
     })
   } catch (error) {

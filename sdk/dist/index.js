@@ -736,6 +736,7 @@ export class Banner {
         this.hasTrackedImpression = false;
         this.isRendering = false;
         this.refreshTimer = null;
+        this.lazyLoadObserver = null;
         this.lastAdId = null;
         this.retryCount = 0;
         this.maxRetries = 3;
@@ -1015,14 +1016,21 @@ export class Banner {
             this.render(consumerId);
             return;
         }
+        // Disconnect any previous observer before creating a new one
+        if (this.lazyLoadObserver) {
+            this.lazyLoadObserver.disconnect();
+            this.lazyLoadObserver = null;
+        }
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting && !this.isRendering) {
                     observer.disconnect();
+                    this.lazyLoadObserver = null;
                     this.render(consumerId);
                 }
             });
         }, { rootMargin: '50px' });
+        this.lazyLoadObserver = observer;
         observer.observe(container);
     }
     setupAutoRefresh(consumerId) {
@@ -1043,6 +1051,10 @@ export class Banner {
         if (this.refreshTimer) {
             clearInterval(this.refreshTimer);
             this.refreshTimer = null;
+        }
+        if (this.lazyLoadObserver) {
+            this.lazyLoadObserver.disconnect();
+            this.lazyLoadObserver = null;
         }
     }
 }
@@ -1568,6 +1580,7 @@ export class Sidebar {
         this.hasTrackedImpression = false;
         this.isRendering = false;
         this.refreshTimer = null;
+        this.lazyLoadObserver = null;
         this.lastAdId = null;
         this.retryCount = 0;
         this.maxRetries = 3;
@@ -1840,14 +1853,20 @@ export class Sidebar {
             this.render(consumerId);
             return;
         }
+        if (this.lazyLoadObserver) {
+            this.lazyLoadObserver.disconnect();
+            this.lazyLoadObserver = null;
+        }
         const observer = new IntersectionObserver((entries) => {
             entries.forEach((entry) => {
                 if (entry.isIntersecting && !this.isRendering) {
                     observer.disconnect();
+                    this.lazyLoadObserver = null;
                     this.render(consumerId);
                 }
             });
         }, { rootMargin: '50px' });
+        this.lazyLoadObserver = observer;
         observer.observe(container);
     }
     setupAutoRefresh(consumerId) {
@@ -1867,6 +1886,10 @@ export class Sidebar {
         if (this.refreshTimer) {
             clearInterval(this.refreshTimer);
             this.refreshTimer = null;
+        }
+        if (this.lazyLoadObserver) {
+            this.lazyLoadObserver.disconnect();
+            this.lazyLoadObserver = null;
         }
     }
 }

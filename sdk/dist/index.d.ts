@@ -128,6 +128,7 @@ export declare class Banner {
     private hasTrackedImpression;
     private isRendering;
     private refreshTimer;
+    private lazyLoadObserver;
     private lastAdId;
     private retryCount;
     private maxRetries;
@@ -175,6 +176,7 @@ export declare class Sidebar {
     private hasTrackedImpression;
     private isRendering;
     private refreshTimer;
+    private lazyLoadObserver;
     private lastAdId;
     private retryCount;
     private maxRetries;

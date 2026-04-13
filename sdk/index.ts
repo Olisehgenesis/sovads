@@ -906,6 +906,7 @@ export class Banner {
   private hasTrackedImpression: boolean = false
   private isRendering: boolean = false
   private refreshTimer: number | null = null
+  private lazyLoadObserver: IntersectionObserver | null = null
   private lastAdId: string | null = null
   private retryCount: number = 0
   private maxRetries: number = 3
@@ -1221,11 +1222,18 @@ export class Banner {
       return
     }
 
+    // Disconnect any previous observer before creating a new one
+    if (this.lazyLoadObserver) {
+      this.lazyLoadObserver.disconnect()
+      this.lazyLoadObserver = null
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !this.isRendering) {
             observer.disconnect()
+            this.lazyLoadObserver = null
             this.render(consumerId)
           }
         })
@@ -1233,6 +1241,7 @@ export class Banner {
       { rootMargin: '50px' }
     )
 
+    this.lazyLoadObserver = observer
     observer.observe(container)
   }
 
@@ -1256,6 +1265,10 @@ export class Banner {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
       this.refreshTimer = null
+    }
+    if (this.lazyLoadObserver) {
+      this.lazyLoadObserver.disconnect()
+      this.lazyLoadObserver = null
     }
   }
 }
@@ -1819,6 +1832,7 @@ export class Sidebar {
   private hasTrackedImpression: boolean = false
   private isRendering: boolean = false
   private refreshTimer: number | null = null
+  private lazyLoadObserver: IntersectionObserver | null = null
   private lastAdId: string | null = null
   private retryCount: number = 0
   private maxRetries: number = 3
@@ -2126,11 +2140,17 @@ export class Sidebar {
       return
     }
 
+    if (this.lazyLoadObserver) {
+      this.lazyLoadObserver.disconnect()
+      this.lazyLoadObserver = null
+    }
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting && !this.isRendering) {
             observer.disconnect()
+            this.lazyLoadObserver = null
             this.render(consumerId)
           }
         })
@@ -2138,6 +2158,7 @@ export class Sidebar {
       { rootMargin: '50px' }
     )
 
+    this.lazyLoadObserver = observer
     observer.observe(container)
   }
 
@@ -2160,6 +2181,10 @@ export class Sidebar {
     if (this.refreshTimer) {
       clearInterval(this.refreshTimer)
       this.refreshTimer = null
+    }
+    if (this.lazyLoadObserver) {
+      this.lazyLoadObserver.disconnect()
+      this.lazyLoadObserver = null
     }
   }
 }

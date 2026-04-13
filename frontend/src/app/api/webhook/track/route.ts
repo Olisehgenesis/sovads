@@ -301,6 +301,28 @@ export async function POST(request: NextRequest) {
               linkedDevices: fingerprint ? [fingerprint] : [],
             },
           })
+
+          // If a guest/fingerprint record already exists, merge it into the new wallet record.
+          if (explicitWallet && fingerprint) {
+            const anonRecord = await prisma.viewerPoints.findFirst({
+              where: { fingerprint: fingerprint as string, wallet: null },
+            })
+
+            if (anonRecord && anonRecord.id !== viewer.id) {
+              await prisma.viewerPoints.update({
+                where: { id: viewer.id },
+                data: {
+                  totalPoints: { increment: anonRecord.totalPoints },
+                  pendingPoints: { increment: anonRecord.pendingPoints },
+                  claimedPoints: { increment: anonRecord.claimedPoints },
+                  linkedDevices: {
+                    push: fingerprint,
+                  },
+                },
+              })
+              await prisma.viewerPoints.delete({ where: { id: anonRecord.id } })
+            }
+          }
         } else {
           const dataUpdate: any = {
             totalPoints: { increment: points },
