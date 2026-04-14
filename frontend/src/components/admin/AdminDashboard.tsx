@@ -78,7 +78,7 @@ const MetricCard = ({ label, value }: { label: string; value: string | number })
 export default function AdminDashboard() {
   const { address, isConnected } = useAccount()
   const { signMessageAsync } = useSignMessage()
-  const { pause, unpause, stopCampaign, isProtocolPaused, isLoading: contractBusy } = useStreamingAds()
+  const { pause, unpause, stopCampaign, isProtocolPaused, isLoading: contractBusy, addOperator, removeOperator, isOperator } = useStreamingAds()
   const { toggleCampaignPause, updateCampaignMetadata, extendCampaignDuration, isLoading: adsBusy } = useAds()
 
   const [activeTab, setActiveTab] = useState<'overview' | 'campaigns' | 'publishers' | 'advertisers' | 'settings' | 'audit'>('overview')
@@ -100,6 +100,11 @@ export default function AdminDashboard() {
   const [isActionBusy, setIsActionBusy] = useState(false)
 
   const [ticker, setTicker] = useState(0)
+
+  // Operator management
+  const [operatorInput, setOperatorInput] = useState('')
+  const [operatorStatus, setOperatorStatus] = useState<{ address: string; isOp: boolean } | null>(null)
+  const [operatorBusy, setOperatorBusy] = useState(false)
 
   const isAdmin = isWalletAdmin(address)
 
@@ -448,6 +453,59 @@ export default function AdminDashboard() {
     }
   }
 
+  const handleCheckOperator = async () => {
+    const addr = operatorInput.trim()
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      setStatusMessage({ type: 'error', text: 'Invalid address' })
+      return
+    }
+    try {
+      setOperatorBusy(true)
+      const result = await isOperator(addr)
+      setOperatorStatus({ address: addr, isOp: !!result })
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Check failed' })
+    } finally {
+      setOperatorBusy(false)
+    }
+  }
+
+  const handleAddOperator = async () => {
+    const addr = operatorInput.trim()
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      setStatusMessage({ type: 'error', text: 'Invalid address' })
+      return
+    }
+    try {
+      setOperatorBusy(true)
+      await addOperator(addr)
+      setStatusMessage({ type: 'success', text: `Operator ${addr.slice(0, 8)}... added` })
+      setOperatorStatus({ address: addr, isOp: true })
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Add operator failed' })
+    } finally {
+      setOperatorBusy(false)
+    }
+  }
+
+  const handleRemoveOperator = async () => {
+    const addr = operatorInput.trim()
+    if (!/^0x[a-fA-F0-9]{40}$/.test(addr)) {
+      setStatusMessage({ type: 'error', text: 'Invalid address' })
+      return
+    }
+    try {
+      setOperatorBusy(true)
+      await removeOperator(addr)
+      setStatusMessage({ type: 'success', text: `Operator ${addr.slice(0, 8)}... removed` })
+      setOperatorStatus({ address: addr, isOp: false })
+    } catch (err) {
+      setStatusMessage({ type: 'error', text: err instanceof Error ? err.message : 'Remove operator failed' })
+    } finally {
+      setOperatorBusy(false)
+    }
+  }
+
   const handleCampaignOverride = async () => {
     try {
       if (!selectedCampaignId) throw new Error('Select a campaign first')
@@ -728,6 +786,28 @@ export default function AdminDashboard() {
                 </div>
 
                 <button onClick={handlePricingSave} className="mt-4 bg-blue-700 text-white px-4 py-2 uppercase font-black text-xs">Save Settings</button>
+
+                <div className="mt-6 border-t border-[#e5e5e5] pt-4">
+                  <h3 className="text-lg font-black uppercase mb-3">Operator Management (Claim Signers)</h3>
+                  <p className="text-xs text-[#666] mb-3">Add or remove wallets authorized to sign claims via <code>claimWithSignature</code>. Only the contract owner can manage operators.</p>
+                  <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto_auto]">
+                    <input
+                      type="text"
+                      placeholder="0x... operator address"
+                      value={operatorInput}
+                      onChange={(e) => { setOperatorInput(e.target.value); setOperatorStatus(null) }}
+                      className="border border-[#e5e5e5] rounded px-3 py-2 w-full font-mono text-sm"
+                    />
+                    <button onClick={handleCheckOperator} disabled={operatorBusy} className="bg-gray-700 text-white px-4 py-2 text-xs font-black uppercase tracking-wider rounded whitespace-nowrap">Check</button>
+                    <button onClick={handleAddOperator} disabled={operatorBusy} className="bg-green-600 text-white px-4 py-2 text-xs font-black uppercase tracking-wider rounded whitespace-nowrap">Add</button>
+                    <button onClick={handleRemoveOperator} disabled={operatorBusy} className="bg-red-600 text-white px-4 py-2 text-xs font-black uppercase tracking-wider rounded whitespace-nowrap">Remove</button>
+                  </div>
+                  {operatorStatus && (
+                    <div className={`mt-2 text-xs font-black uppercase px-3 py-2 rounded ${operatorStatus.isOp ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                      {operatorStatus.address.slice(0, 10)}...{operatorStatus.address.slice(-8)} — {operatorStatus.isOp ? '✓ Active Operator' : '✗ Not an Operator'}
+                    </div>
+                  )}
+                </div>
               </section>
             )}
 

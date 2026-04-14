@@ -315,8 +315,14 @@ model ViewerCashout {
   amount      Float                     // SovPoints / G$ requested
   claimRef    String?  @unique          // on-chain bytes32 ref (keccak256)
   status      String   @default("pending") // pending | processing | completed | cancelled | failed
+  redeemed    Boolean  @default(false)  // true once user submitted the signed tx on-chain
+  redeemedAt  DateTime?                 // when the user redeemed on-chain
+  redeemTxHash String?                  // tx hash of the user's on-chain redemption
   initiateTxHash String?               // tx where initiateClaim was called
   distributeTxHash String?             // tx where claimDateClaim distributed tokens
+  signature   String?                   // EIP-712 signature for user-submitted claims
+  nonce       String?                   // nonce used in the signed claim
+  deadline    String?                   // deadline for the signed claim
   error       String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

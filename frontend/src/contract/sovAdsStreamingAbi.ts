@@ -21,6 +21,33 @@ export const sovAdsStreamingAbi = [
         "type": "error"
     },
     {
+        "inputs": [],
+        "name": "ECDSAInvalidSignature",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "length",
+                "type": "uint256"
+            }
+        ],
+        "name": "ECDSAInvalidSignatureLength",
+        "type": "error"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "s",
+                "type": "bytes32"
+            }
+        ],
+        "name": "ECDSAInvalidSignatureS",
+        "type": "error"
+    },
+    {
         "inputs": [
             {
                 "internalType": "address",
@@ -178,6 +205,74 @@ export const sovAdsStreamingAbi = [
         "anonymous": false,
         "inputs": [
             {
+                "indexed": true,
+                "internalType": "uint256",
+                "name": "campaignId",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "sender",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "CampaignTopUp",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "recipient",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "bytes32",
+                "name": "claimRef",
+                "type": "bytes32"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "deadline",
+                "type": "uint256"
+            },
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "signer",
+                "type": "address"
+            }
+        ],
+        "name": "ClaimWithSignature",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
                 "indexed": false,
                 "internalType": "uint64",
                 "name": "version",
@@ -185,6 +280,32 @@ export const sovAdsStreamingAbi = [
             }
         ],
         "name": "Initialized",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "operator",
+                "type": "address"
+            }
+        ],
+        "name": "OperatorAdded",
+        "type": "event"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "operator",
+                "type": "address"
+            }
+        ],
+        "name": "OperatorRemoved",
         "type": "event"
     },
     {
@@ -430,12 +551,38 @@ export const sovAdsStreamingAbi = [
     },
     {
         "inputs": [],
+        "name": "CLAIM_TYPEHASH",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
         "name": "DAILY_STREAM_BPS",
         "outputs": [
             {
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "DOMAIN_SEPARATOR",
+        "outputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
             }
         ],
         "stateMutability": "view",
@@ -489,6 +636,19 @@ export const sovAdsStreamingAbi = [
             }
         ],
         "name": "activateDailyStream",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_operator",
+                "type": "address"
+            }
+        ],
+        "name": "addOperator",
         "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
@@ -622,9 +782,67 @@ export const sovAdsStreamingAbi = [
                 "internalType": "contract ISuperfluidPool",
                 "name": "publisherPool",
                 "type": "address"
+            },
+            {
+                "internalType": "int96",
+                "name": "adminFlowRate",
+                "type": "int96"
+            },
+            {
+                "internalType": "int96",
+                "name": "publisherFlowRate",
+                "type": "int96"
+            },
+            {
+                "internalType": "int96",
+                "name": "stakerFlowRate",
+                "type": "int96"
+            },
+            {
+                "internalType": "uint256",
+                "name": "unspentBalance",
+                "type": "uint256"
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "recipient",
+                "type": "address"
+            },
+            {
+                "internalType": "uint256",
+                "name": "amount",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bytes32",
+                "name": "claimRef",
+                "type": "bytes32"
+            },
+            {
+                "internalType": "uint256",
+                "name": "nonce",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "deadline",
+                "type": "uint256"
+            },
+            {
+                "internalType": "bytes",
+                "name": "signature",
+                "type": "bytes"
+            }
+        ],
+        "name": "claimWithSignature",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -653,6 +871,19 @@ export const sovAdsStreamingAbi = [
                 "type": "uint256"
             }
         ],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "_campaignId",
+                "type": "uint256"
+            }
+        ],
+        "name": "finalizeCampaign",
+        "outputs": [],
         "stateMutability": "nonpayable",
         "type": "function"
     },
@@ -742,6 +973,26 @@ export const sovAdsStreamingAbi = [
                         "internalType": "contract ISuperfluidPool",
                         "name": "publisherPool",
                         "type": "address"
+                    },
+                    {
+                        "internalType": "int96",
+                        "name": "adminFlowRate",
+                        "type": "int96"
+                    },
+                    {
+                        "internalType": "int96",
+                        "name": "publisherFlowRate",
+                        "type": "int96"
+                    },
+                    {
+                        "internalType": "int96",
+                        "name": "stakerFlowRate",
+                        "type": "int96"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "unspentBalance",
+                        "type": "uint256"
                     }
                 ],
                 "internalType": "struct SovAdsStreaming.StreamingCampaign",
@@ -890,6 +1141,44 @@ export const sovAdsStreamingAbi = [
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "nonces",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "",
+                "type": "address"
+            }
+        ],
+        "name": "operators",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "owner",
         "outputs": [
@@ -957,6 +1246,19 @@ export const sovAdsStreamingAbi = [
             }
         ],
         "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "address",
+                "name": "_operator",
+                "type": "address"
+            }
+        ],
+        "name": "removeOperator",
+        "outputs": [],
+        "stateMutability": "nonpayable",
         "type": "function"
     },
     {
@@ -1087,6 +1389,37 @@ export const sovAdsStreamingAbi = [
         "type": "function"
     },
     {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "_campaignId",
+                "type": "uint256"
+            },
+            {
+                "internalType": "uint256",
+                "name": "_amount",
+                "type": "uint256"
+            }
+        ],
+        "name": "topUpCampaign",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "totalAdminFlowRate",
+        "outputs": [
+            {
+                "internalType": "int96",
+                "name": "",
+                "type": "int96"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
         "inputs": [],
         "name": "totalStaked",
         "outputs": [
@@ -1094,6 +1427,19 @@ export const sovAdsStreamingAbi = [
                 "internalType": "uint256",
                 "name": "",
                 "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "totalStakerFlowRate",
+        "outputs": [
+            {
+                "internalType": "int96",
+                "name": "",
+                "type": "int96"
             }
         ],
         "stateMutability": "view",
@@ -1178,6 +1524,25 @@ export const sovAdsStreamingAbi = [
         "name": "upgradeToAndCall",
         "outputs": [],
         "stateMutability": "payable",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "bytes32",
+                "name": "",
+                "type": "bytes32"
+            }
+        ],
+        "name": "usedClaimRef",
+        "outputs": [
+            {
+                "internalType": "bool",
+                "name": "",
+                "type": "bool"
+            }
+        ],
+        "stateMutability": "view",
         "type": "function"
     },
     {

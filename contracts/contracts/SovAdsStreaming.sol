@@ -5,6 +5,7 @@ import {ISuperToken, ISuperfluid} from "@superfluid-finance/ethereum-contracts/c
 import {SuperTokenV1Library} from "@superfluid-finance/ethereum-contracts/contracts/apps/SuperTokenV1Library.sol";
 import {ISuperfluidPool, PoolConfig} from "@superfluid-finance/ethereum-contracts/contracts/interfaces/superfluid/ISuperfluid.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {ReentrancyGuardUpgradeable} from "../utils/ReentrancyGuardUpgradeable.sol";
 
 // OpenZeppelin Upgradeable
@@ -61,6 +62,10 @@ contract SovAdsStreaming is
         bool adminStreamActive;
         bool stakerFlowActive;
         ISuperfluidPool publisherPool;
+        int96 adminFlowRate;
+        int96 publisherFlowRate;
+        int96 stakerFlowRate;
+        uint256 unspentBalance;
     }
 
     struct StakerInfo {
@@ -80,6 +85,10 @@ contract SovAdsStreaming is
     mapping(uint256 => StreamingCampaign) public campaigns;
     uint256 public campaignCount;
 
+    /// @notice Cumulative active flow rates
+    int96 public totalAdminFlowRate;
+    int96 public totalStakerFlowRate;
+
     /// @notice Staking state
     mapping(address => StakerInfo) public stakers;
     uint256 public totalStaked;
@@ -91,6 +100,13 @@ contract SovAdsStreaming is
 
     /// @notice Campaign publisher tracking (campaignId => publisher => units)
     mapping(uint256 => mapping(address => uint128)) public publisherUnits;
+
+    bytes32 public constant CLAIM_TYPEHASH =
+        keccak256("Claim(address recipient,uint256 amount,bytes32 claimRef,uint256 nonce,uint256 deadline)");
+    bytes32 public DOMAIN_SEPARATOR;
+    mapping(address => bool) public operators;
+    mapping(bytes32 => bool) public usedClaimRef;
+    mapping(address => uint256) public nonces;
 
     // ============ EVENTS ============
 
@@ -111,6 +127,10 @@ contract SovAdsStreaming is
     event Unstaked(address indexed staker, uint256 amount, uint128 newUnits);
     event UnusedFundsWithdrawn(uint256 indexed id, address indexed creator, uint256 amount);
     event StakerUnitsUpdated(address indexed staker, uint128 newUnits);
+    event CampaignTopUp(uint256 indexed campaignId, address indexed sender, uint256 amount);
+    event OperatorAdded(address indexed operator);
+    event OperatorRemoved(address indexed operator);
+    event ClaimWithSignature(address indexed recipient, uint256 amount, bytes32 indexed claimRef, uint256 nonce, uint256 deadline, address indexed signer);
 
     // ============ MODIFIERS ============
 
@@ -152,6 +172,16 @@ contract SovAdsStreaming is
         goodDollar = _goodDollar;
         admin = _admin;
 
+        DOMAIN_SEPARATOR = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256(bytes("SovAdsStreaming")),
+                keccak256(bytes("1")),
+                block.chainid,
+                address(this)
+            )
+        );
+
         // Create the global staker rewards pool
         // This pool receives 20% from each campaign and distributes proportionally to stakers
         stakerPool = _goodDollar.createPool(
@@ -164,6 +194,11 @@ contract SovAdsStreaming is
     }
 
     function _authorizeUpgrade(address newImplementation) internal override onlyOwner {}
+
+    function _toInt96(uint256 x) internal pure returns (int96) {
+        require(x <= uint256(uint96(type(int96).max)), "Flow rate overflow");
+        return int96(int256(x));
+    }
 
     // ============ CAMPAIGN FUNCTIONS ============
 
@@ -213,7 +248,11 @@ contract SovAdsStreaming is
             publisherFlowActive: false,
             adminStreamActive: false,
             stakerFlowActive: false,
-            publisherPool: publisherPool
+            publisherPool: publisherPool,
+            adminFlowRate: 0,
+            publisherFlowRate: 0,
+            stakerFlowRate: 0,
+            unspentBalance: dailyStreamBudget + publisherBudget + stakerBudget
         });
 
         emit CampaignCreated(campaignId, msg.sender, _amount, adminFee, publisherBudget, stakerBudget);
@@ -232,13 +271,133 @@ contract SovAdsStreaming is
         uint256 duration = campaign.endTime - block.timestamp;
         require(duration > 0, "Campaign expired");
 
-        int96 flowRate = int96(int256(campaign.dailyStreamBudget / duration));
+        int96 flowRate = _toInt96(campaign.dailyStreamBudget / duration);
         require(flowRate > 0, "Flow rate too small");
 
-        goodDollar.flow(admin, flowRate);
+        campaign.adminFlowRate = flowRate;
+        totalAdminFlowRate += flowRate;
+        goodDollar.flow(admin, totalAdminFlowRate);
 
         campaign.adminStreamActive = true;
         emit AdminStreamStarted(_campaignId, flowRate);
+    }
+
+    function topUpCampaign(uint256 _campaignId, uint256 _amount)
+        external
+        whenNotPaused
+        nonReentrant
+        campaignExists(_campaignId)
+    {
+        require(_amount > 0, "Amount must be > 0");
+
+        StreamingCampaign storage campaign = campaigns[_campaignId];
+        require(campaign.active, "Campaign not active");
+        require(
+            msg.sender == campaign.creator || msg.sender == admin || msg.sender == owner(),
+            "Not authorized"
+        );
+
+        uint256 remaining = campaign.endTime > block.timestamp
+            ? campaign.endTime - block.timestamp
+            : 0;
+        require(remaining > 0, "Campaign expired");
+
+        goodDollar.transferFrom(msg.sender, address(this), _amount);
+
+        uint256 adminFee = (_amount * ADMIN_FEE_BPS) / BPS_DENOMINATOR;
+        uint256 dailyStreamBudget = (_amount * DAILY_STREAM_BPS) / BPS_DENOMINATOR;
+        uint256 publisherBudget = (_amount * PUBLISHER_REWARDS_BPS) / BPS_DENOMINATOR;
+        uint256 stakerBudget = (_amount * STAKER_REWARDS_BPS) / BPS_DENOMINATOR;
+
+        if (adminFee > 0) {
+            goodDollar.transfer(admin, adminFee);
+        }
+
+        campaign.totalBudget += _amount;
+        campaign.adminFee += adminFee;
+        campaign.dailyStreamBudget += dailyStreamBudget;
+        campaign.publisherBudget += publisherBudget;
+        campaign.stakerBudget += stakerBudget;
+        campaign.unspentBalance += dailyStreamBudget + publisherBudget + stakerBudget;
+
+        if (campaign.adminStreamActive) {
+            int96 newAdminFlowRate = _toInt96(campaign.dailyStreamBudget / remaining);
+            require(newAdminFlowRate > 0, "Admin flow rate too small");
+            totalAdminFlowRate = totalAdminFlowRate - campaign.adminFlowRate + newAdminFlowRate;
+            campaign.adminFlowRate = newAdminFlowRate;
+            goodDollar.flow(admin, totalAdminFlowRate);
+        }
+
+        if (campaign.publisherFlowActive) {
+            int96 newPublisherFlowRate = _toInt96(campaign.publisherBudget / remaining);
+            require(newPublisherFlowRate > 0, "Publisher flow rate too small");
+            campaign.publisherFlowRate = newPublisherFlowRate;
+            goodDollar.distributeFlow(campaign.publisherPool, newPublisherFlowRate);
+        }
+
+        if (campaign.stakerFlowActive) {
+            int96 newStakerFlowRate = _toInt96(campaign.stakerBudget / remaining);
+            require(newStakerFlowRate > 0, "Staker flow rate too small");
+            totalStakerFlowRate = totalStakerFlowRate - campaign.stakerFlowRate + newStakerFlowRate;
+            campaign.stakerFlowRate = newStakerFlowRate;
+            goodDollar.distributeFlow(stakerPool, totalStakerFlowRate);
+        }
+
+        emit CampaignTopUp(_campaignId, msg.sender, _amount);
+    }
+
+    function claimWithSignature(
+        address recipient,
+        uint256 amount,
+        bytes32 claimRef,
+        uint256 nonce,
+        uint256 deadline,
+        bytes calldata signature
+    ) external whenNotPaused nonReentrant {
+        require(recipient != address(0), "Invalid recipient");
+        require(amount > 0, "Amount must be > 0");
+        require(block.timestamp <= deadline, "Claim expired");
+        require(!usedClaimRef[claimRef], "Claim already used");
+        require(nonce == nonces[recipient], "Invalid nonce");
+
+        bytes32 structHash = keccak256(
+            abi.encode(
+                CLAIM_TYPEHASH,
+                recipient,
+                amount,
+                claimRef,
+                nonce,
+                deadline
+            )
+        );
+        bytes32 digest = keccak256(
+            abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR, structHash)
+        );
+
+        address signer = ECDSA.recover(digest, signature);
+        require(operators[signer], "Invalid claim signer");
+
+        usedClaimRef[claimRef] = true;
+        nonces[recipient]++;
+
+        require(goodDollar.balanceOf(address(this)) >= amount, "Insufficient contract balance");
+        goodDollar.transfer(recipient, amount);
+
+        emit ClaimWithSignature(recipient, amount, claimRef, nonce, deadline, signer);
+    }
+
+    function addOperator(address _operator) external onlyOwner {
+        require(_operator != address(0), "Invalid operator");
+        require(!operators[_operator], "Operator already added");
+        operators[_operator] = true;
+        emit OperatorAdded(_operator);
+    }
+
+    function removeOperator(address _operator) external onlyOwner {
+        require(_operator != address(0), "Invalid operator");
+        require(operators[_operator], "Operator not found");
+        operators[_operator] = false;
+        emit OperatorRemoved(_operator);
     }
 
     function startPublisherFlow(uint256 _campaignId)
@@ -253,9 +412,10 @@ contract SovAdsStreaming is
         uint256 duration = campaign.endTime - block.timestamp;
         require(duration > 0, "Campaign expired");
 
-        int96 flowRate = int96(int256(campaign.publisherBudget / duration));
+        int96 flowRate = _toInt96(campaign.publisherBudget / duration);
         require(flowRate > 0, "Flow rate too small");
 
+        campaign.publisherFlowRate = flowRate;
         goodDollar.distributeFlow(campaign.publisherPool, flowRate);
 
         campaign.publisherFlowActive = true;
@@ -275,10 +435,12 @@ contract SovAdsStreaming is
         uint256 duration = campaign.endTime - block.timestamp;
         require(duration > 0, "Campaign expired");
 
-        int96 flowRate = int96(int256(campaign.stakerBudget / duration));
+        int96 flowRate = _toInt96(campaign.stakerBudget / duration);
         require(flowRate > 0, "Flow rate too small");
 
-        goodDollar.distributeFlow(stakerPool, flowRate);
+        campaign.stakerFlowRate = flowRate;
+        totalStakerFlowRate += flowRate;
+        goodDollar.distributeFlow(stakerPool, totalStakerFlowRate);
 
         campaign.stakerFlowActive = true;
         emit StakerFlowStarted(_campaignId, flowRate);
@@ -299,6 +461,33 @@ contract SovAdsStreaming is
         emit PublisherUnitsUpdated(_campaignId, _publisher, _units);
     }
 
+    function _deactivateCampaign(uint256 _campaignId) internal {
+        StreamingCampaign storage campaign = campaigns[_campaignId];
+
+        if (campaign.adminStreamActive) {
+            totalAdminFlowRate -= campaign.adminFlowRate;
+            campaign.adminFlowRate = 0;
+            goodDollar.flow(admin, totalAdminFlowRate);
+            campaign.adminStreamActive = false;
+        }
+
+        if (campaign.publisherFlowActive) {
+            campaign.publisherFlowRate = 0;
+            goodDollar.distributeFlow(campaign.publisherPool, 0);
+            campaign.publisherFlowActive = false;
+        }
+
+        if (campaign.stakerFlowActive) {
+            totalStakerFlowRate -= campaign.stakerFlowRate;
+            campaign.stakerFlowRate = 0;
+            goodDollar.distributeFlow(stakerPool, totalStakerFlowRate);
+            campaign.stakerFlowActive = false;
+        }
+
+        campaign.active = false;
+        emit CampaignStopped(_campaignId);
+    }
+
     function stopCampaign(uint256 _campaignId)
         external
         campaignExists(_campaignId)
@@ -309,24 +498,16 @@ contract SovAdsStreaming is
             msg.sender == campaign.creator || msg.sender == admin || msg.sender == owner(),
             "Not authorized"
         );
+        _deactivateCampaign(_campaignId);
+    }
 
-        if (campaign.adminStreamActive) {
-            goodDollar.flow(admin, 0); 
-            campaign.adminStreamActive = false;
-        }
-
-        if (campaign.publisherFlowActive) {
-            goodDollar.distributeFlow(campaign.publisherPool, 0);
-            campaign.publisherFlowActive = false;
-        }
-
-        if (campaign.stakerFlowActive) {
-            goodDollar.distributeFlow(stakerPool, 0);
-            campaign.stakerFlowActive = false;
-        }
-
-        campaign.active = false;
-        emit CampaignStopped(_campaignId);
+    function finalizeCampaign(uint256 _campaignId)
+        external
+        campaignExists(_campaignId)
+        campaignActive(_campaignId)
+    {
+        require(block.timestamp > campaigns[_campaignId].endTime, "Campaign not yet ended");
+        _deactivateCampaign(_campaignId);
     }
 
     function withdrawUnused(uint256 _campaignId)
@@ -340,21 +521,27 @@ contract SovAdsStreaming is
 
         if (campaign.active) {
             if (campaign.adminStreamActive) {
-                goodDollar.flow(admin, 0);
+                totalAdminFlowRate -= campaign.adminFlowRate;
+                campaign.adminFlowRate = 0;
+                goodDollar.flow(admin, totalAdminFlowRate);
                 campaign.adminStreamActive = false;
             }
             if (campaign.publisherFlowActive) {
+                campaign.publisherFlowRate = 0;
                 goodDollar.distributeFlow(campaign.publisherPool, 0);
                 campaign.publisherFlowActive = false;
             }
             if (campaign.stakerFlowActive) {
-                goodDollar.distributeFlow(stakerPool, 0);
+                totalStakerFlowRate -= campaign.stakerFlowRate;
+                campaign.stakerFlowRate = 0;
+                goodDollar.distributeFlow(stakerPool, totalStakerFlowRate);
                 campaign.stakerFlowActive = false;
             }
             campaign.active = false;
         }
 
-        uint256 remainingBalance = goodDollar.balanceOf(address(this)) - totalStaked;
+        uint256 remainingBalance = campaign.unspentBalance;
+        campaign.unspentBalance = 0;
         if (remainingBalance > 0) {
             goodDollar.transfer(campaign.creator, remainingBalance);
             emit UnusedFundsWithdrawn(_campaignId, campaign.creator, remainingBalance);
@@ -406,7 +593,7 @@ contract SovAdsStreaming is
     /**
      * @notice Unstake G$ tokens. Resets the time-multiplier for remaining stake.
      */
-    function unstake(uint256 _amount) external nonReentrant {
+    function unstake(uint256 _amount) external whenNotPaused nonReentrant {
         require(_amount > 0, "Amount must be > 0");
         require(stakers[msg.sender].stakedAmount >= _amount, "Insufficient staked balance");
 

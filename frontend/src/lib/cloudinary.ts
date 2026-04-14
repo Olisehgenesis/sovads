@@ -1,15 +1,18 @@
 import { v2 as cloudinary } from 'cloudinary'
 
-const isConfigured = Boolean(process.env.CLOUDINARY_URL)
+let _configured = false
 
-if (isConfigured) {
-  cloudinary.config({
-    secure: true,
-  })
-} else {
+function ensureConfigured() {
+  if (_configured) return true
+  if (process.env.CLOUDINARY_URL) {
+    cloudinary.config({ secure: true })
+    _configured = true
+    return true
+  }
   console.warn(
     '[Cloudinary] CLOUDINARY_URL is not set. Image uploads will fail until credentials are configured.'
   )
+  return false
 }
 
 export const cloudinaryClient = cloudinary
@@ -24,7 +27,7 @@ export async function uploadImageToCloudinary(
   mimeType?: string,
   options: UploadOptions = {}
 ) {
-  if (!isConfigured) {
+  if (!ensureConfigured()) {
     throw new Error('Cloudinary is not configured. Set CLOUDINARY_URL before uploading.')
   }
 
@@ -59,7 +62,7 @@ export async function uploadImageToCloudinary(
 }
 
 export async function deleteImageFromCloudinary(publicId: string, resourceType: 'image' | 'video' = 'image') {
-  if (!isConfigured) {
+  if (!ensureConfigured()) {
     throw new Error('Cloudinary is not configured. Set CLOUDINARY_URL before deleting assets.')
   }
 

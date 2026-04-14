@@ -137,6 +137,10 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.Address__factory>;
     getContractFactory(
+      name: "ECDSA",
+      signerOrOptions?: ethers.Signer | FactoryOptions
+    ): Promise<Contracts.ECDSA__factory>;
+    getContractFactory(
       name: "Errors",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.Errors__factory>;
@@ -213,17 +217,9 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.ISETHCustom__factory>;
     getContractFactory(
-      name: "SovAdsManager",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.SovAdsManager__factory>;
-    getContractFactory(
       name: "SovAdsStreaming",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.SovAdsStreaming__factory>;
-    getContractFactory(
-      name: "SovAdsToken",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.SovAdsToken__factory>;
     getContractFactory(
       name: "ReentrancyGuardUpgradeable",
       signerOrOptions?: ethers.Signer | FactoryOptions
@@ -385,6 +381,11 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.Address>;
     getContractAt(
+      name: "ECDSA",
+      address: string,
+      signer?: ethers.Signer
+    ): Promise<Contracts.ECDSA>;
+    getContractAt(
       name: "Errors",
       address: string,
       signer?: ethers.Signer
@@ -480,20 +481,10 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.ISETHCustom>;
     getContractAt(
-      name: "SovAdsManager",
-      address: string,
-      signer?: ethers.Signer
-    ): Promise<Contracts.SovAdsManager>;
-    getContractAt(
       name: "SovAdsStreaming",
       address: string,
       signer?: ethers.Signer
     ): Promise<Contracts.SovAdsStreaming>;
-    getContractAt(
-      name: "SovAdsToken",
-      address: string,
-      signer?: ethers.Signer
-    ): Promise<Contracts.SovAdsToken>;
     getContractAt(
       name: "ReentrancyGuardUpgradeable",
       address: string,

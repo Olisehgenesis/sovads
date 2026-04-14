@@ -68,6 +68,8 @@ export type { SafeERC20 } from "./@openzeppelin/contracts/token/ERC20/utils/Safe
 export { SafeERC20__factory } from "./factories/@openzeppelin/contracts/token/ERC20/utils/SafeERC20__factory";
 export type { Address } from "./@openzeppelin/contracts/utils/Address";
 export { Address__factory } from "./factories/@openzeppelin/contracts/utils/Address__factory";
+export type { ECDSA } from "./@openzeppelin/contracts/utils/cryptography/ECDSA";
+export { ECDSA__factory } from "./factories/@openzeppelin/contracts/utils/cryptography/ECDSA__factory";
 export type { Errors } from "./@openzeppelin/contracts/utils/Errors";
 export { Errors__factory } from "./factories/@openzeppelin/contracts/utils/Errors__factory";
 export type { ReentrancyGuard } from "./@openzeppelin/contracts/utils/ReentrancyGuard";
@@ -102,11 +104,7 @@ export type { ISETH } from "./@superfluid-finance/ethereum-contracts/contracts/i
 export { ISETH__factory } from "./factories/@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol/ISETH__factory";
 export type { ISETHCustom } from "./@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol/ISETHCustom";
 export { ISETHCustom__factory } from "./factories/@superfluid-finance/ethereum-contracts/contracts/interfaces/tokens/ISETH.sol/ISETHCustom__factory";
-export type { SovAdsManager } from "./contracts/SovAdsManager";
-export { SovAdsManager__factory } from "./factories/contracts/SovAdsManager__factory";
 export type { SovAdsStreaming } from "./contracts/SovAdsStreaming";
 export { SovAdsStreaming__factory } from "./factories/contracts/SovAdsStreaming__factory";
-export type { SovAdsToken } from "./contracts/SovAdsToken";
-export { SovAdsToken__factory } from "./factories/contracts/SovAdsToken__factory";
 export type { ReentrancyGuardUpgradeable } from "./utils/ReentrancyGuardUpgradeable";
 export { ReentrancyGuardUpgradeable__factory } from "./factories/utils/ReentrancyGuardUpgradeable__factory";

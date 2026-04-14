@@ -376,6 +376,50 @@ export const useStreamingAds = () => {
         }, 'stop campaign');
     }, [writeContract, publicClient, handleContractCall, address]);
 
+    const addOperator = useCallback(async (operatorAddress: string) => {
+        return handleContractCall(async () => {
+            if (!writeContract) throw new Error('Wallet not connected');
+            const hash = await writeContract({
+                address: address as `0x${string}`,
+                abi: sovAdsStreamingAbi,
+                functionName: 'addOperator',
+                chainId,
+                args: [operatorAddress as `0x${string}`],
+            });
+            if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+            return hash;
+        }, 'add operator');
+    }, [writeContract, publicClient, handleContractCall, address]);
+
+    const removeOperator = useCallback(async (operatorAddress: string) => {
+        return handleContractCall(async () => {
+            if (!writeContract) throw new Error('Wallet not connected');
+            const hash = await writeContract({
+                address: address as `0x${string}`,
+                abi: sovAdsStreamingAbi,
+                functionName: 'removeOperator',
+                chainId,
+                args: [operatorAddress as `0x${string}`],
+            });
+            if (publicClient) await publicClient.waitForTransactionReceipt({ hash });
+            return hash;
+        }, 'remove operator');
+    }, [writeContract, publicClient, handleContractCall, address]);
+
+    const isOperator = useCallback(async (operatorAddress: string): Promise<boolean> => {
+        if (!publicClient) return false;
+        try {
+            return await publicClient.readContract({
+                address: address as `0x${string}`,
+                abi: sovAdsStreamingAbi,
+                functionName: 'operators',
+                args: [operatorAddress as `0x${string}`],
+            }) as boolean;
+        } catch {
+            return false;
+        }
+    }, [publicClient, address]);
+
     return {
         campaignCount: campaignCount as bigint | undefined,
         totalStaked: totalStaked as bigint | undefined,
@@ -392,6 +436,9 @@ export const useStreamingAds = () => {
         stopCampaign,
         pause,
         unpause,
-        updatePublisherUnits
+        updatePublisherUnits,
+        addOperator,
+        removeOperator,
+        isOperator
     };
 };
