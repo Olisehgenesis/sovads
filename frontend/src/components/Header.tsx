@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAccount } from 'wagmi'
 import WalletButton from './WalletButton'
+import { useRefParam } from '@/hooks/useRefParam'
 
 type NavItem = {
   href: string
@@ -64,6 +65,7 @@ function MobileSection({
   isOpen,
   onToggle,
   onNavigate,
+  withRef = (h: string) => h,
 }: {
   label: string
   items: NavItem[]
@@ -71,6 +73,7 @@ function MobileSection({
   isOpen: boolean
   onToggle: () => void
   onNavigate: () => void
+  withRef?: (href: string) => string
 }) {
   const active = items.some((item) => matchesPath(pathname, item.href))
 
@@ -100,7 +103,7 @@ function MobileSection({
           {items.map((item) => (
             <Link
               key={item.href}
-              href={item.href}
+              href={withRef(item.href)}
               onClick={onNavigate}
               className={`block rounded-2xl px-4 py-3 text-sm font-semibold no-underline transition-all duration-200 ${matchesPath(pathname, item.href) ? 'bg-white text-[var(--text-primary)] shadow-[0_12px_30px_rgba(0,0,0,0.08)]' : 'text-[var(--text-secondary)] hover:bg-white/80 hover:text-[var(--text-primary)]'}`}
             >
@@ -116,6 +119,7 @@ function MobileSection({
 export default function Header() {
   const pathname = usePathname() ?? '/'
   const { address } = useAccount()
+  const { withRef } = useRefParam()
   const [isScrolled, setIsScrolled] = useState(false)
   const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -214,7 +218,7 @@ export default function Header() {
                       {dashboardItems.map((item) => (
                         <Link
                           key={item.href}
-                          href={item.href}
+                          href={withRef(item.href)}
                           className={dropdownLinkClass(matchesPath(pathname, item.href))}
                         >
                           <span>{item.label}</span>
@@ -227,7 +231,7 @@ export default function Header() {
                 {directNavItems.map((item) => (
                   <Link
                     key={item.href}
-                    href={item.href}
+                    href={withRef(item.href)}
                     className={navItemClass(matchesPath(pathname, item.href), isScrolled, true)}
                   >
                     {item.label}
@@ -260,7 +264,7 @@ export default function Header() {
                       {aboutItems.map((item) => (
                         <Link
                           key={item.href}
-                          href={item.href}
+                          href={withRef(item.href)}
                           className={dropdownLinkClass(matchesPath(pathname, item.href))}
                         >
                           <span>{item.label}</span>
@@ -319,12 +323,13 @@ export default function Header() {
                     isOpen={mobileSection === 'dashboard'}
                     onToggle={() => setMobileSection((current) => (current === 'dashboard' ? null : 'dashboard'))}
                     onNavigate={() => setMobileMenuOpen(false)}
+                    withRef={withRef}
                   />
 
                   {directNavItems.map((item) => (
                     <Link
                       key={item.href}
-                      href={item.href}
+                      href={withRef(item.href)}
                       onClick={() => setMobileMenuOpen(false)}
                       className={`block rounded-3xl px-4 py-4 text-sm font-black uppercase tracking-[0.18em] no-underline transition-all duration-200 ${matchesPath(pathname, item.href) ? 'bg-black text-white' : 'bg-black/[0.04] text-[var(--text-primary)] hover:bg-black/8'}`}
                     >
@@ -339,6 +344,7 @@ export default function Header() {
                     isOpen={mobileSection === 'about'}
                     onToggle={() => setMobileSection((current) => (current === 'about' ? null : 'about'))}
                     onNavigate={() => setMobileMenuOpen(false)}
+                    withRef={withRef}
                   />
                 </div>
               </div>

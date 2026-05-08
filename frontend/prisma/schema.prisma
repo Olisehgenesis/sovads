@@ -307,6 +307,22 @@ model PricingConfig {
   @@map("pricing_config")
 }
 
+// GoodDollar Engagement Rewards claims (bonus G$ from GoodDollar protocol)
+model EngagementRewardClaim {
+  id           String    @id @default(uuid())
+  wallet       String
+  fingerprint  String?
+  inviter      String?
+  txHash       String?
+  rewardAmount Float?
+  status       String    @default("pending") // pending | success | failed
+  error        String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@map("engagement_reward_claims")
+}
+
 // Viewer GS cashout requests (1 SovPoint = 1 G$)
 model ViewerCashout {
   id          String   @id @default(uuid())

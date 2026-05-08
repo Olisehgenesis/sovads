@@ -5,10 +5,12 @@ import { useAccount, useWalletClient } from 'wagmi'
 import Link from 'next/link'
 import WalletButton from '@/components/WalletButton'
 import { useStreamingAds } from '@/hooks/useStreamingAds'
-import { encodeFunctionData, parseUnits } from 'viem'
+import { useEngagementRewards } from '@/hooks/useEngagementRewards'
+import { useRefParam } from '@/hooks/useRefParam'
+import { encodeFunctionData, parseUnits, formatUnits } from 'viem'
 import { sovAdsStreamingAbi } from '@/contract/sovAdsStreamingAbi'
 
-const STREAMING_CONTRACT = process.env.NEXT_PUBLIC_SOVADS_STREAMING_ADDRESS || '0xFb76103FC70702413cEa55805089106D0626823f'
+const STREAMING_CONTRACT = (process.env.NEXT_PUBLIC_SOVADS_STREAMING_ADDRESS || '0xFb76103FC70702413cEa55805089106D0626823f').trim()
 
 interface ViewerPoints {
   id?: string
@@ -159,6 +161,39 @@ export default function RewardsPage() {
     }
   }, [address])
 
+  // Engagement Rewards (GoodDollar bonus)
+  const {
+    isEligible: engagementEligible,
+    isWhitelisted,
+    ineligibilityReason,
+    isClaiming: engagementClaiming,
+    lastClaimTx: engagementLastTx,
+    lastClaimDate: engagementLastDate,
+    cooldownDaysRemaining,
+    rewardAmount: engagementRewardAmount,
+    error: engagementError,
+    claimBonus,
+    refreshEligibility,
+    verifyOnGoodDollar,
+    isVerifying: engagementVerifying,
+  } = useEngagementRewards()
+
+  // Inviter: read from URL ?ref=<address> (persisted across navigation)
+  const { ref: inviterAddress } = useRefParam()
+
+  // Engagement claim result message
+  const [engagementMsg, setEngagementMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  const handleEngagementClaim = async () => {
+    setEngagementMsg(null)
+    const tx = await claimBonus(inviterAddress ?? undefined)
+    if (tx) {
+      setEngagementMsg({ type: 'success', text: `Bonus G$ claimed! TX: ${tx}` })
+    } else {
+      // error is surfaced via engagementError state
+    }
+  }
+
   // Check for active streaming rewards
   useEffect(() => {
     const checkFlow = async () => {
@@ -279,7 +314,7 @@ export default function RewardsPage() {
   const maxCashout = availablePoints
 
   return (
-    <div className="max-w-4xl mx-auto px-4 py-12">
+    <div className="max-w-5xl mx-auto px-4 py-12">
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-3xl font-heading uppercase tracking-tighter">My Rewards</h1>
         <Link href="/leaderboard" className="text-xs font-bold uppercase underline">Leaderboard →</Link>
@@ -300,194 +335,356 @@ export default function RewardsPage() {
           <p className="font-bold text-xs uppercase animate-pulse">Syncing with SovNodes...</p>
         </div>
       ) : points ? (
-        <div className="space-y-8">
-          {/* Flow Indicator */}
-          {isFlowing && (
-            <div className="bg-yellow-400 border-4 border-black p-4 flex items-center justify-between animate-pulse">
-              <div className="flex items-center gap-3">
-                <div className="w-4 h-4 bg-black rounded-full"></div>
-                <span className="font-black uppercase text-sm">Real-time G$ Rewards Flowing</span>
+        <div className="space-y-6">
+
+          {/* ── PROGRESS BAR ── */}
+          {(() => {
+            const bonusBlocked = isWhitelisted === false
+            const steps = [
+              { label: 'Connect Wallet', desc: 'Link your wallet to track & claim rewards', done: isConnected, cta: null, blocked: false },
+              { label: 'View Your First Ad', desc: 'Earn SovPoints by watching ads on SovAds sites', done: (points?.totalPoints ?? 0) > 0, cta: '/', blocked: false },
+              { label: `Earn ${MIN_CASHOUT} SovPoints`, desc: `You need at least ${MIN_CASHOUT} pts to redeem for G$`, done: (points?.totalPoints ?? 0) >= MIN_CASHOUT, cta: null, blocked: false },
+              { label: 'Redeem SovPoints for G$', desc: 'Exchange your SovPoints for real GoodDollar tokens', done: totalRedeemed > 0, cta: null, blocked: false },
+              { label: 'Claim GoodDollar Bonus', desc: bonusBlocked ? 'Requires GoodDollar identity verification' : 'Get a bonus G$ reward from the GoodDollar protocol', done: engagementLastDate !== null, cta: bonusBlocked ? null : null, blocked: bonusBlocked },
+            ]
+            const completedCount = steps.filter((s) => s.done).length
+            const pct = Math.round((completedCount / steps.length) * 100)
+            if (completedCount === steps.length) return null
+
+            return (
+              <div className="card p-5 border-4 border-black">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-heading uppercase tracking-widest">Your Rewards Journey</span>
+                  <span className="text-xs font-black">{completedCount}/{steps.length} complete</span>
+                </div>
+                <div className="w-full h-3 bg-black/10 border-2 border-black mb-4 overflow-hidden">
+                  <div className="h-full bg-yellow-400 border-r-2 border-black transition-all duration-500" style={{ width: `${pct}%` }} />
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-5 gap-2">
+                  {steps.map((step, i) => {
+                    const isNext = !step.done && !step.blocked && steps.slice(0, i).every((s) => s.done)
+                    const isBlocked = step.blocked && !step.done
+                    return (
+                      <div key={i} className={`flex sm:flex-col items-start sm:items-center gap-2 px-2 py-2 border-2 text-center transition-colors ${
+                        step.done
+                          ? 'border-green-400 bg-green-50'
+                          : isBlocked
+                          ? 'border-dashed border-black/20 bg-black/[0.03]'
+                          : isNext
+                          ? 'border-yellow-400 bg-yellow-50'
+                          : 'border-black/10'
+                      }`}>
+                        <div className={`w-6 h-6 flex items-center justify-center border-2 shrink-0 font-black text-xs ${
+                          step.done
+                            ? 'border-green-600 bg-green-500 text-white'
+                            : isBlocked
+                            ? 'border-black/10 bg-black/5 text-black/20'
+                            : isNext
+                            ? 'border-black bg-yellow-400'
+                            : 'border-black/20 text-black/30'
+                        }`}>
+                          {step.done ? '✓' : isBlocked ? '🔒' : i + 1}
+                        </div>
+                        <div className="flex flex-col items-center gap-0.5">
+                          <p className={`text-[10px] font-black uppercase leading-tight ${
+                            step.done ? 'line-through text-black/30' : isBlocked ? 'text-black/30' : isNext ? 'text-black' : 'text-black/30'
+                          }`}>{step.label}</p>
+                          {isBlocked && (
+                            <p className="text-[9px] font-bold text-black/40 leading-tight">Must be GoodDollar verified</p>
+                          )}
+                          {isBlocked && (
+                            <button
+                              onClick={() => verifyOnGoodDollar(typeof window !== 'undefined' ? window.location.origin + '/rewards' : undefined)}
+                              disabled={engagementVerifying || !isConnected}
+                              className="text-[9px] font-black uppercase underline text-orange-500 mt-0.5 disabled:opacity-50"
+                            >{engagementVerifying ? 'Signing...' : 'Verify →'}</button>
+                          )}
+                        </div>
+                        {isNext && step.cta && <Link href={step.cta} className="text-[9px] font-black uppercase underline">Go →</Link>}
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-              <Link href="/staking" className="text-xs font-black underline uppercase">Boost Flow</Link>
+            )
+          })()}
+
+          {/* ── FLOW BANNER ── */}
+          {isFlowing && (
+            <div className="bg-yellow-400 border-4 border-black p-3 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 bg-black rounded-full animate-pulse" />
+                <span className="font-black uppercase text-xs">Real-time G$ Rewards Flowing</span>
+              </div>
+              <Link href="/staking" className="text-[10px] font-black underline uppercase">Boost Flow</Link>
             </div>
           )}
 
-          {/* Points Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="card p-6">
-              <div className="text-3xl font-heading">{points.totalPoints.toLocaleString()}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest mt-2">Total Earned</div>
+          {/* ── ROW 1: STATS (3 cols) ── */}
+          <div className="grid grid-cols-3 gap-4">
+            <div className="card p-5">
+              <div className="text-2xl font-heading">{points.totalPoints.toLocaleString()}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mt-1 text-black/60">Total Earned</div>
             </div>
-            <div className="card p-6 border-4 border-black bg-black text-white">
-              <div className="text-3xl font-heading text-yellow-400 font-black">{availablePoints.toLocaleString()}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest mt-2 opacity-60">SovPoints to Redeem</div>
-              <div className="text-[10px] font-bold mt-1 opacity-40">Redeem for G$ · 1 pt = 1 G$</div>
+            <div className="card p-5 border-4 border-black bg-black text-white">
+              <div className="text-2xl font-heading text-yellow-400 font-black">{availablePoints.toLocaleString()}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mt-1 opacity-60">Available to Redeem</div>
+              <div className="text-[9px] font-bold mt-0.5 opacity-30">1 pt = 1 G$</div>
             </div>
-            <div className="card p-6 bg-green-50 border-green-400">
-              <div className="text-3xl font-heading text-green-700">{totalRedeemed.toLocaleString()}</div>
-              <div className="text-[10px] font-bold uppercase tracking-widest mt-2">Redeemed On-Chain</div>
-              <div className="text-[10px] font-bold mt-1 text-green-500">Confirmed G$ received</div>
+            <div className="card p-5 bg-green-50 border-green-400">
+              <div className="text-2xl font-heading text-green-700">{totalRedeemed.toLocaleString()}</div>
+              <div className="text-[10px] font-bold uppercase tracking-widest mt-1">Redeemed On-Chain</div>
+              <div className="text-[9px] font-bold mt-0.5 text-green-500">Confirmed G$ received</div>
             </div>
           </div>
 
-          {/* ── REDEEM BUTTON ── */}
-          <div className="card p-8 border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <h2 className="text-sm font-heading uppercase tracking-widest">Redeem Points for G$</h2>
-                <p className="text-[10px] font-bold uppercase text-black/50 mt-1">Exchange your SovPoints for GoodDollar (G$) on Celo</p>
+          {/* ── ROW 2: ACTIONS (2 cols) ── */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+            {/* Redeem Card */}
+            <div className="card p-6 border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] flex flex-col">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h2 className="text-sm font-heading uppercase tracking-widest">Redeem for G$</h2>
+                  <p className="text-[10px] font-bold uppercase text-black/50 mt-0.5">Exchange SovPoints for GoodDollar on Celo</p>
+                </div>
+                <span className="text-[10px] font-black uppercase bg-black text-white px-2 py-0.5 shrink-0">1:1</span>
               </div>
-              <span className="text-[10px] font-bold uppercase bg-black text-white px-2 py-1 shrink-0">1 pt = 1 G$</span>
+
+              <div className="flex items-center gap-2 mb-4 p-3 bg-black/5 border border-black/20">
+                <span className="text-[10px] font-bold uppercase text-black/50">Available:</span>
+                <span className="text-sm font-heading font-black">{maxCashout.toLocaleString()}</span>
+                <span className="text-[10px] font-bold uppercase text-black/40">SovPoints</span>
+              </div>
+
+              <button
+                onClick={() => { setShowRedeemModal(true); setMessage(null); setSignedTx(null) }}
+                disabled={!isConnected}
+                className="mt-auto w-full btn btn-primary py-3 text-xs font-black uppercase border-4 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-50"
+              >
+                {!isConnected ? 'Connect Wallet to Redeem' : 'Redeem SovPoints for G$'}
+              </button>
+
+              {maxCashout < MIN_CASHOUT && isConnected && (
+                <p className="text-[10px] font-bold uppercase text-black/40 mt-2 text-center">
+                  Need {MIN_CASHOUT} pts min. <Link href="/" className="underline">Earn more →</Link>
+                </p>
+              )}
             </div>
 
-            <p className="text-xs font-bold uppercase mb-4">
-              Available: <span className="bg-black text-white px-2 py-0.5">{maxCashout.toLocaleString()} SovPoints</span>
-              {maxCashout > 0 && <span className="text-black/40 ml-2 normal-case font-normal text-[10px]">→ redeemable as {maxCashout.toLocaleString()} G$</span>}
-            </p>
+            {/* GoodDollar Bonus Card */}
+            <div className={`card p-6 border-4 flex flex-col ${
+              engagementEligible
+                ? 'border-yellow-400 shadow-[6px_6px_0px_0px_rgba(234,179,8,1)] bg-yellow-50'
+                : 'border-black/20'
+            }`}>
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h2 className="text-sm font-heading uppercase tracking-widest">GoodDollar Bonus</h2>
+                    {engagementEligible && (
+                      <span className="text-[9px] font-black uppercase bg-yellow-400 border-2 border-black px-1.5 py-0.5 animate-pulse">Eligible!</span>
+                    )}
+                  </div>
+                  <p className="text-[10px] font-bold uppercase text-black/50 mt-0.5">Bonus G$ funded by GoodDollar protocol</p>
+                </div>
+                {engagementRewardAmount !== null && (
+                  <span className="text-xs font-black bg-black text-yellow-400 px-2 py-0.5 shrink-0">
+                    ~{Number(formatUnits(engagementRewardAmount, 18)).toFixed(0)} G$
+                  </span>
+                )}
+              </div>
 
-            <button
-              onClick={() => { setShowRedeemModal(true); setMessage(null); setSignedTx(null) }}
-              disabled={!isConnected}
-              className="w-full btn btn-primary py-4 text-sm font-black uppercase border-4 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all disabled:opacity-50"
-            >
-              {!isConnected ? 'Connect Wallet to Redeem' : 'Redeem SovPoints for G$'}
-            </button>
+              {/* Eligibility status */}
+              <div className={`p-3 border-2 mb-3 text-[10px] font-black uppercase ${
+                engagementEligible
+                  ? 'border-yellow-400 bg-yellow-100 text-yellow-800'
+                  : ineligibilityReason === 'not_whitelisted'
+                  ? 'border-orange-400 bg-orange-50 text-orange-800'
+                  : ineligibilityReason === 'cooldown'
+                  ? 'border-black/20 bg-black/5 text-black/50'
+                  : ineligibilityReason === 'app_limit'
+                  ? 'border-red-300 bg-red-50 text-red-700'
+                  : 'border-black/10 bg-black/5 text-black/40'
+              }`}>
+                {engagementEligible
+                  ? '✓ Ready to claim your GoodDollar bonus'
+                  : ineligibilityReason === 'not_whitelisted'
+                  ? '⚠ You need GoodDollar identity verification to claim'
+                  : ineligibilityReason === 'cooldown'
+                  ? `⏳ Cooldown: ${cooldownDaysRemaining} days remaining until next claim`
+                  : ineligibilityReason === 'app_limit'
+                  ? '↺ App reward limit reached this period — check back in 180 days'
+                  : isWhitelisted === null
+                  ? 'Checking eligibility...'
+                  : 'Connect wallet to check eligibility'}
+              </div>
 
-            {maxCashout < MIN_CASHOUT && isConnected && (
-              <p className="text-[10px] font-bold uppercase text-black/40 mt-3">
-                Min {MIN_CASHOUT} pts required. <Link href="/" className="underline">Earn more →</Link>
-              </p>
-            )}
+              {/* Info grid */}
+              <div className="grid grid-cols-2 gap-2 mb-4 text-[9px] font-bold uppercase">
+                <div className="border border-black/10 p-2">
+                  <div className="text-black/40">Distribution</div>
+                  <div className="mt-0.5">50% User+Inviter · 25% User</div>
+                </div>
+                <div className="border border-black/10 p-2">
+                  <div className="text-black/40">GD Verified</div>
+                  <div className={`mt-0.5 ${isWhitelisted === true ? 'text-green-700' : isWhitelisted === false ? 'text-orange-600' : 'text-black/40'}`}>
+                    {isWhitelisted === true ? '✓ Verified' : isWhitelisted === false ? '✗ Not verified' : '—'}
+                  </div>
+                </div>
+                <div className="border border-black/10 p-2">
+                  <div className="text-black/40">Cooldown</div>
+                  <div className="mt-0.5">
+                    {cooldownDaysRemaining && cooldownDaysRemaining > 0
+                      ? `${cooldownDaysRemaining}d left`
+                      : engagementLastDate
+                      ? `Last: ${engagementLastDate.toLocaleDateString()}`
+                      : 'No prior claim'}
+                  </div>
+                </div>
+                <div className="border border-black/10 p-2">
+                  <div className="text-black/40">Last Claim</div>
+                  <div className="mt-0.5 truncate">
+                    {engagementLastTx
+                      ? <a href={`https://celoscan.io/tx/${engagementLastTx}`} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">View tx ↗</a>
+                      : '—'}
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages */}
+              {(engagementMsg || (engagementError && !engagementMsg)) && (
+                <div className={`p-2 border-2 font-bold text-[10px] uppercase mb-3 ${
+                  engagementMsg?.type === 'success' ? 'border-green-400 bg-green-100 text-green-800' : 'border-red-300 bg-red-50 text-red-700'
+                }`}>
+                  {engagementMsg?.type === 'success'
+                    ? <span>{engagementMsg.text} {engagementLastTx && <a href={`https://celoscan.io/tx/${engagementLastTx}`} target="_blank" rel="noopener noreferrer" className="underline ml-1">View ↗</a>}</span>
+                    : <span>{engagementError || engagementMsg?.text}</span>}
+                </div>
+              )}
+
+              <div className="mt-auto flex gap-2">
+                {ineligibilityReason === 'not_whitelisted' ? (
+                  <button
+                    onClick={() => verifyOnGoodDollar(typeof window !== 'undefined' ? window.location.origin + '/rewards' : undefined)}
+                    disabled={engagementVerifying || !isConnected}
+                    className="flex-1 btn py-3 text-xs font-black uppercase border-4 border-orange-400 bg-orange-400 text-black hover:bg-orange-300 text-center disabled:opacity-50"
+                  >
+                    {engagementVerifying ? 'Sign 2 messages in wallet...' : 'Verify on GoodDollar →'}
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleEngagementClaim}
+                    disabled={!isConnected || !engagementEligible || engagementClaiming}
+                    className="flex-1 btn btn-primary py-3 text-xs font-black uppercase border-4 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    {engagementClaiming ? 'Claiming...' : engagementEligible ? 'Claim Bonus G$' : 'Not Eligible'}
+                  </button>
+                )}
+                {isConnected && address && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const url = `${window.location.origin}/rewards?ref=${address}`
+                      navigator.clipboard.writeText(url).then(() =>
+                        setEngagementMsg({ type: 'success', text: 'Invite link copied! Share to earn 25% bonus.' })
+                      )
+                    }}
+                    className="px-3 py-3 text-xs font-black uppercase border-4 border-black bg-white hover:bg-black hover:text-white transition-colors"
+                    title="Copy invite link"
+                  >
+                    Invite
+                  </button>
+                )}
+              </div>
+
+              {inviterAddress && (
+                <p className="text-[9px] font-bold uppercase text-black/30 mt-2">
+                  Ref: {inviterAddress.slice(0, 8)}…{inviterAddress.slice(-4)}
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* ── ROW 3: LINKS (3 cols) ── */}
+          <div className="grid grid-cols-3 gap-4">
+            <Link href="/staking" className="card p-4 border-dashed flex flex-col items-center justify-center gap-1 group hover:border-black hover:bg-black/5 transition-all text-center">
+              <div className="text-xs font-black uppercase group-hover:underline">Staking</div>
+              <div className="text-[9px] font-bold uppercase tracking-widest opacity-50">Stream G$ rewards</div>
+            </Link>
+            <Link href="/leaderboard" className="card p-4 border-dashed flex flex-col items-center justify-center gap-1 group hover:border-black hover:bg-black/5 transition-all text-center">
+              <div className="text-xs font-black uppercase group-hover:underline">Leaderboard</div>
+              <div className="text-[9px] font-bold uppercase tracking-widest opacity-50">See your rank</div>
+            </Link>
+            <Link href="/advertiser" className="card p-4 border-dashed flex flex-col items-center justify-center gap-1 group hover:border-black hover:bg-black/5 transition-all text-center">
+              <div className="text-xs font-black uppercase group-hover:underline">Run Ads</div>
+              <div className="text-[9px] font-bold uppercase tracking-widest opacity-50">Advertise on SovAds</div>
+            </Link>
           </div>
 
           {/* ── REDEEM MODAL ── */}
           {showRedeemModal && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-              {/* Backdrop */}
               <div className="absolute inset-0 bg-black/60" onClick={() => { if (!cashouting && !submittingTx) { setShowRedeemModal(false); setSignedTx(null) } }} />
-
-              {/* Modal */}
               <div className="relative bg-white border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] w-full max-w-lg max-h-[90vh] overflow-y-auto">
-                {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b-4 border-black">
                   <div>
                     <h2 className="text-sm font-heading uppercase tracking-widest">Redeem SovPoints</h2>
                     <p className="text-[10px] font-bold uppercase text-black/50 mt-1">1 SovPoint = 1 G$ on Celo</p>
                   </div>
-                  <button
-                    onClick={() => { if (!cashouting && !submittingTx) { setShowRedeemModal(false); setSignedTx(null) } }}
-                    className="w-8 h-8 flex items-center justify-center border-2 border-black font-black text-sm hover:bg-black hover:text-white transition-colors"
-                  >
-                    ✕
-                  </button>
+                  <button onClick={() => { if (!cashouting && !submittingTx) { setShowRedeemModal(false); setSignedTx(null) } }} className="w-8 h-8 flex items-center justify-center border-2 border-black font-black text-sm hover:bg-black hover:text-white transition-colors">✕</button>
                 </div>
-
                 <div className="p-6 space-y-5">
                   {!signedTx ? (
-                    /* ── Step 1: Enter amount & get signed claim ── */
                     <>
                       <div className="bg-black text-white p-4">
                         <div className="text-[10px] font-bold uppercase tracking-widest opacity-60">Available to Redeem</div>
                         <div className="text-2xl font-heading text-yellow-400 mt-1">{maxCashout.toLocaleString()} <span className="text-sm">SovPoints</span></div>
                       </div>
-
                       {maxCashout < MIN_CASHOUT ? (
                         <div className="space-y-3">
-                          <p className="text-xs font-bold uppercase text-black/50">
-                            You need at least {MIN_CASHOUT} SovPoints to redeem. You have {maxCashout.toLocaleString()} pts.
-                          </p>
+                          <p className="text-xs font-bold uppercase text-black/50">You need at least {MIN_CASHOUT} SovPoints. You have {maxCashout.toLocaleString()} pts.</p>
                           <Link href="/" className="btn btn-outline inline-block text-xs" onClick={() => setShowRedeemModal(false)}>Earn more by viewing ads →</Link>
                         </div>
                       ) : (
                         <>
                           <div className="flex gap-3 items-stretch">
-                            <div className="flex-1">
-                              <input
-                                type="number"
-                                min={MIN_CASHOUT}
-                                max={maxCashout}
-                                step="1"
-                                value={cashoutAmount}
-                                onChange={e => setCashoutAmount(e.target.value)}
-                                placeholder={`Min ${MIN_CASHOUT} G$`}
-                                className="w-full border-4 border-black px-4 py-3 font-heading text-lg focus:outline-none focus:ring-2 focus:ring-black"
-                              />
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setCashoutAmount(String(Math.floor(maxCashout)))}
-                              className="btn btn-outline px-4 text-xs font-bold uppercase"
-                            >
-                              MAX
-                            </button>
+                            <input type="number" min={MIN_CASHOUT} max={maxCashout} step="1" value={cashoutAmount} onChange={e => setCashoutAmount(e.target.value)} placeholder={`Min ${MIN_CASHOUT} G$`} className="flex-1 border-4 border-black px-4 py-3 font-heading text-lg focus:outline-none focus:ring-2 focus:ring-black" />
+                            <button type="button" onClick={() => setCashoutAmount(String(Math.floor(maxCashout)))} className="btn btn-outline px-4 text-xs font-bold uppercase">MAX</button>
                           </div>
-
                           {cashoutAmount && parseFloat(cashoutAmount) > 0 && (
-                            <p className="text-xs font-bold text-green-700 uppercase">
-                              {parseFloat(cashoutAmount).toLocaleString()} SovPoints → {parseFloat(cashoutAmount).toLocaleString()} G$ to your wallet
-                            </p>
+                            <p className="text-xs font-bold text-green-700 uppercase">{parseFloat(cashoutAmount).toLocaleString()} SovPoints → {parseFloat(cashoutAmount).toLocaleString()} G$</p>
                           )}
-
                           {message && (
-                            <div className={`p-3 border-2 border-black font-bold text-xs uppercase ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                              {message.text}
-                            </div>
+                            <div className={`p-3 border-2 border-black font-bold text-xs uppercase ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{message.text}</div>
                           )}
-
-                          <button
-                            onClick={cashoutGs}
-                            disabled={cashouting || !cashoutAmount || parseFloat(cashoutAmount) < MIN_CASHOUT}
-                            className="w-full btn btn-primary py-4 text-sm disabled:opacity-50 font-black uppercase"
-                          >
+                          <button onClick={cashoutGs} disabled={cashouting || !cashoutAmount || parseFloat(cashoutAmount) < MIN_CASHOUT} className="w-full btn btn-primary py-4 text-sm disabled:opacity-50 font-black uppercase">
                             {cashouting ? 'Signing Claim...' : `Redeem ${cashoutAmount ? parseFloat(cashoutAmount).toLocaleString() : '—'} pts → G$`}
                           </button>
-
-                          <p className="text-[10px] font-bold uppercase text-black/40">
-                            A signed transaction will be generated for you to submit from your wallet.
-                          </p>
+                          <p className="text-[10px] font-bold uppercase text-black/40">A signed transaction will be generated for you to submit from your wallet.</p>
                         </>
                       )}
                     </>
                   ) : (
-                    /* ── Step 2: Submit signed transaction on-chain ── */
                     <>
                       <div className="bg-green-100 border-2 border-green-600 p-4">
                         <div className="text-[10px] font-bold uppercase tracking-widest text-green-800">Claim Signed ✓</div>
                         <p className="text-xs font-bold text-green-700 mt-1 uppercase">Submit the transaction below to receive your G$ tokens.</p>
                       </div>
-
-                      {/* Transaction Details */}
                       <div className="bg-black/5 border-2 border-black p-4 font-mono text-[10px] space-y-1.5 overflow-x-auto">
                         <div><span className="font-bold">Contract:</span> {signedTx.to}</div>
-                        <div><span className="font-bold">Function:</span> {signedTx.functionName}</div>
                         <div><span className="font-bold">Recipient:</span> {signedTx.args.recipient}</div>
                         <div><span className="font-bold">Amount:</span> {signedTx.args.amount} (wei)</div>
-                        <div><span className="font-bold">Nonce:</span> {signedTx.args.nonce}</div>
                         <div><span className="font-bold">Deadline:</span> {new Date(Number(signedTx.args.deadline) * 1000).toLocaleString()}</div>
-                        <div><span className="font-bold">Operator:</span> {signedTx.operator}</div>
                         <div className="break-all"><span className="font-bold">Sig:</span> {signedTx.args.signature.slice(0, 20)}...{signedTx.args.signature.slice(-10)}</div>
                       </div>
-
                       {message && (
-                        <div className={`p-3 border-2 border-black font-bold text-xs uppercase ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                          {message.text}
-                        </div>
+                        <div className={`p-3 border-2 border-black font-bold text-xs uppercase ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>{message.text}</div>
                       )}
-
-                      <button
-                        onClick={submitSignedTx}
-                        disabled={submittingTx || !walletClient}
-                        className="w-full py-4 text-sm disabled:opacity-50 bg-yellow-400 border-4 border-black hover:bg-yellow-300 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all"
-                      >
-                        {submittingTx ? 'Submitting Transaction...' : 'Submit Transaction & Receive G$'}
+                      <button onClick={submitSignedTx} disabled={submittingTx || !walletClient} className="w-full py-4 text-sm disabled:opacity-50 bg-yellow-400 border-4 border-black hover:bg-yellow-300 font-black uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-1 hover:translate-y-1 transition-all">
+                        {submittingTx ? 'Submitting...' : 'Submit Transaction & Receive G$'}
                       </button>
-
-                      <button
-                        onClick={() => { setSignedTx(null); setMessage(null) }}
-                        className="w-full text-[10px] font-bold uppercase text-black/40 hover:text-black underline"
-                      >
-                        ← Back to amount
-                      </button>
+                      <button onClick={() => { setSignedTx(null); setMessage(null) }} className="w-full text-[10px] font-bold uppercase text-black/40 hover:text-black underline">← Back to amount</button>
                     </>
                   )}
                 </div>
@@ -497,77 +694,22 @@ export default function RewardsPage() {
 
           {/* ── CASHOUT HISTORY ── */}
           {cashouts.length > 0 && (
-            <div className="card p-6 border-2 border-black/20">
+            <div className="card p-5 border-2 border-black/20">
               <h3 className="text-xs font-heading uppercase tracking-widest mb-4">G$ Redemption History</h3>
               <div className="space-y-2">
                 {cashouts.map(c => (
-                  <div key={c.id} className="border-b border-black/10 pb-3">
-                    <div className="flex items-center justify-between text-xs font-mono">
-                      <div className="flex items-center gap-3">
-                        <span className={`px-2 py-0.5 font-bold uppercase text-[10px] ${statusColor(c.status)}`}>
-                          {c.status}
-                        </span>
-                        {c.redeemed && (
-                          <span className="px-2 py-0.5 font-bold uppercase text-[10px] text-blue-700 bg-blue-100">
-                            Redeemed
-                          </span>
-                        )}
-                        <span className="font-bold">{c.amount.toLocaleString()} G$</span>
-                      </div>
-                      <div className="flex items-center gap-3 text-black/40">
-                        {c.redeemTxHash && (
-                          <a
-                            href={`https://celoscan.io/tx/${c.redeemTxHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline text-blue-600"
-                          >
-                            redeem tx ↗
-                          </a>
-                        )}
-                        {(c.distributeTxHash || c.initiateTxHash) && !c.redeemTxHash && (
-                          <a
-                            href={`https://celoscan.io/tx/${c.distributeTxHash || c.initiateTxHash}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            tx ↗
-                          </a>
-                        )}
-                        <span>{new Date(c.createdAt).toLocaleDateString()}</span>
-                      </div>
+                  <div key={c.id} className="flex items-center justify-between border-b border-black/10 pb-2 text-xs font-mono">
+                    <div className="flex items-center gap-2">
+                      <span className={`px-2 py-0.5 font-bold uppercase text-[10px] ${statusColor(c.status)}`}>{c.status}</span>
+                      {c.redeemed && <span className="px-2 py-0.5 font-bold uppercase text-[10px] text-blue-700 bg-blue-100">Redeemed</span>}
+                      <span className="font-bold">{c.amount.toLocaleString()} G$</span>
                     </div>
-                    {c.redeemedAt && (
-                      <div className="text-[10px] font-bold text-blue-600 mt-1">
-                        Redeemed on {new Date(c.redeemedAt).toLocaleString()}
-                      </div>
-                    )}
+                    <div className="flex items-center gap-2 text-black/40">
+                      {c.redeemTxHash && <a href={`https://celoscan.io/tx/${c.redeemTxHash}`} target="_blank" rel="noopener noreferrer" className="underline text-blue-600">tx ↗</a>}
+                      <span>{new Date(c.createdAt).toLocaleDateString()}</span>
+                    </div>
                     {c.signature && !c.redeemed && c.status === 'signed' && (
-                      <div className="mt-2">
-                        <button
-                          onClick={() => {
-                            setSignedTx({
-                              to: STREAMING_CONTRACT,
-                              functionName: 'claimWithSignature',
-                              args: {
-                                recipient: address || '',
-                                amount: parseUnits(c.amount.toFixed(18), 18).toString(),
-                                claimRef: c.claimRef || '',
-                                nonce: c.nonce || '0',
-                                deadline: c.deadline || '0',
-                                signature: c.signature || '',
-                              },
-                              operator: '',
-                            })
-                            setPendingCashoutId(c.id)
-                            setShowRedeemModal(true)
-                          }}
-                          className="text-[10px] font-bold uppercase underline text-yellow-700 hover:text-yellow-900"
-                        >
-                          Submit pending transaction →
-                        </button>
-                      </div>
+                      <button onClick={() => { setSignedTx({ to: STREAMING_CONTRACT, functionName: 'claimWithSignature', args: { recipient: address || '', amount: parseUnits(c.amount.toFixed(18), 18).toString(), claimRef: c.claimRef || '', nonce: c.nonce || '0', deadline: c.deadline || '0', signature: c.signature || '' }, operator: '' }); setPendingCashoutId(c.id); setShowRedeemModal(true) }} className="text-[10px] font-bold uppercase underline text-yellow-700">Submit →</button>
                     )}
                   </div>
                 ))}
@@ -575,42 +717,29 @@ export default function RewardsPage() {
             </div>
           )}
 
-          {/* Staking / streaming */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="card p-6 border-dashed">
-              <Link href="/staking" className="h-full flex flex-col justify-center items-center gap-2 group">
-                <div className="text-sm font-black uppercase group-hover:underline">Staking Dashboard</div>
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-60">Earn streaming G$ rewards →</div>
-              </Link>
-            </div>
-            <div className="card p-6 border-dashed">
-              <Link href="/leaderboard" className="h-full flex flex-col justify-center items-center gap-2 group">
-                <div className="text-sm font-black uppercase group-hover:underline">Leaderboard</div>
-                <div className="text-[10px] font-bold uppercase tracking-widest opacity-60">See your rank →</div>
-              </Link>
-            </div>
-          </div>
-
-          {/* How It Works */}
-          <div className="card p-8 bg-white border-dashed">
-            <h2 className="text-sm font-heading mb-6 uppercase tracking-widest">How It Works</h2>
-            <div className="space-y-5">
+          {/* ── HOW IT WORKS ── */}
+          <div className="card p-6 bg-white border-dashed">
+            <h2 className="text-xs font-heading mb-4 uppercase tracking-widest">How It Works</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {[
-                { n: 1, title: 'View Ads', desc: 'Earn 1 SovPoint per impression. Points live in our database — not on-chain.' },
-                { n: 2, title: 'Click Ads', desc: 'Earn 5 SovPoints per click. Points are not tokens.' },
-                { n: 3, title: 'Redeem for G$', desc: 'Exchange your SovPoints for G$ (GoodDollar) — a real token on Celo. 1 pt = 1 G$. Min 10 pts per redemption.' },
-                { n: 4, title: 'Stake G$', desc: 'Put your G$ tokens to work for streaming rewards and a higher leaderboard rank' },
+                { n: 1, title: 'View Ads', desc: 'Earn 1 SovPoint per verified impression.' },
+                { n: 2, title: 'Click Ads', desc: 'Earn 5 SovPoints per click.' },
+                { n: 3, title: 'Redeem for G$', desc: 'Swap SovPoints for G$ · 1:1 · Min 10.' },
+                { n: 4, title: 'GoodDollar Bonus', desc: 'Claim bonus G$ from the protocol every 180 days.' },
+                { n: 5, title: 'Invite Friends', desc: 'Earn 25% of their bonus when they claim via your link.' },
+                { n: 6, title: 'Stake G$', desc: 'Stake G$ for streaming rewards & higher rank.' },
               ].map(({ n, title, desc }) => (
-                <div key={n} className="flex items-start gap-4">
-                  <span className="bg-black text-white w-6 h-6 flex items-center justify-center font-heading text-xs shrink-0">{n}</span>
-                  <div>
-                    <p className="font-heading text-sm uppercase">{title}</p>
-                    <p className="text-[10px] font-bold uppercase text-black/60">{desc}</p>
+                <div key={n} className="border-2 border-black/10 p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="bg-black text-white w-5 h-5 flex items-center justify-center font-heading text-[10px] shrink-0">{n}</span>
+                    <p className="font-heading text-xs uppercase">{title}</p>
                   </div>
+                  <p className="text-[9px] font-bold uppercase text-black/50 leading-relaxed">{desc}</p>
                 </div>
               ))}
             </div>
           </div>
+
         </div>
       ) : (
         <div className="card p-12 text-center">
