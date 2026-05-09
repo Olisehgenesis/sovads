@@ -3,6 +3,24 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* ── Opera Mini / no-CSS-variable fallback ─────────────────────────────────
+   Opera Mini and other proxy browsers don't support CSS custom properties.
+   These rules use plain values so the page is at minimum readable.
+   postcss-custom-properties will also inject static fallbacks inline in the
+   compiled output for every utility class that references a var().
+   ────────────────────────────────────────────────────────────────────────── */
+@media not all and (min-resolution: 0.001dpcm) {
+  /* No-op: the real fallbacks are postcss-custom-properties inline values */
+}
+
+body {
+  background-color: #F5F3F0; /* var(--background) */
+  color: #141414;             /* var(--foreground) */
+}
+
+a { color: #000000; }
+button { background-color: #000000; color: #ffffff; }
+
 /* Neubrutalist Theme: light cream background, black accents, thick borders, hard shadows */
 :root {
   /* Base colors */
