@@ -6,12 +6,16 @@ import { prisma } from '@/lib/prisma'
  */
 export async function GET() {
   try {
-    const [totalAds, totalPublishers, activeCampaigns, totalImpressions, totalClicks] = await Promise.all([
+    const [totalAds, totalPublishers, activeCampaigns, totalImpressions, totalClicks, gsRedeemedResult] = await Promise.all([
       prisma.campaign.count(),
       prisma.publisherSite.count(),
       prisma.campaign.count({ where: { active: true } }),
       prisma.event.count({ where: { type: { equals: 'IMPRESSION', mode: 'insensitive' } } }),
       prisma.event.count({ where: { type: { equals: 'CLICK', mode: 'insensitive' } } }),
+      prisma.viewerCashout.aggregate({
+        _sum: { amount: true },
+        where: { status: 'completed' },
+      }),
     ])
 
     const totalEvents = totalImpressions + totalClicks
@@ -33,6 +37,7 @@ export async function GET() {
     const totalBudget = revenueResult._sum.budget ?? 0
     const remainingBudget = totalBudget - totalRevenue
     const totalPublisherBudget = totalRevenue
+    const totalGsRedeemed = gsRedeemedResult._sum.amount ?? 0
 
     return NextResponse.json({
       campaignCount: totalAds,
@@ -49,6 +54,7 @@ export async function GET() {
       totalBudget,
       remainingBudget,
       totalPublisherBudget,
+      totalGsRedeemed,
     })
   } catch (error) {
     console.error('Error fetching stats:', error)

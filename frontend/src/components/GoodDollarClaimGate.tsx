@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { useAccount, useChainId, usePublicClient, useWriteContract } from 'wagmi'
-import { formatUnits, zeroAddress } from 'viem'
+import { useAccount, useChainId, useWriteContract } from 'wagmi'
+import { createPublicClient, formatUnits, http, zeroAddress } from 'viem'
+import { celo } from 'viem/chains'
 import {
   CELO_MAINNET_CHAIN_ID,
   GOODDOLLAR_ADDRESS,
@@ -79,6 +80,14 @@ function formatBalanceForDisplay(amount: bigint | null, decimals: number): strin
   return formatUnits(amount, decimals)
 }
 
+const celoPublicClient = createPublicClient({
+  chain: celo,
+  transport: http(
+    (process.env.NEXT_PUBLIC_CELO_MAINNET_RPC_URL || 'https://forno.celo.org').trim()
+  ),
+  batch: { multicall: false },
+})
+
 function isAddress(value: string): value is `0x${string}` {
   return /^0x[a-fA-F0-9]{40}$/.test(value)
 }
@@ -102,7 +111,6 @@ export default function GoodDollarClaimGate() {
   const { address, isConnected } = useAccount()
   const pathname = usePathname()
   const chainId = useChainId()
-  const publicClient = usePublicClient({ chainId: CELO_MAINNET_CHAIN_ID })
   const { writeContractAsync } = useWriteContract()
 
   const [status, setStatus] = useState<ClaimGateStatus>({
@@ -176,19 +184,6 @@ export default function GoodDollarClaimGate() {
       return
     }
 
-    if (!publicClient) {
-      setStatus((prev) => ({
-        ...prev,
-        loading: false,
-        configured: true,
-        verified: false,
-        claimable: false,
-        walletBalance: null,
-        error: 'No blockchain client available',
-      }))
-      return
-    }
-
     const identity = identityAddress
     const ubi = ubiAddress
     if (!identity || !ubi) {
@@ -207,7 +202,7 @@ export default function GoodDollarClaimGate() {
     setStatus((prev) => ({ ...prev, loading: true, configured: true, error: null }))
 
     try {
-      const root = (await publicClient.readContract({
+      const root = (await celoPublicClient.readContract({
         address: identity,
         abi: identityAbi,
         functionName: 'getWhitelistedRoot',
@@ -221,7 +216,7 @@ export default function GoodDollarClaimGate() {
       let tokenDecimals = 18
 
       if (verified) {
-        const entitlement = (await publicClient.readContract({
+        const entitlement = (await celoPublicClient.readContract({
           address: ubi,
           abi: ubiAbi,
           functionName: 'checkEntitlement',
@@ -232,14 +227,14 @@ export default function GoodDollarClaimGate() {
 
         if (gDollarAddress) {
           tokenDecimals = Number(
-            (await publicClient.readContract({
+            (await celoPublicClient.readContract({
               address: gDollarAddress,
               abi: erc20Abi,
               functionName: 'decimals',
             })) as number
           )
 
-          walletBalance = (await publicClient.readContract({
+          walletBalance = (await celoPublicClient.readContract({
             address: gDollarAddress,
             abi: erc20Abi,
             functionName: 'balanceOf',
@@ -273,7 +268,7 @@ export default function GoodDollarClaimGate() {
       })
       showGateOncePerDay()
     }
-  }, [address, gDollarAddress, identityAddress, isConfigured, isConnected, publicClient, showGateOncePerDay, ubiAddress])
+  }, [address, gDollarAddress, identityAddress, isConfigured, isConnected, showGateOncePerDay, ubiAddress])
 
   useEffect(() => {
     if (!isConnected || !address) {

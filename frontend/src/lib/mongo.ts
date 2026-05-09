@@ -5,7 +5,7 @@ declare global {
   var __sovads_mongo_db: Db | undefined
 }
 
-const uri = process.env.MONGODB_URI
+const uri = process.env.MONGODB_URI?.trim()
 
 if (!uri) {
   throw new Error('MONGODB_URI environment variable is not set')
@@ -14,7 +14,7 @@ if (!uri) {
 // TypeScript type narrowing: after the check above, uri is guaranteed to be a string
 const mongoUri: string = uri
 
-const dbName = process.env.MONGODB_DB || 'sovads'
+const dbName = (process.env.MONGODB_DB || 'sovads').trim()
 
 async function initializeClient(): Promise<MongoClient> {
   if (global.__sovads_mongo_client) {

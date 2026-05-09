@@ -11,7 +11,7 @@ type TrackingTokenClaims = {
   isUnverified?: boolean
 }
 
-const secret = process.env.TRACKING_TOKEN_SECRET || 'dev-tracking-secret-change-me'
+const secret = (process.env.TRACKING_TOKEN_SECRET || 'dev-tracking-secret-change-me').trim()
 
 function toBase64Url(input: Buffer | string): string {
   return Buffer.from(input).toString('base64url')

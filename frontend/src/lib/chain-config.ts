@@ -7,7 +7,7 @@ export const CELO_MAINNET_CHAIN_ID = 42220
 export const chainId = CELO_MAINNET_CHAIN_ID
 
 /** SovAdsManager - set NEXT_PUBLIC_SOVADS_MANAGER_ADDRESS. Mainnet fallback: 0xcE580DfF039cA6b3516A496Bf55814Ce1d66F66a */
-export const SOVADS_MANAGER_ADDRESS = process.env.NEXT_PUBLIC_SOVADS_MANAGER_ADDRESS || '0xcE580DfF039cA6b3516A496Bf55814Ce1d66F66a'
+export const SOVADS_MANAGER_ADDRESS = (process.env.NEXT_PUBLIC_SOVADS_MANAGER_ADDRESS || '0xcE580DfF039cA6b3516A496Bf55814Ce1d66F66a').trim()
 
 /** SovAdsStreaming - new superfluid based contract */
 export const SOVADS_STREAMING_ADDRESS = (process.env.NEXT_PUBLIC_SOVADS_STREAMING_ADDRESS || '0xFb76103FC70702413cEa55805089106D0626823f').trim()
@@ -19,10 +19,10 @@ export const GOODDOLLAR_ADDRESS = (process.env.NEXT_PUBLIC_GOODDOLLAR_ADDRESS ||
 export const GOODDOLLAR_IDENTITY_ADDRESS = (process.env.NEXT_PUBLIC_GOODDOLLAR_IDENTITY_ADDRESS || '').trim()
 
 /** GoodDollar UBI contract (used for daily claim checks and claims) */
-export const GOODDOLLAR_UBI_ADDRESS = process.env.NEXT_PUBLIC_GOODDOLLAR_UBI_ADDRESS || ''
+export const GOODDOLLAR_UBI_ADDRESS = (process.env.NEXT_PUBLIC_GOODDOLLAR_UBI_ADDRESS || '').trim()
 
 /** GoodDollar verification page */
-export const GOODDOLLAR_VERIFY_URL = process.env.NEXT_PUBLIC_GOODDOLLAR_VERIFY_URL || 'https://wallet.gooddollar.org'
+export const GOODDOLLAR_VERIFY_URL = (process.env.NEXT_PUBLIC_GOODDOLLAR_VERIFY_URL || 'https://wallet.gooddollar.org').trim()
 
 /** SovadGs - GS token claim distribution contract on Celo */
 export const SOVADGS_CONTRACT_ADDRESS = (process.env.NEXT_PUBLIC_SOVADGS_CONTRACT_ADDRESS || '').trim()

@@ -25,7 +25,7 @@ type OnChainLookup = {
 }
 
 async function buildOnChainLookup(wallets: string[]): Promise<OnChainLookup> {
-  const rpc = process.env.CELO_MAINNET_RPC_URL || 'https://rpc.ankr.com/celo'
+  const rpc = (process.env.CELO_MAINNET_RPC_URL || 'https://rpc.ankr.com/celo').trim()
   const client = createPublicClient({ chain: celo, transport: http(rpc) })
   const publisherByWallet = new Map<string, boolean>()
   const siteWalletsByDomain = new Map<string, Set<string>>()

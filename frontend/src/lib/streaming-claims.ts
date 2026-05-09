@@ -22,8 +22,8 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { SOVADS_STREAMING_ADDRESS, GOODDOLLAR_ADDRESS } from './chain-config'
 import { sovAdsStreamingAbi } from '../contract/sovAdsStreamingAbi'
 
-const RPC = process.env.CELO_MAINNET_RPC_URL || 'https://rpc.ankr.com/celo'
-const OPERATOR_PRIVATE_KEY = process.env.SOVADS_OPERATOR_PRIVATE_KEY
+const RPC = (process.env.CELO_MAINNET_RPC_URL || 'https://rpc.ankr.com/celo').trim()
+const OPERATOR_PRIVATE_KEY = process.env.SOVADS_OPERATOR_PRIVATE_KEY?.trim()
 
 const publicClient = createPublicClient({
   chain: celo,

@@ -3,7 +3,7 @@ import { WagmiAdapter } from '@reown/appkit-adapter-wagmi'
 import { type AppKitNetwork, celo } from '@reown/appkit/networks'
 
 // Get projectId from https://dashboard.reown.com
-export const projectId = process.env.NEXT_PUBLIC_PROJECT_ID || 'b56e18d47c72ab683b10814fe9495694' // Public projectId for localhost
+export const projectId = (process.env.NEXT_PUBLIC_PROJECT_ID || 'b56e18d47c72ab683b10814fe9495694').trim() // Public projectId for localhost
 
 if (!projectId) {
   throw new Error('Project ID is not defined')
@@ -12,10 +12,11 @@ if (!projectId) {
 // Celo mainnet only (SovadGs, G$, treasury)
 export const networks: [AppKitNetwork, ...AppKitNetwork[]] = [celo]
 export const defaultNetwork = celo
-const celoRpcUrl =
+const celoRpcUrl = (
   process.env.NEXT_PUBLIC_CELO_MAINNET_RPC_URL ||
   process.env.CELO_MAINNET_RPC_URL ||
-  'https://celo.drpc.org'
+  'https://rpc.ankr.com/celo'
+).trim()
 
 // Set up the Wagmi Adapter (Config)
 export const wagmiAdapter = new WagmiAdapter({

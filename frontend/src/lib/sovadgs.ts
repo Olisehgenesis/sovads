@@ -21,8 +21,8 @@ export const MINIMUM_CASHOUT_POINTS = 10
 // Designate Campaign ID 1 as the Global Treasury for G$ payouts (SovAdsManager fallback)
 export const GLOBAL_TREASURY_CAMPAIGN_ID = BigInt(1)
 
-const RPC = process.env.CELO_MAINNET_RPC_URL || 'https://rpc.ankr.com/celo'
-const PAYOUT_PRIVATE_KEY = process.env.SOVADGS_PAYOUT_PRIVATE_KEY
+const RPC = (process.env.CELO_MAINNET_RPC_URL || 'https://rpc.ankr.com/celo').trim()
+const PAYOUT_PRIVATE_KEY = process.env.SOVADGS_PAYOUT_PRIVATE_KEY?.trim()
 
 const publicClient = createPublicClient({
   chain: celo,

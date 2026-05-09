@@ -26,6 +26,7 @@ interface AnalyticsStats {
   activeAdminFlows: number
   activePublisherFlows: number
   activeStakerFlows: number
+  totalGsRedeemed: number
 }
 
 interface DailyStat {
@@ -86,6 +87,7 @@ export default function AnalyticsPage() {
           activeAdminFlows: 0,
           activePublisherFlows: 0,
           activeStakerFlows: 0,
+          totalGsRedeemed: Number(dbData.totalGsRedeemed ?? 0),
         }
 
         // contract fallback (for security/consistency) if campaign count or budgets are missing
@@ -108,6 +110,7 @@ export default function AnalyticsPage() {
             activeAdminFlows: 0,
             activePublisherFlows: 0,
             activeStakerFlows: 0,
+            totalGsRedeemed: s.totalGsRedeemed,
           }
 
           for (let i = 1; i <= count; i++) {
@@ -163,6 +166,7 @@ export default function AnalyticsPage() {
           activeAdminFlows: 0,
           activePublisherFlows: 0,
           activeStakerFlows: 0,
+          totalGsRedeemed: 0,
         }
 
         for (let i = 1; i <= count; i++) {
@@ -271,7 +275,7 @@ export default function AnalyticsPage() {
           <a href="/" className="text-xs font-black uppercase tracking-wider hover:underline decoration-2">← Back to Home</a>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-10">
           <div className="border-2 border-black bg-white p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
             <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Campaigns</p>
             <p className="text-4xl font-heading">{stats.campaignCount}</p>
@@ -286,6 +290,14 @@ export default function AnalyticsPage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="https://gooddollar.org/wp-content/uploads/2021/06/GD-Logo-Icon.svg" alt="G$" className="w-6 h-6 flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
               <p className="text-2xl font-heading break-all">{formatG(stats.remainingBudget)}</p>
+            </div>
+          </div>
+          <div className="border-2 border-black bg-[#dcfce7] p-6 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+            <p className="text-xs font-black uppercase tracking-[0.2em] text-[var(--text-tertiary)] mb-3">Total G$ Redeemed</p>
+            <div className="flex items-center gap-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="https://gooddollar.org/wp-content/uploads/2021/06/GD-Logo-Icon.svg" alt="G$" className="w-6 h-6 flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+              <p className="text-2xl font-heading break-all">{(stats.totalGsRedeemed ?? 0).toLocaleString(undefined, { maximumFractionDigits: 2 })} G$</p>
             </div>
           </div>
         </div>

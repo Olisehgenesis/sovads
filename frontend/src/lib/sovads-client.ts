@@ -10,12 +10,12 @@ const resolveApiUrl = (): string => {
   }
 
   return (
-    process.env.NEXT_PUBLIC_SOVADS_API_URL || 'https://ads.sovseas.xyz'
+    (process.env.NEXT_PUBLIC_SOVADS_API_URL || 'https://ads.sovseas.xyz').trim()
   )
 }
 
 const resolveSiteId = (): string | undefined => {
-  return process.env.NEXT_PUBLIC_SOVADS_SITE_ID || undefined
+  return process.env.NEXT_PUBLIC_SOVADS_SITE_ID?.trim() || undefined
 }
 
 export const getSovAdsClient = (): SovAds | null => {
