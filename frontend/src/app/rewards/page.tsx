@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAccount, useWalletClient, useWriteContract, useChainId } from 'wagmi'
 import Link from 'next/link'
 import WalletButton from '@/components/WalletButton'
@@ -107,23 +107,63 @@ export default function RewardsPage() {
   // ── Faucet state ──────────────────────────────────────────────────────
   const [faucetStatus, setFaucetStatus] = useState<'idle' | 'pending' | 'funded' | 'sufficient' | 'error'>('idle')
 
+  // ── Step notifications ────────────────────────────────────────────────
+  type NotifType = 'info' | 'success' | 'error'
+  const [notifications, setNotifications] = useState<{ id: number; text: string; type: NotifType }[]>([])
+  const notifIdRef = useRef(0)
+
+  const addNotif = useCallback((text: string, type: NotifType = 'info'): number => {
+    const id = ++notifIdRef.current
+    setNotifications(prev => [...prev, { id, text, type }])
+    return id
+  }, [])
+
+  const updateNotif = useCallback((id: number, text: string, type: NotifType) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, text, type } : n))
+  }, [])
+
+  const dismissNotif = useCallback((id: number, delay = 0) => {
+    if (delay > 0) {
+      setTimeout(() => setNotifications(prev => prev.filter(n => n.id !== id)), delay)
+    } else {
+      setNotifications(prev => prev.filter(n => n.id !== id))
+    }
+  }, [])
+
+  // Shared faucet helper used by both claim flows
+  const callFaucet = useCallback(async (): Promise<number> => {
+    const id = addNotif('⛽ Requesting gas top-up…')
+    try {
+      const res = await fetch('/api/topWallet', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chainId: CELO_MAINNET_CHAIN_ID, account: address }),
+      })
+      const data = await res.json().catch(() => ({ ok: -1 }))
+      if (data.ok > 0) {
+        updateNotif(id, '✓ Gas topped up', 'success')
+        setFaucetStatus('funded')
+      } else if (data.ok === 0) {
+        updateNotif(id, '✓ Gas already sufficient', 'success')
+        setFaucetStatus('sufficient')
+      } else {
+        updateNotif(id, '⚠ Gas top-up unavailable (you may need CELO)', 'error')
+        setFaucetStatus('error')
+      }
+    } catch {
+      updateNotif(id, '⚠ Could not reach faucet', 'error')
+      setFaucetStatus('error')
+    }
+    dismissNotif(id, 3000)
+    return id
+  }, [address, addNotif, updateNotif, dismissNotif])
+
   // Call faucet when wallet connects to ensure gas on Celo
   useEffect(() => {
     if (!address || !isConnected) { setFaucetStatus('idle'); return }
     setFaucetStatus('pending')
-    fetch('/api/topWallet', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chainId: CELO_MAINNET_CHAIN_ID, account: address }),
-    })
-      .then(async (res) => {
-        const data = await res.json().catch(() => ({ ok: -1 }))
-        if (data.ok > 0) setFaucetStatus('funded')
-        else if (data.ok === 0) setFaucetStatus('sufficient')
-        else setFaucetStatus('error')
-      })
-      .catch(() => setFaucetStatus('error'))
-  }, [address, isConnected])
+    callFaucet()
+  }, [address, isConnected]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Daily GoodDollar UBI claim state ──────────────────────────────────
   const [gdVerified, setGdVerified] = useState<boolean | null>(null)
@@ -162,24 +202,27 @@ export default function RewardsPage() {
     if (!ubiAddr || !writeContractAsync || chainId !== CELO_MAINNET_CHAIN_ID) return
     setGdClaimLoading(true)
     setGdClaimError(null)
+
+    // Step 1: faucet
+    await callFaucet()
+
+    const claimId = addNotif('✍ Confirm claim in your wallet…')
     try {
-      // Ensure gas before claiming
-      if (faucetStatus === 'idle' || faucetStatus === 'error') {
-        await fetch('/api/topWallet', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ chainId: CELO_MAINNET_CHAIN_ID, account: address }),
-        }).catch(() => {})
-      }
       const tx = await writeContractAsync({ address: ubiAddr, abi: ubiAbi, functionName: 'claim', chainId: CELO_MAINNET_CHAIN_ID })
+      updateNotif(claimId, '⛓ Submitting to blockchain…', 'info')
       setGdClaimTx(tx)
+      updateNotif(claimId, '✅ Daily G$ claimed!', 'success')
+      dismissNotif(claimId, 5000)
       await refreshGdStatus()
     } catch (err) {
-      setGdClaimError(err instanceof Error ? err.message : 'Claim failed')
+      const msg = err instanceof Error ? err.message : 'Claim failed'
+      setGdClaimError(msg)
+      updateNotif(claimId, `✗ ${msg.slice(0, 60)}`, 'error')
+      dismissNotif(claimId, 5000)
     } finally {
       setGdClaimLoading(false)
     }
-  }, [address, chainId, faucetStatus, refreshGdStatus, writeContractAsync])
+  }, [address, chainId, callFaucet, addNotif, updateNotif, dismissNotif, refreshGdStatus, writeContractAsync])
 
   // Generate fingerprint for anonymous users
   useEffect(() => {
@@ -284,16 +327,39 @@ export default function RewardsPage() {
   // Inviter: read from URL ?ref=<address> (persisted across navigation)
   const { ref: inviterAddress } = useRefParam()
 
+  // Use gdVerified (from direct chain read on this page) as source of truth for whitelist.
+  // The hook's isWhitelisted may lag or fail if the SDK isn't ready yet.
+  const effectiveWhitelisted = gdVerified !== null ? gdVerified : isWhitelisted
+  const effectiveIneligibilityReason =
+    effectiveWhitelisted === true && ineligibilityReason === 'not_whitelisted'
+      ? null
+      : ineligibilityReason
+
   // Engagement claim result message
   const [engagementMsg, setEngagementMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   const handleEngagementClaim = async () => {
     setEngagementMsg(null)
-    const tx = await claimBonus(inviterAddress ?? undefined)
-    if (tx) {
-      setEngagementMsg({ type: 'success', text: `Bonus G$ claimed! TX: ${tx}` })
-    } else {
-      // error is surfaced via engagementError state
+
+    // Step 1: faucet
+    await callFaucet()
+
+    // Step 2: claim (app sig + user sig + chain submit all happen inside claimBonus)
+    const claimId = addNotif('🔐 Getting app signature…')
+    try {
+      updateNotif(claimId, '✍ Sign claim in wallet (check wallet)…', 'info')
+      const tx = await claimBonus(inviterAddress ?? undefined)
+      if (tx) {
+        updateNotif(claimId, '✅ Bonus G$ claimed!', 'success')
+        dismissNotif(claimId, 5000)
+        setEngagementMsg({ type: 'success', text: `Bonus G$ claimed! TX: ${tx}` })
+      } else {
+        updateNotif(claimId, `✗ ${engagementError || 'Claim failed'}`, 'error')
+        dismissNotif(claimId, 5000)
+      }
+    } catch {
+      updateNotif(claimId, '✗ Claim failed', 'error')
+      dismissNotif(claimId, 5000)
     }
   }
 
@@ -442,7 +508,7 @@ export default function RewardsPage() {
 
           {/* ── PROGRESS BAR ── */}
           {(() => {
-            const bonusBlocked = isWhitelisted === false
+            const bonusBlocked = effectiveWhitelisted === false
             const steps = [
               { label: 'Connect Wallet', desc: 'Link your wallet to track & claim rewards', done: isConnected, cta: null, blocked: false },
               { label: 'View Your First Ad', desc: 'Earn SovPoints by watching ads on SovAds sites', done: (points?.totalPoints ?? 0) > 0, cta: '/', blocked: false },
@@ -511,20 +577,6 @@ export default function RewardsPage() {
               </div>
             )
           })()}
-
-          {/* ── FAUCET BANNER ── */}
-          {isConnected && faucetStatus !== 'idle' && faucetStatus !== 'sufficient' && (
-            <div className={`flex items-center gap-2 px-4 py-2 border-2 text-[10px] font-black uppercase ${
-              faucetStatus === 'pending' ? 'border-yellow-400 bg-yellow-50 text-yellow-800' :
-              faucetStatus === 'funded'  ? 'border-green-400 bg-green-50 text-green-800'   :
-                                          'border-black/10 bg-black/5 text-black/30'
-            }`}>
-              <span>⛽</span>
-              {faucetStatus === 'pending' && 'Requesting gas top-up…'}
-              {faucetStatus === 'funded'  && 'Gas topped up — ready to transact'}
-              {faucetStatus === 'error'   && 'Gas top-up unavailable (you may need CELO for gas)'}
-            </div>
-          )}
 
           {/* ── FLOW BANNER ── */}
           {isFlowing && (
@@ -666,23 +718,23 @@ export default function RewardsPage() {
               <div className={`p-3 border-2 mb-3 text-[10px] font-black uppercase ${
                 engagementEligible
                   ? 'border-yellow-400 bg-yellow-100 text-yellow-800'
-                  : ineligibilityReason === 'not_whitelisted'
+                  : effectiveIneligibilityReason === 'not_whitelisted'
                   ? 'border-orange-400 bg-orange-50 text-orange-800'
-                  : ineligibilityReason === 'cooldown'
+                  : effectiveIneligibilityReason === 'cooldown'
                   ? 'border-black/20 bg-black/5 text-black/50'
-                  : ineligibilityReason === 'app_limit'
+                  : effectiveIneligibilityReason === 'app_limit'
                   ? 'border-red-300 bg-red-50 text-red-700'
                   : 'border-black/10 bg-black/5 text-black/40'
               }`}>
                 {engagementEligible
                   ? '✓ Ready to claim your GoodDollar bonus'
-                  : ineligibilityReason === 'not_whitelisted'
+                  : effectiveIneligibilityReason === 'not_whitelisted'
                   ? '⚠ You need GoodDollar identity verification to claim'
-                  : ineligibilityReason === 'cooldown'
+                  : effectiveIneligibilityReason === 'cooldown'
                   ? `⏳ Cooldown: ${cooldownDaysRemaining} days remaining until next claim`
-                  : ineligibilityReason === 'app_limit'
+                  : effectiveIneligibilityReason === 'app_limit'
                   ? '↺ App reward limit reached this period — check back in 180 days'
-                  : isWhitelisted === null
+                  : effectiveWhitelisted === null
                   ? 'Checking eligibility...'
                   : 'Connect wallet to check eligibility'}
               </div>
@@ -695,8 +747,8 @@ export default function RewardsPage() {
                 </div>
                 <div className="border border-black/10 p-2">
                   <div className="text-black/40">GD Verified</div>
-                  <div className={`mt-0.5 ${isWhitelisted === true ? 'text-green-700' : isWhitelisted === false ? 'text-orange-600' : 'text-black/40'}`}>
-                    {isWhitelisted === true ? '✓ Verified' : isWhitelisted === false ? '✗ Not verified' : '—'}
+                  <div className={`mt-0.5 ${effectiveWhitelisted === true ? 'text-green-700' : effectiveWhitelisted === false ? 'text-orange-600' : 'text-black/40'}`}>
+                    {effectiveWhitelisted === true ? '✓ Verified' : effectiveWhitelisted === false ? '✗ Not verified' : '—'}
                   </div>
                 </div>
                 <div className="border border-black/10 p-2">
@@ -731,7 +783,7 @@ export default function RewardsPage() {
               )}
 
               <div className="mt-auto flex gap-2">
-                {ineligibilityReason === 'not_whitelisted' ? (
+                {effectiveIneligibilityReason === 'not_whitelisted' ? (
                   <button
                     onClick={() => verifyOnGoodDollar(typeof window !== 'undefined' ? window.location.origin + '/rewards' : undefined)}
                     disabled={engagementVerifying || !isConnected}
@@ -912,6 +964,30 @@ export default function RewardsPage() {
         <div className="card p-12 text-center">
           <p className="font-heading text-lg uppercase mb-4">You have 0 points</p>
           <Link href="/" className="btn btn-outline inline-block">Start Viewing Ads</Link>
+        </div>
+      )}
+
+      {/* ── STEP NOTIFICATIONS overlay (bottom-right) ── */}
+      {notifications.length > 0 && (
+        <div className="fixed bottom-16 right-4 z-50 flex flex-col gap-2 max-w-xs w-full pointer-events-none">
+          {notifications.map(n => (
+            <div
+              key={n.id}
+              className={`flex items-start gap-2 px-4 py-3 border-2 font-bold text-xs uppercase shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] pointer-events-auto ${
+                n.type === 'success'
+                  ? 'bg-green-400 border-green-700 text-green-900'
+                  : n.type === 'error'
+                  ? 'bg-red-100 border-red-500 text-red-800'
+                  : 'bg-yellow-50 border-black text-black'
+              }`}
+            >
+              <span className="flex-1 leading-tight">{n.text}</span>
+              <button
+                onClick={() => dismissNotif(n.id)}
+                className="shrink-0 opacity-50 hover:opacity-100 text-[10px] font-black leading-none"
+              >✕</button>
+            </div>
+          ))}
         </div>
       )}
     </div>
