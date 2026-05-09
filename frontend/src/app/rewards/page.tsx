@@ -335,6 +335,18 @@ export default function RewardsPage() {
       ? null
       : ineligibilityReason
 
+  // A user can attempt a claim if:
+  //   • they are GD-verified (effectiveWhitelisted === true)
+  //   • no explicit blocking reason (cooldown / app_limit)
+  //   • not already claiming
+  // We don't gate on engagementEligible === true because the SDK can return null/false
+  // while the contract itself may still succeed (e.g. first-time claim with all pre-reqs met).
+  const canClaimEngagement =
+    isConnected &&
+    effectiveWhitelisted === true &&
+    !effectiveIneligibilityReason &&
+    !engagementClaiming
+
   // Engagement claim result message
   const [engagementMsg, setEngagementMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
@@ -514,7 +526,7 @@ export default function RewardsPage() {
               { label: 'View Your First Ad', desc: 'Earn SovPoints by watching ads on SovAds sites', done: (points?.totalPoints ?? 0) > 0, cta: '/', blocked: false },
               { label: `Earn ${MIN_CASHOUT} SovPoints`, desc: `You need at least ${MIN_CASHOUT} pts to redeem for G$`, done: (points?.totalPoints ?? 0) >= MIN_CASHOUT, cta: null, blocked: false },
               { label: 'Redeem SovPoints for G$', desc: 'Exchange your SovPoints for real GoodDollar tokens', done: totalRedeemed > 0, cta: null, blocked: false },
-              { label: 'Claim GoodDollar Bonus', desc: bonusBlocked ? 'Requires GoodDollar identity verification' : 'Get a bonus G$ reward from the GoodDollar protocol', done: engagementLastDate !== null, cta: bonusBlocked ? null : null, blocked: bonusBlocked },
+              { label: 'Claim Engagement Reward', desc: bonusBlocked ? 'Requires GoodDollar identity verification' : 'Claim your G$ engagement reward from the GoodDollar protocol', done: engagementLastDate !== null, cta: bonusBlocked ? null : null, blocked: bonusBlocked },
             ]
             const completedCount = steps.filter((s) => s.done).length
             const pct = Math.round((completedCount / steps.length) * 100)
@@ -693,16 +705,16 @@ export default function RewardsPage() {
 
             {/* GoodDollar Bonus Card */}
             <div className={`card p-6 border-4 flex flex-col ${
-              engagementEligible
+              canClaimEngagement
                 ? 'border-yellow-400 shadow-[6px_6px_0px_0px_rgba(234,179,8,1)] bg-yellow-50'
                 : 'border-black/20'
             }`}>
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h2 className="text-sm font-heading uppercase tracking-widest">GoodDollar Bonus</h2>
-                    {engagementEligible && (
-                      <span className="text-[9px] font-black uppercase bg-yellow-400 border-2 border-black px-1.5 py-0.5 animate-pulse">Eligible!</span>
+                    <h2 className="text-sm font-heading uppercase tracking-widest">Engagement Reward</h2>
+                    {canClaimEngagement && (
+                      <span className="text-[9px] font-black uppercase bg-yellow-400 border-2 border-black px-1.5 py-0.5 animate-pulse">Ready!</span>
                     )}
                   </div>
                   <p className="text-[10px] font-bold uppercase text-black/50 mt-0.5">Bonus G$ funded by GoodDollar protocol</p>
@@ -724,6 +736,8 @@ export default function RewardsPage() {
                   ? 'border-black/20 bg-black/5 text-black/50'
                   : effectiveIneligibilityReason === 'app_limit'
                   ? 'border-red-300 bg-red-50 text-red-700'
+                  : canClaimEngagement
+                  ? 'border-yellow-400 bg-yellow-50 text-yellow-900'
                   : 'border-black/10 bg-black/5 text-black/40'
               }`}>
                 {engagementEligible
@@ -734,9 +748,11 @@ export default function RewardsPage() {
                   ? `⏳ Cooldown: ${cooldownDaysRemaining} days remaining until next claim`
                   : effectiveIneligibilityReason === 'app_limit'
                   ? '↺ App reward limit reached this period — check back in 180 days'
-                  : effectiveWhitelisted === null
-                  ? 'Checking eligibility...'
-                  : 'Connect wallet to check eligibility'}
+                  : canClaimEngagement
+                  ? '✓ Verified & ready — click Claim Engagement Reward below'
+                  : !isConnected
+                  ? 'Connect wallet to check eligibility'
+                  : 'Checking eligibility…'}
               </div>
 
               {/* Info grid */}
@@ -794,10 +810,10 @@ export default function RewardsPage() {
                 ) : (
                   <button
                     onClick={handleEngagementClaim}
-                    disabled={!isConnected || !engagementEligible || engagementClaiming}
+                    disabled={!canClaimEngagement}
                     className="flex-1 btn btn-primary py-3 text-xs font-black uppercase border-4 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {engagementClaiming ? 'Claiming...' : engagementEligible ? 'Claim Bonus G$' : 'Not Eligible'}
+                    {engagementClaiming ? 'Claiming…' : canClaimEngagement ? 'Claim Engagement Reward' : !isConnected ? 'Connect Wallet' : 'Checking…'}
                   </button>
                 )}
                 {isConnected && address && (
