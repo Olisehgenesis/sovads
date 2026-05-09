@@ -1,16 +1,40 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { useAccount, useWalletClient } from 'wagmi'
+import { useAccount, useWalletClient, useWriteContract, useChainId } from 'wagmi'
 import Link from 'next/link'
 import WalletButton from '@/components/WalletButton'
 import { useStreamingAds } from '@/hooks/useStreamingAds'
 import { useEngagementRewards } from '@/hooks/useEngagementRewards'
 import { useRefParam } from '@/hooks/useRefParam'
-import { encodeFunctionData, parseUnits, formatUnits } from 'viem'
+import { encodeFunctionData, parseUnits, formatUnits, createPublicClient, http, zeroAddress } from 'viem'
+import { celo } from 'viem/chains'
 import { sovAdsStreamingAbi } from '@/contract/sovAdsStreamingAbi'
+import {
+  CELO_MAINNET_CHAIN_ID,
+  GOODDOLLAR_IDENTITY_ADDRESS,
+  GOODDOLLAR_UBI_ADDRESS,
+} from '@/lib/chain-config'
 
 const STREAMING_CONTRACT = (process.env.NEXT_PUBLIC_SOVADS_STREAMING_ADDRESS || '0xFb76103FC70702413cEa55805089106D0626823f').trim()
+
+// Static Celo client for chain reads without needing wallet connection
+const celoClient = createPublicClient({
+  chain: celo,
+  transport: http(
+    (process.env.NEXT_PUBLIC_CELO_MAINNET_RPC_URL || 'https://forno.celo.org').trim()
+  ),
+  batch: { multicall: false },
+})
+
+const identityAbi = [
+  { name: 'getWhitelistedRoot', type: 'function', stateMutability: 'view', inputs: [{ name: '_addr', type: 'address' }], outputs: [{ name: '', type: 'address' }] },
+] as const
+
+const ubiAbi = [
+  { name: 'checkEntitlement', type: 'function', stateMutability: 'view', inputs: [{ name: '_claimer', type: 'address' }], outputs: [{ name: '', type: 'uint256' }] },
+  { name: 'claim', type: 'function', stateMutability: 'nonpayable', inputs: [], outputs: [] },
+] as const
 
 interface ViewerPoints {
   id?: string
@@ -57,6 +81,8 @@ const MIN_CASHOUT = 10
 export default function RewardsPage() {
   const { address, isConnected } = useAccount()
   const { data: walletClient } = useWalletClient()
+  const chainId = useChainId()
+  const { writeContractAsync } = useWriteContract()
   const [points, setPoints] = useState<ViewerPoints | null>(null)
   const [loading, setLoading] = useState(true)
   const [cashouts, setCashouts] = useState<Cashout[]>([])
@@ -77,6 +103,83 @@ export default function RewardsPage() {
   // Superfluid Flow State
   const { getStakerInfo } = useStreamingAds();
   const [isFlowing, setIsFlowing] = useState(false);
+
+  // ── Faucet state ──────────────────────────────────────────────────────
+  const [faucetStatus, setFaucetStatus] = useState<'idle' | 'pending' | 'funded' | 'sufficient' | 'error'>('idle')
+
+  // Call faucet when wallet connects to ensure gas on Celo
+  useEffect(() => {
+    if (!address || !isConnected) { setFaucetStatus('idle'); return }
+    setFaucetStatus('pending')
+    fetch('/api/topWallet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chainId: CELO_MAINNET_CHAIN_ID, account: address }),
+    })
+      .then(async (res) => {
+        const data = await res.json().catch(() => ({ ok: -1 }))
+        if (data.ok > 0) setFaucetStatus('funded')
+        else if (data.ok === 0) setFaucetStatus('sufficient')
+        else setFaucetStatus('error')
+      })
+      .catch(() => setFaucetStatus('error'))
+  }, [address, isConnected])
+
+  // ── Daily GoodDollar UBI claim state ──────────────────────────────────
+  const [gdVerified, setGdVerified] = useState<boolean | null>(null)
+  const [gdEntitlement, setGdEntitlement] = useState<bigint | null>(null)
+  const [gdClaimedToday, setGdClaimedToday] = useState(false)
+  const [gdClaimLoading, setGdClaimLoading] = useState(false)
+  const [gdClaimTx, setGdClaimTx] = useState<string | null>(null)
+  const [gdClaimError, setGdClaimError] = useState<string | null>(null)
+
+  const refreshGdStatus = useCallback(async () => {
+    if (!address || !isConnected) { setGdVerified(null); setGdEntitlement(null); return }
+    const identityAddr = GOODDOLLAR_IDENTITY_ADDRESS as `0x${string}`
+    const ubiAddr = GOODDOLLAR_UBI_ADDRESS as `0x${string}`
+    if (!identityAddr || !ubiAddr) return
+    try {
+      const root = await celoClient.readContract({ address: identityAddr, abi: identityAbi, functionName: 'getWhitelistedRoot', args: [address] }) as `0x${string}`
+      const isVerified = root.toLowerCase() !== zeroAddress
+      setGdVerified(isVerified)
+      if (isVerified) {
+        const entitlement = await celoClient.readContract({ address: ubiAddr, abi: ubiAbi, functionName: 'checkEntitlement', args: [root] }) as bigint
+        setGdEntitlement(entitlement)
+        setGdClaimedToday(entitlement === 0n)
+      } else {
+        setGdEntitlement(0n)
+        setGdClaimedToday(false)
+      }
+    } catch {
+      setGdVerified(false)
+    }
+  }, [address, isConnected])
+
+  useEffect(() => { refreshGdStatus() }, [refreshGdStatus])
+
+  const handleGdClaim = useCallback(async () => {
+    const ubiAddr = GOODDOLLAR_UBI_ADDRESS as `0x${string}`
+    if (!ubiAddr || !writeContractAsync || chainId !== CELO_MAINNET_CHAIN_ID) return
+    setGdClaimLoading(true)
+    setGdClaimError(null)
+    try {
+      // Ensure gas before claiming
+      if (faucetStatus === 'idle' || faucetStatus === 'error') {
+        await fetch('/api/topWallet', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chainId: CELO_MAINNET_CHAIN_ID, account: address }),
+        }).catch(() => {})
+      }
+      const tx = await writeContractAsync({ address: ubiAddr, abi: ubiAbi, functionName: 'claim', chainId: CELO_MAINNET_CHAIN_ID })
+      setGdClaimTx(tx)
+      await refreshGdStatus()
+    } catch (err) {
+      setGdClaimError(err instanceof Error ? err.message : 'Claim failed')
+    } finally {
+      setGdClaimLoading(false)
+    }
+  }, [address, chainId, faucetStatus, refreshGdStatus, writeContractAsync])
 
   // Generate fingerprint for anonymous users
   useEffect(() => {
@@ -409,6 +512,20 @@ export default function RewardsPage() {
             )
           })()}
 
+          {/* ── FAUCET BANNER ── */}
+          {isConnected && faucetStatus !== 'idle' && faucetStatus !== 'sufficient' && (
+            <div className={`flex items-center gap-2 px-4 py-2 border-2 text-[10px] font-black uppercase ${
+              faucetStatus === 'pending' ? 'border-yellow-400 bg-yellow-50 text-yellow-800' :
+              faucetStatus === 'funded'  ? 'border-green-400 bg-green-50 text-green-800'   :
+                                          'border-black/10 bg-black/5 text-black/30'
+            }`}>
+              <span>⛽</span>
+              {faucetStatus === 'pending' && 'Requesting gas top-up…'}
+              {faucetStatus === 'funded'  && 'Gas topped up — ready to transact'}
+              {faucetStatus === 'error'   && 'Gas top-up unavailable (you may need CELO for gas)'}
+            </div>
+          )}
+
           {/* ── FLOW BANNER ── */}
           {isFlowing && (
             <div className="bg-yellow-400 border-4 border-black p-3 flex items-center justify-between">
@@ -417,6 +534,56 @@ export default function RewardsPage() {
                 <span className="font-black uppercase text-xs">Real-time G$ Rewards Flowing</span>
               </div>
               <Link href="/staking" className="text-[10px] font-black underline uppercase">Boost Flow</Link>
+            </div>
+          )}
+
+          {/* ── DAILY GOODDOLLAR UBI CLAIM ── */}
+          {isConnected && gdVerified !== null && (
+            <div className={`card p-5 border-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 ${
+              gdVerified && !gdClaimedToday ? 'border-green-500 bg-green-50' : 'border-black/20'
+            }`}>
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="text-xl shrink-0">{gdVerified ? (gdClaimedToday ? '✅' : '🎁') : '🔒'}</div>
+                <div>
+                  <div className="text-xs font-heading uppercase tracking-widest">Daily G$ Claim</div>
+                  <div className="text-[10px] font-bold uppercase text-black/50 mt-0.5">
+                    {!gdVerified
+                      ? 'Requires GoodDollar face verification'
+                      : gdClaimedToday
+                      ? 'Already claimed today — come back tomorrow'
+                      : gdEntitlement !== null && gdEntitlement > 0n
+                      ? `${Number(formatUnits(gdEntitlement, 18)).toFixed(2)} G$ available`
+                      : 'Loading entitlement…'}
+                  </div>
+                  {gdClaimTx && (
+                    <a href={`https://celoscan.io/tx/${gdClaimTx}`} target="_blank" rel="noopener noreferrer" className="text-[9px] font-black uppercase underline text-green-700 mt-0.5 block">View tx ↗</a>
+                  )}
+                  {gdClaimError && (
+                    <p className="text-[9px] font-black uppercase text-red-600 mt-0.5">{gdClaimError}</p>
+                  )}
+                </div>
+              </div>
+              <div className="shrink-0">
+                {!gdVerified ? (
+                  <button
+                    onClick={() => verifyOnGoodDollar(typeof window !== 'undefined' ? window.location.origin + '/rewards' : undefined)}
+                    disabled={engagementVerifying || !isConnected}
+                    className="btn py-2 px-4 text-[10px] font-black uppercase border-4 border-orange-400 bg-orange-400 text-black hover:bg-orange-300 disabled:opacity-50"
+                  >
+                    {engagementVerifying ? 'Signing…' : 'Verify Identity →'}
+                  </button>
+                ) : gdClaimedToday ? (
+                  <span className="text-[10px] font-black uppercase text-green-700 bg-green-100 border-2 border-green-400 px-3 py-2">Claimed ✓</span>
+                ) : (
+                  <button
+                    onClick={handleGdClaim}
+                    disabled={gdClaimLoading || !gdEntitlement || gdEntitlement === 0n || chainId !== CELO_MAINNET_CHAIN_ID}
+                    className="btn btn-primary py-2 px-4 text-[10px] font-black uppercase border-4 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-50"
+                  >
+                    {gdClaimLoading ? 'Claiming…' : chainId !== CELO_MAINNET_CHAIN_ID ? 'Switch to Celo' : 'Claim Daily G$'}
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

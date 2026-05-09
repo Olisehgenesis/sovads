@@ -4,6 +4,17 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAccount, useWalletClient, usePublicClient } from 'wagmi'
 import { useEngagementRewards as useEngagementRewardsSDK } from '@goodsdks/engagement-sdk'
 import { compressToEncodedURIComponent } from 'lz-string'
+import { createPublicClient, http } from 'viem'
+import { celo } from 'viem/chains'
+
+// Static Celo client — works even before wallet connects (same pattern as GoodDollarClaimGate)
+const celoPublicClient = createPublicClient({
+  chain: celo,
+  transport: http(
+    (process.env.NEXT_PUBLIC_CELO_MAINNET_RPC_URL || 'https://forno.celo.org').trim()
+  ),
+  batch: { multicall: false },
+})
 
 // GoodDollar face-verification constants (matches GoodWeb3-Mono/sdk-v2)
 const FV_LOGIN_MSG = `Sign this message to login into GoodDollar Unique Identity service.\nWARNING: do not sign this message unless you trust the website/application requesting this signature.\nnonce:`
@@ -86,7 +97,8 @@ export interface EngagementRewardState {
 export function useEngagementRewards(): EngagementRewardState {
   const { address } = useAccount()
   const { data: walletClient } = useWalletClient()
-  const publicClient = usePublicClient()
+  // publicClient kept for any future on-chain writes; whitelist check uses static celoPublicClient
+  usePublicClient()
 
   const sdk = useEngagementRewardsSDK(REWARDS_CONTRACT)
 
@@ -110,20 +122,18 @@ export function useEngagementRewards(): EngagementRewardState {
     }
 
     try {
-      // 1. Check GoodDollar whitelist status
+      // 1. Check GoodDollar whitelist status via static Celo client (works without wallet)
       let whitelisted = false
-      if (publicClient && IDENTITY_ADDRESS) {
-        try {
-          const root = await publicClient.readContract({
-            address: IDENTITY_ADDRESS,
-            abi: identityAbi,
-            functionName: 'getWhitelistedRoot',
-            args: [address],
-          })
-          whitelisted = root !== '0x0000000000000000000000000000000000000000'
-        } catch {
-          whitelisted = false
-        }
+      try {
+        const root = await celoPublicClient.readContract({
+          address: IDENTITY_ADDRESS,
+          abi: identityAbi,
+          functionName: 'getWhitelistedRoot',
+          args: [address],
+        })
+        whitelisted = root !== '0x0000000000000000000000000000000000000000'
+      } catch {
+        whitelisted = false
       }
       setIsWhitelisted(whitelisted)
 
@@ -185,7 +195,7 @@ export function useEngagementRewards(): EngagementRewardState {
       console.error('[useEngagementRewards] refreshEligibility error:', err)
       setError(err instanceof Error ? err.message : 'Failed to check eligibility')
     }
-  }, [address, sdk, publicClient])
+  }, [address, sdk])
 
   useEffect(() => {
     refreshEligibility()
