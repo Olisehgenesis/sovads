@@ -324,27 +324,42 @@ export default function RewardsPage() {
     isVerifying: engagementVerifying,
   } = useEngagementRewards()
 
-  // Inviter: read from URL ?ref=<address> (persisted across navigation)
-  const { ref: inviterAddress } = useRefParam()
+  // Inviter: read from URL ?ref=<address> (persisted across navigation).
+  // Fallback to the SovAds app wallet so referral rewards always have a destination.
+  const DEFAULT_INVITER = '0x8aE67ce409dA16e71Cda5f71465e563Fe2060b92'
+  const { ref: refParam } = useRefParam()
+  // Don't self-refer — if user is their own ref, use default
+  const inviterAddress = (refParam && refParam.toLowerCase() !== address?.toLowerCase())
+    ? refParam
+    : DEFAULT_INVITER
 
   // Use gdVerified (from direct chain read on this page) as source of truth for whitelist.
   // The hook's isWhitelisted may lag or fail if the SDK isn't ready yet.
   const effectiveWhitelisted = gdVerified !== null ? gdVerified : isWhitelisted
+
+  // Only block on hard ineligibility reasons we can trust independently.
+  // 'app_limit' from the SDK may be wrong (app not yet approved/indexed) — let the
+  // contract itself reject; the error notification will surface the real reason.
+  // 'cooldown' is trustworthy (our DB-backed check).
+  // 'not_whitelisted' is overridden when effectiveWhitelisted === true.
   const effectiveIneligibilityReason =
     effectiveWhitelisted === true && ineligibilityReason === 'not_whitelisted'
       ? null
-      : ineligibilityReason
+      : ineligibilityReason === 'cooldown'
+      ? 'cooldown'
+      : ineligibilityReason === 'not_whitelisted'
+      ? 'not_whitelisted'
+      : null   // treat 'app_limit' and any unknown reason as "let user try"
 
   // A user can attempt a claim if:
   //   • they are GD-verified (effectiveWhitelisted === true)
-  //   • no explicit blocking reason (cooldown / app_limit)
+  //   • no hard block (not_whitelisted or cooldown)
   //   • not already claiming
-  // We don't gate on engagementEligible === true because the SDK can return null/false
-  // while the contract itself may still succeed (e.g. first-time claim with all pre-reqs met).
   const canClaimEngagement =
     isConnected &&
     effectiveWhitelisted === true &&
-    !effectiveIneligibilityReason &&
+    effectiveIneligibilityReason !== 'not_whitelisted' &&
+    effectiveIneligibilityReason !== 'cooldown' &&
     !engagementClaiming
 
   // Engagement claim result message
@@ -750,6 +765,8 @@ export default function RewardsPage() {
                   ? '↺ App reward limit reached this period — check back in 180 days'
                   : canClaimEngagement
                   ? '✓ Verified & ready — click Claim Engagement Reward below'
+                  : effectiveWhitelisted === true
+                  ? 'Checking SDK eligibility…'
                   : !isConnected
                   ? 'Connect wallet to check eligibility'
                   : 'Checking eligibility…'}
@@ -833,9 +850,9 @@ export default function RewardsPage() {
                 )}
               </div>
 
-              {inviterAddress && (
+              {refParam && refParam.toLowerCase() !== address?.toLowerCase() && (
                 <p className="text-[9px] font-bold uppercase text-black/30 mt-2">
-                  Ref: {inviterAddress.slice(0, 8)}…{inviterAddress.slice(-4)}
+                  Ref: {refParam.slice(0, 8)}…{refParam.slice(-4)}
                 </p>
               )}
             </div>
