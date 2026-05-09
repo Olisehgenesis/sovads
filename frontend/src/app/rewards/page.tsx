@@ -337,29 +337,27 @@ export default function RewardsPage() {
   // The hook's isWhitelisted may lag or fail if the SDK isn't ready yet.
   const effectiveWhitelisted = gdVerified !== null ? gdVerified : isWhitelisted
 
-  // Only block on hard ineligibility reasons we can trust independently.
-  // 'app_limit' from the SDK may be wrong (app not yet approved/indexed) — let the
-  // contract itself reject; the error notification will surface the real reason.
-  // 'cooldown' is trustworthy (our DB-backed check).
-  // 'not_whitelisted' is overridden when effectiveWhitelisted === true.
+  // Map SDK ineligibility reasons to effective reasons:
+  // - Override 'not_whitelisted' when we independently verified the user IS whitelisted
+  // - 'cooldown' and 'app_limit' are trusted and block the claim
+  // - 'app_limit' can mean: (a) user hit 4th-app period limit, or (b) app pending approval
+  //   Either way, the claim will fail — block and surface a clear message.
   const effectiveIneligibilityReason =
     effectiveWhitelisted === true && ineligibilityReason === 'not_whitelisted'
       ? null
       : ineligibilityReason === 'cooldown'
       ? 'cooldown'
+      : ineligibilityReason === 'app_limit'
+      ? 'app_limit'
       : ineligibilityReason === 'not_whitelisted'
       ? 'not_whitelisted'
-      : null   // treat 'app_limit' and any unknown reason as "let user try"
+      : null
 
-  // A user can attempt a claim if:
-  //   • they are GD-verified (effectiveWhitelisted === true)
-  //   • no hard block (not_whitelisted or cooldown)
-  //   • not already claiming
+  // A user can claim only when fully eligible — no hard blocks
   const canClaimEngagement =
     isConnected &&
     effectiveWhitelisted === true &&
-    effectiveIneligibilityReason !== 'not_whitelisted' &&
-    effectiveIneligibilityReason !== 'cooldown' &&
+    effectiveIneligibilityReason === null &&
     !engagementClaiming
 
   // Engagement claim result message
@@ -762,7 +760,7 @@ export default function RewardsPage() {
                   : effectiveIneligibilityReason === 'cooldown'
                   ? `⏳ Cooldown: ${cooldownDaysRemaining} days remaining until next claim`
                   : effectiveIneligibilityReason === 'app_limit'
-                  ? '↺ App reward limit reached this period — check back in 180 days'
+                  ? '⏸ Reward currently unavailable — app approval pending or period limit reached'
                   : canClaimEngagement
                   ? '✓ Verified & ready — click Claim Engagement Reward below'
                   : effectiveWhitelisted === true
@@ -830,7 +828,7 @@ export default function RewardsPage() {
                     disabled={!canClaimEngagement}
                     className="flex-1 btn btn-primary py-3 text-xs font-black uppercase border-4 border-black shadow-[3px_3px_0px_0px_rgba(0,0,0,1)] hover:shadow-none hover:translate-x-0.5 hover:translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    {engagementClaiming ? 'Claiming…' : canClaimEngagement ? 'Claim Engagement Reward' : !isConnected ? 'Connect Wallet' : 'Checking…'}
+                    {engagementClaiming ? 'Claiming…' : canClaimEngagement ? 'Claim Engagement Reward' : effectiveIneligibilityReason === 'app_limit' ? 'Unavailable' : !isConnected ? 'Connect Wallet' : 'Checking…'}
                   </button>
                 )}
                 {isConnected && address && (
