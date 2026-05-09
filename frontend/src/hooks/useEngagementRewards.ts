@@ -212,11 +212,8 @@ export function useEngagementRewards(): EngagementRewardState {
       setError(null)
 
       try {
-        const eligible = await sdk.canClaim(APP_ADDRESS, address).catch(() => false)
-        if (!eligible) {
-          throw new Error('Not eligible to claim at this time')
-        }
-
+        // Skip sdk.canClaim() — it may return false due to app_limit / indexing lag
+        // even for fully eligible users. The contract itself will reject if truly ineligible.
         const currentBlock = await sdk.getCurrentBlockNumber()
         const validUntilBlock = currentBlock + 600n
 
