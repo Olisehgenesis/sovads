@@ -353,11 +353,17 @@ export default function RewardsPage() {
       ? 'not_whitelisted'
       : null
 
-  // A user can claim only when fully eligible — no hard blocks
+  // Prerequisites: user must have viewed ads and redeemed at least once
+  const hasViewedAds = (points?.totalPoints ?? 0) > 0
+  const hasRedeemed = totalRedeemed > 0
+
+  // A user can claim only when fully eligible — no hard blocks, and prerequisites met
   const canClaimEngagement =
     isConnected &&
     effectiveWhitelisted === true &&
     effectiveIneligibilityReason === null &&
+    hasViewedAds &&
+    hasRedeemed &&
     !engagementClaiming
 
   // Engagement claim result message
@@ -749,6 +755,8 @@ export default function RewardsPage() {
                   ? 'border-black/20 bg-black/5 text-black/50'
                   : effectiveIneligibilityReason === 'app_limit'
                   ? 'border-red-300 bg-red-50 text-red-700'
+                  : !hasViewedAds || !hasRedeemed
+                  ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : canClaimEngagement
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-900'
                   : 'border-black/10 bg-black/5 text-black/40'
@@ -761,6 +769,10 @@ export default function RewardsPage() {
                   ? `⏳ Cooldown: ${cooldownDaysRemaining} days remaining until next claim`
                   : effectiveIneligibilityReason === 'app_limit'
                   ? '⏸ Reward currently unavailable — app approval pending or period limit reached'
+                  : !hasViewedAds
+                  ? '👁 View ads first to earn SovPoints before claiming'
+                  : !hasRedeemed
+                  ? '↔ Redeem SovPoints for G$ at least once before claiming'
                   : canClaimEngagement
                   ? '✓ Verified & ready — click Claim Engagement Reward below'
                   : effectiveWhitelisted === true

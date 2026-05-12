@@ -2,6 +2,60 @@
 
 GoodDollar protocol rewards (~5000 G$) claimable once per 180-day period by GD-verified users.
 
+---
+
+## Conditions to Claim
+
+All of the following must be true for a user to successfully claim:
+
+| # | Condition | Where checked | UI shown when failing |
+|---|-----------|---------------|----------------------|
+| 1 | **Wallet connected** | wagmi `isConnected` | "Connect Wallet" button |
+| 2 | **Viewed at least one ad** | `points.totalPoints > 0` (SovPoints earned from ad impressions) | "👁 View ads first to earn SovPoints before claiming" |
+| 3 | **Redeemed SovPoints for G$ at least once** | `totalRedeemed > 0` (from on-chain cashout history) | "↔ Redeem SovPoints for G$ at least once before claiming" |
+| 4 | **GoodDollar identity verified** | `getWhitelistedRoot(address) != 0x0` on Identity contract (direct chain read, no wallet needed) | "Verify with GoodDollar" button → redirects to `goodid.gooddollar.org` |
+| 5 | **App approved by GoodLabs** | `sdk.canClaim(APP_ADDRESS, user)` → checks on-chain registration | "⏸ Reward currently unavailable — app approval pending or period limit reached" |
+| 6 | **Not in 180-day cooldown** | Our DB (`EngagementRewardClaim` table, `status=success`) + `sdk.canClaim()` | "⏳ Cooldown: N days remaining" |
+| 7 | **Not 4th-app period limit** | `sdk.canClaim()` — protocol limits rewards if user already claimed from 3 other apps this period | Same "⏸ unavailable" message as #5 |
+| 8 | **Valid block window** | `validUntilBlock = currentBlock + 600` — signature expires in ~10 min | Contract reverts if submitted too late |
+
+### How conditions map to code
+
+```ts
+// src/hooks/useEngagementRewards.ts → refreshEligibility()
+if (!whitelisted)          → ineligibilityReason = 'not_whitelisted'  // condition 4
+else if (!eligible) {
+  if (data.lastClaim)      → ineligibilityReason = 'cooldown'         // condition 6
+  else                     → ineligibilityReason = 'app_limit'        // condition 5 or 7
+}
+else                       → ineligibilityReason = null
+
+// src/app/rewards/page.tsx
+const hasViewedAds = points.totalPoints > 0       // condition 2
+const hasRedeemed  = totalRedeemed > 0            // condition 3
+```
+
+### UI decision tree
+
+```
+isConnected?
+  NO  → button "Connect Wallet"
+  YES →
+    effectiveWhitelisted === true?
+      NO  → show "Verify with GoodDollar" button          (condition 4)
+      YES →
+        ineligibilityReason === 'not_whitelisted'? → "⚠ Need GD verification"
+        ineligibilityReason === 'cooldown'?        → "⏳ Cooldown: N days"   (condition 6)
+        ineligibilityReason === 'app_limit'?       → "⏸ Unavailable"         (condition 5/7)
+        !hasViewedAds?                             → "👁 View ads first"      (condition 2)
+        !hasRedeemed?                              → "↔ Redeem points first"  (condition 3)
+        null + all prereqs met?                    → "✓ Verified & ready" + Claim button ✅
+```
+
+`effectiveWhitelisted` prefers a direct on-chain read done in `rewards/page.tsx` over the hook's value, to handle the case where the SDK hasn't initialised yet but the user IS verified.
+
+---
+
 ## Contracts (Celo Mainnet)
 
 | Name | Address |
