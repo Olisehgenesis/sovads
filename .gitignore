@@ -1,0 +1,54 @@
+# Dependencies
+node_modules/
+**/node_modules/
+
+# Next.js build output
+frontend/.next/
+frontend/out/
+
+# Hardhat / Foundry build artifacts
+contracts/artifacts/
+contracts/cache/
+contracts/edr-cache/
+contracts/typechain-types/
+
+# Environment files — NEVER commit
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+**/.env.keys
+**/.env.*.local
+
+# Vercel
+.vercel/
+**/.vercel/
+
+# Turbo cache
+.turbo/
+**/.turbo/
+
+# Build outputs
+dist/
+build/
+frontend/tsconfig.tsbuildinfo
+contracts/tsconfig.tsbuildinfo
+sdk/tsconfig.tsbuildinfo
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+
+# Test coverage
+coverage/
