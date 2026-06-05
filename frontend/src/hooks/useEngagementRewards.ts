@@ -87,6 +87,10 @@ export interface EngagementRewardState {
   lastClaimDate: Date | null
   cooldownDaysRemaining: number | null
   rewardAmount: bigint | null
+  /** App's split (0–100) of the total reward that goes to user+inviter combined. */
+  userAndInviterPercentage: number | null
+  /** App's split (0–100) of the user+inviter share that goes to the user (the rest goes to the inviter). */
+  userPercentage: number | null
   error: string | null
   claimBonus: (inviter?: string) => Promise<string | null>
   refreshEligibility: () => Promise<void>
@@ -111,6 +115,8 @@ export function useEngagementRewards(): EngagementRewardState {
   const [lastClaimDate, setLastClaimDate] = useState<Date | null>(null)
   const [cooldownDaysRemaining, setCooldownDaysRemaining] = useState<number | null>(null)
   const [rewardAmount, setRewardAmount] = useState<bigint | null>(null)
+  const [userAndInviterPercentage, setUserAndInviterPercentage] = useState<number | null>(null)
+  const [userPercentage, setUserPercentage] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const refreshEligibility = useCallback(async () => {
@@ -170,6 +176,21 @@ export function useEngagementRewards(): EngagementRewardState {
         setRewardAmount(amt)
       } catch {
         // ignore
+      }
+
+      // 4b. Get app-specific reward split so the UI can show the user's actual share.
+      // getAppInfo returns the registeredApps tuple; indices 5 and 6 are the percentages (uint8, 0–100).
+      try {
+        const info = (await sdk.getAppInfo(APP_ADDRESS)) as readonly [
+          `0x${string}`, `0x${string}`, bigint, number, number, number, number,
+          boolean, boolean, string, string, string, `0x${string}`, `0x${string}`
+        ]
+        const uai = Number(info[5])
+        const up = Number(info[6])
+        setUserAndInviterPercentage(Number.isFinite(uai) ? uai : null)
+        setUserPercentage(Number.isFinite(up) ? up : null)
+      } catch {
+        // ignore — fall back to null so UI hides the split
       }
 
       // 5. Cooldown days from DB
@@ -335,6 +356,8 @@ export function useEngagementRewards(): EngagementRewardState {
     lastClaimDate,
     cooldownDaysRemaining,
     rewardAmount,
+    userAndInviterPercentage,
+    userPercentage,
     error,
     claimBonus,
     refreshEligibility,

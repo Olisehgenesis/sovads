@@ -91,6 +91,17 @@ export default function RewardsPage() {
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
   const [fingerprint, setFingerprint] = useState<string | null>(null)
 
+  // Weekly engagement streak: view 1 ad on N distinct days in a rolling W-day window.
+  // Source of truth is /api/viewers/streak (counts only IMPRESSION rewards).
+  const [streak, setStreak] = useState<{
+    daysViewed: number
+    daysRequired: number
+    windowDays: number
+    qualified: boolean
+    viewedToday: boolean
+    days: string[]
+  } | null>(null)
+
   // Signed transaction state
   const [signedTx, setSignedTx] = useState<SignedTransaction | null>(null)
   const [pendingCashoutId, setPendingCashoutId] = useState<string | null>(null)
@@ -293,10 +304,43 @@ export default function RewardsPage() {
     }
   }
 
+  const loadStreak = async () => {
+    if (!address && !fingerprint) return
+    try {
+      const params = new URLSearchParams()
+      // Send both keys when we have them so the endpoint can include any
+      // anonymous days from before the user connected their wallet.
+      if (address) params.append('wallet', address.toLowerCase())
+      if (fingerprint) params.append('fingerprint', fingerprint)
+      const res = await fetch(`/api/viewers/streak?${params}`)
+      if (res.ok) {
+        const data = await res.json()
+        setStreak({
+          daysViewed: data.daysViewed ?? 0,
+          daysRequired: data.daysRequired ?? 3,
+          windowDays: data.windowDays ?? 7,
+          qualified: !!data.qualified,
+          viewedToday: !!data.viewedToday,
+          days: data.days || [],
+        })
+      }
+    } catch {
+      // ignore — the gate will simply stay closed
+    }
+  }
+
   useEffect(() => {
     if (address || fingerprint) {
       loadPoints()
       const interval = setInterval(loadPoints, 30000)
+      return () => clearInterval(interval)
+    }
+  }, [address, fingerprint])
+
+  useEffect(() => {
+    if (address || fingerprint) {
+      loadStreak()
+      const interval = setInterval(loadStreak, 60000)
       return () => clearInterval(interval)
     }
   }, [address, fingerprint])
@@ -317,6 +361,8 @@ export default function RewardsPage() {
     lastClaimDate: engagementLastDate,
     cooldownDaysRemaining,
     rewardAmount: engagementRewardAmount,
+    userAndInviterPercentage: engagementUserInviterPct,
+    userPercentage: engagementUserPct,
     error: engagementError,
     claimBonus,
     refreshEligibility,
@@ -332,6 +378,28 @@ export default function RewardsPage() {
   const inviterAddress = (refParam && refParam.toLowerCase() !== address?.toLowerCase())
     ? refParam
     : DEFAULT_INVITER
+
+  // ── Compute the user's actual share of the GoodDollar engagement reward ──
+  // EngagementRewards contract math (uint8 percentages, base 100):
+  //   userAndInviterAmount = appReward * userAndInviterPct / 100
+  //   if inviter != 0:
+  //     userAmount   = userAndInviterAmount * userPct / 100
+  //     inviterAmount = userAndInviterAmount - userAmount
+  //   else:
+  //     userAmount   = userAndInviterAmount   (user gets full combined share)
+  const ZERO_ADDR = '0x0000000000000000000000000000000000000000'
+  const hasInviter = !!inviterAddress && inviterAddress.toLowerCase() !== ZERO_ADDR
+  const userInviterAmount = (engagementRewardAmount != null && engagementUserInviterPct != null)
+    ? (engagementRewardAmount * BigInt(engagementUserInviterPct)) / 100n
+    : null
+  const engagementUserAmount = (userInviterAmount != null)
+    ? (hasInviter && engagementUserPct != null
+        ? (userInviterAmount * BigInt(engagementUserPct)) / 100n
+        : userInviterAmount)
+    : null
+  const engagementInviterAmount = (userInviterAmount != null && engagementUserAmount != null && hasInviter)
+    ? userInviterAmount - engagementUserAmount
+    : null
 
   // Use gdVerified (from direct chain read on this page) as source of truth for whitelist.
   // The hook's isWhitelisted may lag or fail if the SDK isn't ready yet.
@@ -353,8 +421,10 @@ export default function RewardsPage() {
       ? 'not_whitelisted'
       : null
 
-  // Prerequisites: user must have viewed ads and redeemed at least once
-  const hasViewedAds = (points?.totalPoints ?? 0) > 0
+  // Prerequisites: user must complete the weekly engagement streak AND have redeemed once.
+  // The streak (view 1 ad on N distinct days in a rolling W-day window) replaces the
+  // old "any ad view ever" check so the bonus can't be unlocked in one sitting.
+  const hasWeeklyStreak = streak?.qualified === true
   const hasRedeemed = totalRedeemed > 0
 
   // A user can claim only when fully eligible — no hard blocks, and prerequisites met
@@ -362,7 +432,7 @@ export default function RewardsPage() {
     isConnected &&
     effectiveWhitelisted === true &&
     effectiveIneligibilityReason === null &&
-    hasViewedAds &&
+    hasWeeklyStreak &&
     hasRedeemed &&
     !engagementClaiming
 
@@ -545,6 +615,15 @@ export default function RewardsPage() {
               { label: 'View Your First Ad', desc: 'Earn SovPoints by watching ads on SovAds sites', done: (points?.totalPoints ?? 0) > 0, cta: '/', blocked: false },
               { label: `Earn ${MIN_CASHOUT} SovPoints`, desc: `You need at least ${MIN_CASHOUT} pts to redeem for G$`, done: (points?.totalPoints ?? 0) >= MIN_CASHOUT, cta: null, blocked: false },
               { label: 'Redeem SovPoints for G$', desc: 'Exchange your SovPoints for real GoodDollar tokens', done: totalRedeemed > 0, cta: null, blocked: false },
+              {
+                label: `Weekly Streak: ${streak?.daysRequired ?? 3} days`,
+                desc: streak
+                  ? `View 1 ad on ${streak.daysRequired} different days in a rolling ${streak.windowDays}-day window (${streak.daysViewed}/${streak.daysRequired})`
+                  : 'View 1 ad on 3 different days in a rolling 7-day window to unlock your bonus',
+                done: streak?.qualified === true,
+                cta: streak?.qualified ? null : '/',
+                blocked: false,
+              },
               { label: 'Claim Engagement Reward', desc: bonusBlocked ? 'Requires GoodDollar identity verification' : 'Claim your G$ engagement reward from the GoodDollar protocol', done: engagementLastDate !== null, cta: bonusBlocked ? null : null, blocked: bonusBlocked },
             ]
             const completedCount = steps.filter((s) => s.done).length
@@ -738,10 +817,13 @@ export default function RewardsPage() {
                   </div>
                   <p className="text-[10px] font-bold uppercase text-black/50 mt-0.5">Bonus G$ funded by GoodDollar protocol</p>
                 </div>
-                {engagementRewardAmount !== null && (
-                  <span className="text-xs font-black bg-black text-yellow-400 px-2 py-0.5 shrink-0">
-                    ~{Number(formatUnits(engagementRewardAmount, 18)).toFixed(0)} G$
-                  </span>
+                {engagementUserAmount !== null && (
+                  <div className="flex flex-col items-end shrink-0">
+                    <span className="text-xs font-black bg-black text-yellow-400 px-2 py-0.5">
+                      ~{Number(formatUnits(engagementUserAmount, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })} G$
+                    </span>
+                    <span className="text-[8px] font-bold uppercase text-black/40 mt-0.5">Your share</span>
+                  </div>
                 )}
               </div>
 
@@ -755,7 +837,7 @@ export default function RewardsPage() {
                   ? 'border-black/20 bg-black/5 text-black/50'
                   : effectiveIneligibilityReason === 'app_limit'
                   ? 'border-red-300 bg-red-50 text-red-700'
-                  : !hasViewedAds || !hasRedeemed
+                  : !hasWeeklyStreak || !hasRedeemed
                   ? 'border-blue-300 bg-blue-50 text-blue-700'
                   : canClaimEngagement
                   ? 'border-yellow-400 bg-yellow-50 text-yellow-900'
@@ -769,8 +851,10 @@ export default function RewardsPage() {
                   ? `⏳ Cooldown: ${cooldownDaysRemaining} days remaining until next claim`
                   : effectiveIneligibilityReason === 'app_limit'
                   ? '⏸ Reward currently unavailable — app approval pending or period limit reached'
-                  : !hasViewedAds
-                  ? '👁 View ads first to earn SovPoints before claiming'
+                  : !hasWeeklyStreak
+                  ? (streak
+                      ? `👁 View 1 ad on ${streak.daysRequired} different days in a rolling ${streak.windowDays}-day window (${streak.daysViewed}/${streak.daysRequired}${streak.viewedToday ? ' — today counted' : ''})`
+                      : '👁 View ads on multiple days to unlock your weekly GoodDollar bonus')
                   : !hasRedeemed
                   ? '↔ Redeem SovPoints for G$ at least once before claiming'
                   : canClaimEngagement
@@ -782,11 +866,70 @@ export default function RewardsPage() {
                   : 'Checking eligibility…'}
               </div>
 
+              {/* Weekly engagement streak tracker */}
+              {streak && (
+                <div className={`p-3 border-2 mb-3 ${
+                  streak.qualified
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-blue-300 bg-blue-50'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-black/70">
+                      Weekly Streak
+                    </div>
+                    <div className="text-[10px] font-black uppercase">
+                      {streak.daysViewed}/{streak.daysRequired} days
+                      {streak.qualified && <span className="ml-1 text-green-700">✓</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-1 mb-2">
+                    {Array.from({ length: streak.daysRequired }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`flex-1 h-2 border-2 border-black ${
+                          i < streak.daysViewed ? 'bg-green-500' : 'bg-white'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[10px] font-bold text-black/60 leading-snug">
+                    {streak.qualified
+                      ? `✓ Streak complete — your weekly GoodDollar bonus is unlocked.`
+                      : streak.viewedToday
+                      ? `Today counted. Come back on a new day to advance your streak (${streak.daysRequired - streak.daysViewed} more day${streak.daysRequired - streak.daysViewed === 1 ? '' : 's'} to go).`
+                      : `View 1 ad on ${streak.daysRequired} different days in a rolling ${streak.windowDays}-day window to unlock the bonus.`}
+                  </p>
+                </div>
+              )}
+
               {/* Info grid */}
               <div className="grid grid-cols-2 gap-2 mb-4 text-[9px] font-bold uppercase">
                 <div className="border border-black/10 p-2">
                   <div className="text-black/40">Distribution</div>
-                  <div className="mt-0.5">50% User+Inviter · 25% User</div>
+                  <div className="mt-0.5 normal-case font-bold text-[10px] leading-snug">
+                    {engagementRewardAmount != null && engagementUserAmount != null ? (
+                      <>
+                        <span className="font-black">
+                          ~{Number(formatUnits(engagementUserAmount, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })} G$
+                        </span>{' '}to you
+                        {hasInviter && engagementInviterAmount != null && engagementInviterAmount > 0n && (
+                          <span className="text-black/50">
+                            {' '}· ~{Number(formatUnits(engagementInviterAmount, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })} G$ to inviter
+                          </span>
+                        )}
+                        {engagementRewardAmount > 0n && (
+                          <div className="text-black/40 text-[9px] mt-0.5">
+                            out of ~{Number(formatUnits(engagementRewardAmount, 18)).toLocaleString(undefined, { maximumFractionDigits: 0 })} G$ pool
+                            {engagementUserInviterPct != null && engagementUserPct != null && (
+                              <> · {engagementUserInviterPct}% pool → {hasInviter ? `${engagementUserPct}% you` : 'you keep all'}</>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-black/40">—</span>
+                    )}
+                  </div>
                 </div>
                 <div className="border border-black/10 p-2">
                   <div className="text-black/40">GD Verified</div>
