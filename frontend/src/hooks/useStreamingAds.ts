@@ -299,6 +299,7 @@ export const useStreamingAds = () => {
                             adId: '0',
                             siteId: 'staking',
                             points: 5, // server clamps to the fixed first-time bonus
+                            stakeAmount: amount, // server requires >= 1,000,000 G$ to award the bonus
                         }),
                     });
                     if (res.ok) {

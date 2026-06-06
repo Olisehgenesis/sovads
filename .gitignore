@@ -5,6 +5,11 @@ node_modules/
 # Next.js build output
 frontend/.next/
 frontend/out/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local   
+frontend/.env.*
+
 
 # Hardhat / Foundry build artifacts
 contracts/artifacts/

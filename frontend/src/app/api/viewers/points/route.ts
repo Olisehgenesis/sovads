@@ -63,6 +63,9 @@ export async function GET(request: NextRequest) {
 
 // Award points to viewer
 const FIRST_TIME_STAKE_BONUS = 5
+// Minimum G$ amount (whole tokens, NOT wei) a wallet must stake in a single
+// stake action to qualify for the first-time stake bonus.
+const FIRST_TIME_STAKE_MIN_AMOUNT = 1_000_000
 
 /**
  * Claim any anonymous (fingerprint-only) viewer row and reward history for a
@@ -121,7 +124,7 @@ async function mergeAnonymousIntoWallet(wallet: string, fingerprint: string): Pr
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { wallet, fingerprint, type, campaignId, adId, siteId, points } = body
+    const { wallet, fingerprint, type, campaignId, adId, siteId, points, stakeAmount } = body
 
     if (!fingerprint && !wallet) {
       return NextResponse.json({ error: 'Wallet or fingerprint required' }, { status: 400, headers: corsHeaders })
@@ -143,12 +146,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // STAKE rewards are a one-time, fixed 5-point bonus per wallet.
-    // If this wallet has already received a STAKE reward, skip awarding.
+    // STAKE rewards are a one-time, fixed 5-point bonus per wallet, gated on
+    // a minimum stake size of FIRST_TIME_STAKE_MIN_AMOUNT G$ in this action.
     let effectivePoints: number = points
     if (type === 'STAKE') {
       if (!wallet) {
         return NextResponse.json({ error: 'Wallet required for STAKE rewards' }, { status: 400, headers: corsHeaders })
+      }
+      const stakedAmountNum = Number(stakeAmount)
+      if (!Number.isFinite(stakedAmountNum) || stakedAmountNum < FIRST_TIME_STAKE_MIN_AMOUNT) {
+        return NextResponse.json({
+          success: true,
+          alreadyAwarded: false,
+          pointsAwarded: 0,
+          reason: `Minimum stake of ${FIRST_TIME_STAKE_MIN_AMOUNT.toLocaleString()} G$ required for the bonus`,
+          minStakeAmount: FIRST_TIME_STAKE_MIN_AMOUNT,
+        }, { headers: corsHeaders })
       }
       const normalizedWallet = String(wallet).toLowerCase()
       const priorStake = await prisma.viewerReward.findFirst({

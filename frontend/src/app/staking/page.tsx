@@ -274,7 +274,7 @@ function StakeModal({
                             <p className="text-[10px] font-black uppercase tracking-widest text-yellow-700 mb-1">What happens when you stake:</p>
                             <ul className="text-xs font-bold text-black/70 list-disc pl-4 space-y-1">
                                 <li>Rewards stream to you instantly via Superfluid GDA — no claiming needed</li>
-                                <li>First-time stakers receive a 5 SovPoints bonus</li>
+                                <li>Stake at least 1,000,000 G$ on your first stake to receive a 5 SovPoints bonus</li>
                             </ul>
                         </div>
                     ) : (

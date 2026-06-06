@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Anton, Space_Mono } from "next/font/google";
+import { Anton } from "next/font/google";
 import "./globals.css";
 import { headers } from 'next/headers'
 import ContextProvider from '@/context'
@@ -12,12 +12,6 @@ import GoodDollarClaimGate from '@/components/GoodDollarClaimGate'
 const anton = Anton({
   variable: "--font-heading",
   weight: "400",
-  subsets: ["latin"],
-});
-
-const spaceMono = Space_Mono({
-  variable: "--font-body",
-  weight: ["400", "700"],
   subsets: ["latin"],
 });
 
@@ -66,8 +60,13 @@ export default async function RootLayout({
   const cookies = headersObj.get('cookie')
 
   return (
-    <html lang="en" className={`${anton.variable} ${spaceMono.variable}`}>
+    <html lang="en" className={`${anton.variable}`}>
       <head>
+        <link rel="preconnect" href="https://api.fontshare.com" crossOrigin="anonymous" />
+        <link
+          rel="stylesheet"
+          href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&display=swap"
+        />
         <link
           rel="preload"
           href="https://fonts.reown.com/KHTeka-Medium.woff2"
