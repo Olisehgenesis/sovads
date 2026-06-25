@@ -18,6 +18,7 @@
  */
 
 import { randomUUID } from 'crypto'
+import { Prisma } from '@prisma/client'
 import { parseUnits } from 'viem'
 import { prisma } from './prisma'
 import { findOrCreateViewer } from './tasks'
