@@ -1,4 +1,18 @@
-import type { PublisherSidebarItem } from './models'
+import type { AdvertiserSidebarItem } from '../advertiser/advertiser-config'
+
+import type { PublisherSectionId } from './models'
+
+/**
+ * Publisher sidebar items. The shape is intentionally identical to the
+ * advertiser sidebar item — both use the shared `AdvertiserSidebar` /
+ * `AdvertiserIcon` primitives so the two workspaces look like one product.
+ *
+ * `sectionId` is typed as a generic `string` on `AdvertiserSidebarItem`;
+ * publisher consumers downcast it to `PublisherSectionId` at the boundary.
+ */
+export type PublisherSidebarItem = Omit<AdvertiserSidebarItem, 'sectionId'> & {
+  sectionId?: PublisherSectionId
+}
 
 export const publisherSidebarItems: PublisherSidebarItem[] = [
   { label: 'Dashboard', icon: 'dashboard', sectionId: 'dashboard' },
@@ -9,16 +23,3 @@ export const publisherSidebarItems: PublisherSidebarItem[] = [
   { label: 'Rewards', icon: 'rewards', sectionId: 'rewards' },
   { label: 'Settings', icon: 'settings', sectionId: 'settings' },
 ]
-
-export const publisherTheme = {
-  primary: '#000000',
-  background: '#F5F3F0',
-  card: '#FFFFFF',
-  textPrimary: '#141414',
-  textSecondary: '#666666',
-  border: '#000000',
-  success: '#22c55e',
-  warning: '#F59E0B',
-  danger: '#ef4444',
-  shadow: '4px 4px 0px 0px rgba(0,0,0,1)',
-} as const

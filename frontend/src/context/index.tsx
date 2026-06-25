@@ -18,7 +18,7 @@ const metadata = {
   name: 'SovAds',
   description: 'Decentralized Ad Network',
   url: (process.env.NEXT_PUBLIC_APP_URL || 'https://ads.sovseas.xyz').trim(),
-  icons: [process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL.trim()}/icon.png` : 'https://ads.sovseas.xyz/icon.png']
+  icons: [process.env.NEXT_PUBLIC_APP_URL ? `${process.env.NEXT_PUBLIC_APP_URL.trim()}/favicon.ico` : 'https://ads.sovseas.xyz/favicon.ico']
 }
 
 // Create the modal - Celo mainnet default (SovadGs, G$, treasury)

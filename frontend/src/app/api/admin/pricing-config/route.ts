@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { fetchTokenPricesUsd } from '@/lib/token-pricing'
+import { invalidateImpressionPricingCache } from '@/lib/impression-pricing'
 
 const DEFAULT_IMPRESSION_USD = 0.0002
 
@@ -49,6 +50,7 @@ export async function PUT(request: NextRequest) {
       })
     }
 
+    invalidateImpressionPricingCache()
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('Pricing config PUT error:', error)

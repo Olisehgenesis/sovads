@@ -21,3 +21,4 @@ export type AdvertiserIconName =
   | 'docs'
   | 'exchange'
   | 'withdraw'
+  | 'inbox'

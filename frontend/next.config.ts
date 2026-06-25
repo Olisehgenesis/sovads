@@ -3,7 +3,8 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   // Add Turbopack config to avoid warning when webpack is customized
   turbopack: {
-    root: ".",
+    // Absolute root silences the "turbopack.root should be absolute" warning
+    root: __dirname,
   },
   // Externalize server-only packages for both Webpack and Turbopack
   serverExternalPackages: ["pino-pretty", "lokijs", "encoding"],

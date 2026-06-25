@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { decryptPayloadServer, verifySignatureServer } from '@/lib/crypto-server'
 import { verifyTrackingToken } from '@/lib/tracking-token'
+import { getImpressionCostInToken } from '@/lib/impression-pricing'
+import {
+  trackAdEvent,
+  countRecentEvents,
+  countRecentDeviceEvents,
+  recentlySeen,
+  type AdEventType,
+} from '@/lib/analytics/track'
+import { ipHash } from '@/lib/analytics/visitor'
+import { getIpAddress } from '@/lib/debug-logger'
 
 const EVENT_TYPES = ['IMPRESSION', 'CLICK'] as const
 type EventType = (typeof EVENT_TYPES)[number]
@@ -211,25 +222,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Campaign not found or inactive' }, { status: 404 })
     }
 
-    const duplicateWindow = type === 'IMPRESSION' ? 60 * 1000 : 5 * 60 * 1000
-    const duplicateWindowStart = new Date(Date.now() - duplicateWindow)
-    const existingEvent = await prisma.event.findFirst({
-      where: {
-        type,
+    // Dedup window: 1min for IMPRESSION, 5min for CLICK
+    const dedupWindowMs = type === 'IMPRESSION' ? 60 * 1000 : 5 * 60 * 1000
+    if (fingerprint) {
+      const isDup = await recentlySeen({
+        fingerprint,
         campaignId,
-        adId,
-        siteId,
-        ...(fingerprint ? { fingerprint } : {}),
-        timestamp: { gte: duplicateWindowStart },
-      },
-    })
-    if (existingEvent) {
-      return NextResponse.json({ error: 'Duplicate event detected', eventId: existingEvent.id }, { status: 409 })
+        type: type as AdEventType,
+        windowMs: dedupWindowMs,
+      })
+      if (isDup) {
+        return NextResponse.json({ error: 'Duplicate event detected' }, { status: 409 })
+      }
     }
 
-    const oneHourAgo = new Date(Date.now() - 3600 * 1000)
-    const recentEvents = await prisma.event.count({
-      where: { type, campaignId, siteId, timestamp: { gte: oneHourAgo } },
+    const recentEvents = await countRecentEvents({
+      campaignId,
+      siteId,
+      type: type as AdEventType,
+      windowMs: 3600 * 1000,
     })
     if (recentEvents > 100) {
       return NextResponse.json({ error: 'Rate limit exceeded' }, { status: 429 })
@@ -239,8 +250,10 @@ export async function POST(request: NextRequest) {
     if (fingerprint) {
       const perDeviceWindow = type === 'IMPRESSION' ? 60 * 1000 : 24 * 60 * 60 * 1000
       const maxPerDevice = type === 'IMPRESSION' ? 1 : 100
-      const deviceRecentEvents = await prisma.event.count({
-        where: { fingerprint, type, timestamp: { gte: new Date(Date.now() - perDeviceWindow) } },
+      const deviceRecentEvents = await countRecentDeviceEvents({
+        fingerprint,
+        type: type as AdEventType,
+        windowMs: perDeviceWindow,
       })
       if (deviceRecentEvents >= maxPerDevice) {
         return NextResponse.json({ error: `Velocity limit exceeded for this device (${type})` }, { status: 429 })
@@ -249,28 +262,35 @@ export async function POST(request: NextRequest) {
 
     const publisher = site ? await prisma.publisher.findFirst({ where: { id: site.publisherId } }) : null
     const resolvedSiteId = site?.siteId ?? tokenClaims?.siteId ?? siteId
-    const resolvedSiteDbId = site?.id ?? resolvedSiteId
-    const eventDoc = await prisma.event.create({
-      data: {
-        type,
-        campaignId,
-        publisherId: publisher?.id ?? site?.publisherId ?? 'ghost',
-        siteId: resolvedSiteId,
-        adId,
-        ipAddress: getIp(request),
-        userAgent: payloadUserAgent ?? (request.headers.get('user-agent') || 'unknown'),
-        fingerprint: fingerprint || undefined,
-        viewerWallet: attributedWallet || undefined,
-        verified: rendered === true && viewportVisible !== false,
-        publisherSiteId: resolvedSiteDbId,
-      },
+    const ip = getIpAddress(request)
+    const eventId = randomUUID()
+    await trackAdEvent({
+      type: type as AdEventType,
+      campaignId,
+      adId,
+      publisherId: publisher?.id ?? site?.publisherId ?? 'ghost',
+      siteId: resolvedSiteId,
+      fingerprint: fingerprint ?? null,
+      wallet: attributedWallet ?? null,
+      verifiedHuman: rendered === true && viewportVisible !== false,
+      ipHash: ip ? ipHash(ip) : null,
+      userAgent: payloadUserAgent ?? (request.headers.get('user-agent') || 'unknown'),
     })
+    const eventDoc = { id: eventId }
 
     if (type === 'CLICK') {
       await prisma.campaign.update({
         where: { id: campaignId },
         data: { spent: { increment: campaign.cpc } },
       })
+    } else if (type === 'IMPRESSION') {
+      const impressionCost = await getImpressionCostInToken(campaign.tokenAddress)
+      if (impressionCost > 0) {
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { spent: { increment: impressionCost } },
+        })
+      }
     }
 
     ; (async () => {

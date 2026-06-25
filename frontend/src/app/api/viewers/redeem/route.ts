@@ -43,7 +43,10 @@ export async function GET(request: NextRequest) {
 
     const viewer = await prisma.viewerPoints.findFirst({ where: { wallet } })
     if (!viewer) {
-      return NextResponse.json({ redemptions: [], pendingPoints: 0, totalRedeemed: 0 }, { headers: corsHeaders })
+      return NextResponse.json(
+        { redemptions: [], pendingPoints: 0, totalRedeemed: 0, availablePoints: 0, totalPoints: 0, claimedPoints: 0, minimumCashout: MINIMUM_CASHOUT_POINTS },
+        { headers: corsHeaders }
+      )
     }
 
     const redemptions = await prisma.viewerCashout.findMany({
@@ -66,6 +69,7 @@ export async function GET(request: NextRequest) {
         totalPoints: viewer.totalPoints,
         claimedPoints: viewer.claimedPoints,
         totalRedeemed,
+        minimumCashout: MINIMUM_CASHOUT_POINTS,
         redemptions: redemptions.map(r => ({
           id: r.id,
           amount: r.amount,

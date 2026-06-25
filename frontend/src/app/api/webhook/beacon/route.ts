@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { prisma } from '@/lib/prisma'
 import { logCallback, getIpAddress } from '@/lib/debug-logger'
+import { getImpressionCostInToken } from '@/lib/impression-pricing'
+import {
+  trackAdEvent,
+  countRecentEvents,
+  recentlySeen,
+  type AdEventType,
+} from '@/lib/analytics/track'
+import { ipHash } from '@/lib/analytics/visitor'
 
 const EVENT_TYPES = ['IMPRESSION', 'CLICK'] as const
 type EventType = (typeof EVENT_TYPES)[number]
@@ -121,33 +130,29 @@ export async function POST(request: NextRequest) {
     // 2. Check for duplicate events
     // In development: skip duplicate check (allow testing)
     // In production: For impressions: check within 1 minute, For clicks: check within 5 minutes
-    const eventsCollection = prisma.event
     if (process.env.NODE_ENV !== 'development') {
       const duplicateWindow = type === 'IMPRESSION' ? 60 * 1000 : 5 * 60 * 1000
-      const duplicateWindowStart = new Date(Date.now() - duplicateWindow)
-      const existingEvent = await prisma.event.findFirst({
-        where: {
-          type,
+      if (fingerprint) {
+        const isDup = await recentlySeen({
+          fingerprint,
           campaignId,
-          adId,
-          siteId,
-          ...(fingerprint != null ? { fingerprint } : {}),
-          timestamp: { gte: duplicateWindowStart },
-        },
-      })
-      
-      if (existingEvent) {
-        return NextResponse.json({ 
-          error: 'Duplicate event detected',
-          eventId: existingEvent.id
-        }, { status: 409 })
+          type: type as AdEventType,
+          windowMs: duplicateWindow,
+        })
+        if (isDup) {
+          return NextResponse.json({
+            error: 'Duplicate event detected',
+          }, { status: 409 })
+        }
       }
     }
 
     // 3. Rate limiting per campaign per site (100 events/hour)
-    const oneHourAgo = new Date(Date.now() - 3600 * 1000)
-    const recentEvents = await prisma.event.count({
-      where: { type, campaignId, siteId, timestamp: { gte: oneHourAgo } },
+    const recentEvents = await countRecentEvents({
+      campaignId,
+      siteId,
+      type: type as AdEventType,
+      windowMs: 3600 * 1000,
     })
 
     if (recentEvents > 100) {
@@ -166,28 +171,33 @@ export async function POST(request: NextRequest) {
     }
 
     // Create event with enhanced metadata
-    const event = await prisma.event.create({
-      data: {
-        type,
-        campaignId,
-        publisherId: publisherId ?? 'temp',
-        siteId,
-        adId,
-        ipAddress,
-        userAgent: clientUserAgent ?? userAgent,
-        fingerprint: fingerprint != null ? fingerprint : undefined,
-        verified: renderVerified && viewportVisible !== false,
-        publisherSiteId: publisherSite?.id ?? undefined,
-      },
+    const eventId = randomUUID()
+    await trackAdEvent({
+      type: type as AdEventType,
+      campaignId,
+      adId,
+      publisherId: publisherId ?? 'temp',
+      siteId,
+      fingerprint: fingerprint ?? null,
+      verifiedHuman: renderVerified && viewportVisible !== false,
+      ipHash: ipAddress ? ipHash(ipAddress) : null,
+      userAgent: clientUserAgent ?? userAgent,
     })
-    const eventId = event.id
 
-    // Update campaign spent amount for clicks
+    // Update campaign spent amount
     if (type === 'CLICK') {
       await prisma.campaign.update({
         where: { id: campaignId },
         data: { spent: { increment: campaign.cpc } },
       })
+    } else if (type === 'IMPRESSION') {
+      const impressionCost = await getImpressionCostInToken(campaign.tokenAddress)
+      if (impressionCost > 0) {
+        await prisma.campaign.update({
+          where: { id: campaignId },
+          data: { spent: { increment: impressionCost } },
+        })
+      }
     }
 
     // Award viewer points for ad interaction (async, don't block response)

@@ -63,31 +63,42 @@ model PublisherSite {
 }
 
 model Campaign {
-  id                 String     @id @default(uuid())
+  id                 String         @id @default(uuid())
   advertiserId       String
   name               String
   description        String?
   bannerUrl          String
   targetUrl          String
   budget             Float
-  spent              Float      @default(0)
-  cpc                Float      @default(0)
-  active             Boolean    @default(true)
+  spent              Float          @default(0)
+  cpc                Float          @default(0)
+  active             Boolean        @default(true)
   tokenAddress       String?
   onChainId          Int?
   metadataURI        String?
-  mediaType          String     @default("image")
+  mediaType          String         @default("image")
   tags               String[]
   targetLocations    String[]
   metadata           Json?
   verificationStatus String?
+  // Lifecycle status (advertiser-owned):
+  //   draft     → DB only, NOT on chain, NOT served to publishers
+  //   review    → on-chain tx submitted, awaiting admin verificationStatus
+  //   approved  → on-chain + admin-approved, serving
+  //   rejected  → admin rejected
+  //   paused    → live but temporarily disabled
+  status             String         @default("draft")
+  submittedAt        DateTime?      // when advertiser pushed it on-chain
+  approvedAt         DateTime?      // when admin flipped verificationStatus to approved
   startDate          DateTime?
   endDate            DateTime?
-  createdAt          DateTime   @default(now())
-  updatedAt          DateTime   @updatedAt
-  advertiser         Advertiser @relation(fields: [advertiserId], references: [id])
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  advertiser         Advertiser     @relation(fields: [advertiserId], references: [id])
   events             Event[]
+  tasks              CampaignTask[]
 
+  @@index([status])
   @@map("campaigns")
 }
 
@@ -147,35 +158,35 @@ model Payout {
 }
 
 model Topup {
-  id          String    @id @default(uuid())
-  publisherId String
-  wallet      String
-  amount      Float
-  token       String
+  id           String    @id @default(uuid())
+  publisherId  String
+  wallet       String
+  amount       Float
+  token        String
   tokenAddress String?
-  gsReceived  Float?
-  txHash      String?
-  status      String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  publisher   Publisher @relation(fields: [publisherId], references: [id])
+  gsReceived   Float?
+  txHash       String?
+  status       String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  publisher    Publisher @relation(fields: [publisherId], references: [id])
 
   @@map("topups")
 }
 
 model Exchange {
-  id          String    @id @default(uuid())
-  publisherId String
-  wallet      String
-  fromToken   String
-  fromAmount  Float
-  gsReceived  Float
+  id           String    @id @default(uuid())
+  publisherId  String
+  wallet       String
+  fromToken    String
+  fromAmount   Float
+  gsReceived   Float
   tokenAddress String?
-  txHash      String?
-  status      String
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  publisher   Publisher @relation(fields: [publisherId], references: [id])
+  txHash       String?
+  status       String
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  publisher    Publisher @relation(fields: [publisherId], references: [id])
 
   @@map("exchanges")
 }
@@ -262,19 +273,20 @@ model CallbackLog {
 }
 
 model ViewerPoints {
-  id               String         @id @default(uuid())
+  id               String           @id @default(uuid())
   wallet           String?
   fingerprint      String
-  totalPoints      Float          @default(0)
-  claimedPoints    Float          @default(0)
-  pendingPoints    Float          @default(0)
-  lastInteraction  DateTime       @default(now())
+  totalPoints      Float            @default(0)
+  claimedPoints    Float            @default(0)
+  pendingPoints    Float            @default(0)
+  lastInteraction  DateTime         @default(now())
   linkedDevices    String[]
   lastWalletChange DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
   rewards          ViewerReward[]
   cashouts         ViewerCashout[]
+  taskCompletions  TaskCompletion[]
 
   @@map("viewer_points")
 }
@@ -309,40 +321,144 @@ model PricingConfig {
 
 // GoodDollar Engagement Rewards claims (bonus G$ from GoodDollar protocol)
 model EngagementRewardClaim {
-  id           String    @id @default(uuid())
+  id           String   @id @default(uuid())
   wallet       String
   fingerprint  String?
   inviter      String?
   txHash       String?
   rewardAmount Float?
-  status       String    @default("pending") // pending | success | failed
+  status       String   @default("pending") // pending | success | failed
   error        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   @@map("engagement_reward_claims")
 }
 
 // Viewer GS cashout requests (1 SovPoint = 1 G$)
 model ViewerCashout {
-  id          String   @id @default(uuid())
-  viewerId    String
-  wallet      String
-  amount      Float                     // SovPoints / G$ requested
-  claimRef    String?  @unique          // on-chain bytes32 ref (keccak256)
-  status      String   @default("pending") // pending | processing | completed | cancelled | failed
-  redeemed    Boolean  @default(false)  // true once user submitted the signed tx on-chain
-  redeemedAt  DateTime?                 // when the user redeemed on-chain
-  redeemTxHash String?                  // tx hash of the user's on-chain redemption
-  initiateTxHash String?               // tx where initiateClaim was called
-  distributeTxHash String?             // tx where claimDateClaim distributed tokens
-  signature   String?                   // EIP-712 signature for user-submitted claims
-  nonce       String?                   // nonce used in the signed claim
-  deadline    String?                   // deadline for the signed claim
-  error       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  viewer      ViewerPoints @relation(fields: [viewerId], references: [id])
+  id               String       @id @default(uuid())
+  viewerId         String
+  wallet           String
+  amount           Float // SovPoints / G$ requested
+  claimRef         String?      @unique // on-chain bytes32 ref (keccak256)
+  status           String       @default("pending") // pending | processing | completed | cancelled | failed
+  redeemed         Boolean      @default(false) // true once user submitted the signed tx on-chain
+  redeemedAt       DateTime? // when the user redeemed on-chain
+  redeemTxHash     String? // tx hash of the user's on-chain redemption
+  initiateTxHash   String? // tx where initiateClaim was called
+  distributeTxHash String? // tx where claimDateClaim distributed tokens
+  signature        String? // EIP-712 signature for user-submitted claims
+  nonce            String? // nonce used in the signed claim
+  deadline         String? // deadline for the signed claim
+  error            String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  viewer           ViewerPoints @relation(fields: [viewerId], references: [id])
 
   @@map("viewer_cashouts")
+}
+
+// Campaign-level CTA tasks (visit URL, sign message, stake G$, on-chain action, etc.)
+model CampaignTask {
+  id           String           @id @default(uuid())
+  campaignId   String
+  kind         String // VISIT_URL | SOCIAL_FOLLOW | QUIZ | STAKE_GS | CONTRACT_CALL | SIGN_MESSAGE | POLL | FEEDBACK | SURVEY
+  label        String
+  description  String?
+  config       Json // { url, minDwellMs, expectedAnswer, minAmount, targetContract, eventSig, options[], questions[], ... }
+  rewardPoints Float            @default(0)
+  rewardGs     Float? // optional on-chain G$ payout (uses streaming contract signed-claim path)
+  budgetGs     Float? // total G$ pool allocated for this task; null = unlimited
+  spentGs      Float            @default(0)
+  maxPerWallet Int              @default(1)
+  cooldownSecs Int              @default(0)
+  verifier     String           @default("ORACLE") // ORACLE | ONCHAIN_EVENT | SELF_SIGNED | STAKE_PROOF | WEBHOOK | AI_PLAN
+  active       Boolean          @default(true)
+  startDate    DateTime?
+  endDate      DateTime?
+
+  // Surface controls where this unit can be rendered:
+  //   attached    → CTA piggy-backed onto a Campaign banner (default; legacy behaviour)
+  //   standalone  → can be served directly into a slot (POLL / FEEDBACK / SURVEY / ANNOUNCEMENT)
+  //   embed       → rendered inline inside a host page section (future)
+  surface           String     @default("attached")
+  // Display config for standalone surfaces: { width, height, theme, layout, ... }
+  display           Json?
+  // For task units that live under a parent campaign but render on their own (e.g. mid-survey CTAs)
+  parentCampaignId  String?
+
+  // AI_PLAN fields (additive; null for non-AI tasks)
+  verificationPlan  Json?      // VerificationPlan JSON (see lib/plan-schemas.ts)
+  contractAllowlist String[]   // per-task whitelist of contract addresses the plan may read
+  planAuthor        String?    // wallet of the admin who generated the plan
+  planModel         String?    // Groq model used at generation time
+  planPrompt        String?    // original natural-language prompt (audit)
+  planGeneratedAt   DateTime?
+
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  campaign     Campaign         @relation(fields: [campaignId], references: [id])
+  completions  TaskCompletion[]
+  surveySessions SurveySession[]
+
+  @@index([campaignId])
+  @@index([active])
+  @@index([surface, active])
+  @@index([parentCampaignId])
+  @@map("campaign_tasks")
+}
+
+// Per-viewer completion record for a CampaignTask, with on-chain proof linkage
+model TaskCompletion {
+  id           String       @id @default(uuid())
+  taskId       String
+  viewerId     String
+  wallet       String?
+  fingerprint  String
+  proof        Json? // { txHash, signature, message, dwellMs, eventLog, ... }
+  status       String       @default("pending") // pending | verified | rejected | paid | failed
+  rewardPoints Float        @default(0)
+  rewardGs     Float?
+  claimRef     String?      @unique // bytes32 keccak256(taskId, wallet, nonce) used on-chain (single-use)
+  nonce        String?
+  deadline     String?
+  signature    String? // operator EIP-712 signature for streaming-contract claim
+  payoutTxHash String? // tx hash when viewer redeemed the signed claim on-chain
+  error        String?
+  createdAt    DateTime     @default(now())
+  verifiedAt   DateTime?
+  paidAt       DateTime?
+  updatedAt    DateTime     @updatedAt
+  task         CampaignTask @relation(fields: [taskId], references: [id])
+  viewer       ViewerPoints @relation(fields: [viewerId], references: [id])
+
+  @@index([taskId, status])
+  @@index([wallet])
+  @@index([fingerprint, taskId])
+  @@map("task_completions")
+}
+
+// Multi-step interactions (SURVEY) — tracks progress across question pages without
+// dropping a TaskCompletion until the viewer finishes. Aggregated answers live in
+// Turso `task_responses`; only the session pointer + final completion live here.
+model SurveySession {
+  id            String       @id @default(uuid())
+  taskId        String
+  wallet        String?
+  fingerprint   String
+  status        String       @default("in_progress") // in_progress | completed | abandoned
+  currentStep   Int          @default(0)
+  totalSteps    Int
+  startedAt     DateTime     @default(now())
+  completedAt   DateTime?
+  abandonedAt   DateTime?
+  lastSeenAt    DateTime     @default(now())
+  metadata      Json?
+  task          CampaignTask @relation(fields: [taskId], references: [id])
+
+  @@index([taskId, status])
+  @@index([wallet])
+  @@index([fingerprint, taskId])
+  @@map("survey_sessions")
 }

@@ -1,115 +1,132 @@
 import Link from 'next/link'
 import BannerAdPreview from '@/components/ads/BannerAdPreview'
+import CodeSnippet from '@/components/CodeSnippet'
+import StatsStrip from '@/components/StatsStrip'
+import AdvertiserIcon from '@/components/advertiser/AdvertiserIcon'
+import type { AdvertiserIconName } from '@/components/advertiser/models'
+
+const heroSnippet = `import { SovAds, Banner } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'YOUR_SITE_ID' })
+const banner = new Banner(ads, 'ad-container')
+await banner.render() // renders after site ready`
+
+type RoleCard = {
+  icon: AdvertiserIconName
+  title: string
+  items: string[]
+  link: string
+  cta: string
+}
+
+const roleCards: RoleCard[] = [
+  {
+    icon: 'websites',
+    title: 'Publishers',
+    items: ['Earn per real impression', 'Automatic on-chain payouts', 'Full control of placements'],
+    link: '/publisher',
+    cta: 'Start earning',
+  },
+  {
+    icon: 'preview',
+    title: 'Viewers',
+    items: ['Earn SovPoints by viewing ads', 'Accumulate over time', 'No signup friction'],
+    link: '/rewards',
+    cta: 'View my points',
+  },
+  {
+    icon: 'campaign',
+    title: 'Advertisers',
+    items: ['Pay only for real reach', 'Transparent metrics', 'No bot-driven traffic'],
+    link: '/advertiser',
+    cta: 'Create campaign',
+  },
+]
+
+const sovPointsSteps: { icon: AdvertiserIconName; label: string }[] = [
+  { icon: 'preview', label: 'View ads' },
+  { icon: 'points', label: 'Earn points' },
+  { icon: 'earnings', label: 'Redeem later' },
+]
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-transparent">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32">
-        <div className="grid lg:grid-cols-2 gap-16 items-center">
-          {/* Left content */}
+    <div className="min-h-screen bg-[#F5F3F0]">
+      {/* ── Hero ─────────────────────────────────────────────────────────── */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 pt-20 pb-12 sm:pt-24 sm:pb-16">
+        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-10">
           <div className="text-center lg:text-left">
             <h1 className="brutal-title text-5xl sm:text-7xl lg:text-8xl">
-              Ads that <span className="text-white bg-black px-4">pay</span>
+              Ads that <span className="bg-[#2D2D2D] px-4 text-white">pay</span>
             </h1>
-            <p className="text-lg font-bold text-black mb-8 max-w-2xl mx-auto lg:mx-0 border-l-4 border-black pl-4">
-              SovAds is a transparent ad protocol where <strong className="bg-black text-white px-1">publishers earn</strong>, <strong className="bg-black text-white px-1">viewers earn SovPoints</strong>, and advertisers get verifiable reach.
+            <p className="mb-8 max-w-xl text-lg leading-relaxed text-[#666] mx-auto lg:mx-0">
+              Publishers earn per impression. Viewers earn rewards. Advertisers buy verified human attention.
             </p>
 
-            {/* SovPoints Badge */}
-            <div className="mb-8 inline-flex items-center gap-3 px-4 py-2 bg-[#F5F3F0] border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] text-sm font-bold text-black uppercase">
-              <span className="text-xl">🎯</span>
-              <span><strong>New:</strong> Earn SovPoints. Redeem later.</span>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start mb-8">
+            <div className="mb-4 flex flex-col gap-4 sm:flex-row justify-center lg:justify-start">
               <Link href="/advertiser" className="btn btn-primary text-lg">
-                Run an Ad Campaign
+                Run an ad campaign
               </Link>
               <Link href="/publisher" className="btn btn-outline text-base">
-                Earn as a Site Owner
+                Earn as a site owner
               </Link>
             </div>
-            <div className="flex flex-wrap items-center justify-center lg:justify-start gap-6 text-xs font-bold uppercase tracking-widest">
-              <Link href="/contact" className="hover:bg-black hover:text-white transition-all">Contact Us</Link>
-              <a href="/sdk-demo.html" className="hover:bg-black hover:text-white transition-all">Developer Docs</a>
-              <a href="/sdk-demo.html#demo" className="hover:bg-black hover:text-white transition-all">SDK Demo</a>
+
+            <div className="mb-8">
+              <Link
+                href="/rewards"
+                className="inline-flex items-center gap-1.5 text-sm font-semibold text-[#2D2D2D] underline decoration-2 underline-offset-4 hover:bg-[#2D2D2D] hover:text-white px-1 transition-colors"
+              >
+                <span aria-hidden>→</span> Just here to earn? Claim SovPoints as a viewer
+              </Link>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-xs font-bold uppercase tracking-widest text-[#999] justify-center lg:justify-start">
+              <Link href="/contact" className="transition-colors hover:text-[#2D2D2D]">Contact</Link>
+              <a href="/sdk-demo.html" className="transition-colors hover:text-[#2D2D2D]">Developer docs</a>
+              <a href="/sdk-demo.html#demo" className="transition-colors hover:text-[#2D2D2D]">SDK demo</a>
             </div>
           </div>
 
-          {/* Right code snippet */}
-          <div className="hidden lg:block relative">
-            <div className="absolute -top-4 -left-4 w-full h-full bg-black"></div>
-            <div className="relative border-4 border-black bg-white p-2">
-              <div className="flex items-center gap-2 px-4 py-3 border-b-4 border-black bg-[#F5F3F0]">
-                <span className="h-3 w-3 border-2 border-black rounded-full bg-red-500"></span>
-                <span className="h-3 w-3 border-2 border-black rounded-full bg-yellow-400"></span>
-                <span className="h-3 w-3 border-2 border-black rounded-full bg-green-500"></span>
-                <span className="ml-4 text-sm font-heading font-bold text-black uppercase tracking-tight">snippet.ts</span>
-              </div>
-              <pre className="bg-[#141414] text-white text-base leading-relaxed p-8 overflow-x-auto">
-                <code className="font-mono">
-                  <span className="text-blue-400">import</span> {`{ SovAds, Banner }`} <span className="text-blue-400">from</span> <span className="text-green-400">&apos;sovads-sdk&apos;</span>;{'\n'}
-                  <span className="text-blue-400">const</span> ads = <span className="text-blue-400">new</span> SovAds({`{ `}<span className="text-green-400">siteId: &apos;YOUR_SITE_ID&apos;</span>{` }`});{'\n'}
-                  <span className="text-blue-400">const</span> banner = <span className="text-blue-400">new</span> Banner(ads, <span className="text-green-400">&apos;ad-container&apos;</span>);{'\n'}
-                  <span className="text-blue-400">await</span> banner.render(); <span className="text-gray-500">{`// renders after site ready`}</span>
-                </code>
-              </pre>
-            </div>
+          <div className="hidden lg:block">
+            <CodeSnippet chrome="window" filename="snippet.ts" code={heroSnippet} />
           </div>
         </div>
       </div>
 
-      {/* Who Earns What Section */}
-      <section className="border-t-4 border-black bg-white py-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <h2 className="text-3xl sm:text-4xl font-heading text-center mb-12 uppercase">An ad economy for everyone</h2>
+      {/* ── Protocol stats — trust signal ────────────────────────────────── */}
+      <StatsStrip />
 
-          <div className="grid md:grid-cols-3 gap-12">
-            {[
-              {
-                emoji: '🧑‍💻',
-                title: 'Publishers',
-                items: ['Earn per real impression', 'Automatic on-chain payouts', 'Full control of placements'],
-                link: '/publisher',
-                cta: 'Start earning →'
-              },
-              {
-                emoji: '👀',
-                title: 'Viewers',
-                items: ['Earn SovPoints by viewing ads', 'Accumulate over time', 'No signup friction'],
-                link: '/rewards',
-                cta: 'View my points →',
-                featured: true
-              },
-              {
-                emoji: '📢',
-                title: 'Advertisers',
-                items: ['Pay only for real reach', 'Transparent metrics', 'No bot-driven traffic'],
-                link: '/advertiser',
-                cta: 'Create campaign →'
-              }
-            ].map((card, i) => (
+      {/* ── Who earns what ───────────────────────────────────────────────── */}
+      <section className="border-t border-[#2D2D2D] bg-white py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <h2 className="brutal-title text-center text-3xl sm:text-4xl mb-12">
+            An ad economy for everyone
+          </h2>
+
+          <div className="grid gap-8 md:grid-cols-3">
+            {roleCards.map((card) => (
               <div
-                key={i}
-                className={`card relative p-8 ${card.featured ? 'bg-[#F5F3F0] -rotate-1' : 'bg-white rotate-1'} transition-transform hover:rotate-0`}
+                key={card.title}
+                className="border border-[#E5E5E5] bg-white p-6 transition-colors hover:bg-[#FAFAF8]"
               >
-                {card.featured && (
-                  <div className="absolute -top-4 -right-4 bg-black text-white px-4 py-1 text-sm font-heading uppercase">
-                    New
-                  </div>
-                )}
-                <div className="text-5xl mb-6">{card.emoji}</div>
-                <h3 className="text-2xl font-heading mb-4 uppercase">{card.title}</h3>
-                <ul className="space-y-4 mb-8">
-                  {card.items.map((item, j) => (
-                    <li key={j} className="flex items-center gap-3 font-bold text-sm">
-                      <span className="h-2 w-2 bg-black shrink-0"></span>
+                <div className="mb-5 flex h-10 w-10 items-center justify-center bg-[#2D2D2D] text-white">
+                  <AdvertiserIcon name={card.icon} className="h-5 w-5" />
+                </div>
+                <h3 className="brutal-title mb-4 text-2xl">{card.title}</h3>
+                <ul className="mb-6 space-y-2.5">
+                  {card.items.map((item) => (
+                    <li key={item} className="flex items-start gap-2.5 text-[13px] font-medium text-[#2D2D2D]">
+                      <span aria-hidden className="mt-1.5 h-1.5 w-1.5 flex-shrink-0 bg-[#2D2D2D]" />
                       <span>{item}</span>
                     </li>
                   ))}
                 </ul>
-                <Link href={card.link} className="text-lg font-heading uppercase underline decoration-4 underline-offset-4 hover:bg-black hover:text-white px-1 transition-all">
-                  {card.cta}
+                <Link
+                  href={card.link}
+                  className="inline-flex items-center gap-1 text-[14px] font-semibold text-[#2D2D2D] underline decoration-2 underline-offset-4 hover:bg-[#2D2D2D] hover:text-white px-1 transition-colors"
+                >
+                  {card.cta} <span aria-hidden>→</span>
                 </Link>
               </div>
             ))}
@@ -117,39 +134,57 @@ export default function Home() {
         </div>
       </section>
 
-      {/* SovPoints Explainer */}
-      <section className="bg-[#F5F3F0] border-t-2 border-black py-16 px-4">
-        <div className="max-w-4xl mx-auto card p-8 bg-white">
-          <h3 className="text-2xl font-heading mb-4 text-center uppercase tracking-tight">What are SovPoints?</h3>
-          <p className="text-lg font-bold text-center mb-10 max-w-2xl mx-auto">
-            Reward points earned for your attention. They accumulate over time and can be redeemed across the ecosystem.
+      {/* ── SovPoints explainer ──────────────────────────────────────────── */}
+      <section className="border-t border-[#E5E5E5] bg-[#F5F3F0] py-16 px-4">
+        <div className="mx-auto max-w-4xl border border-[#E5E5E5] bg-white p-8">
+          <h3 className="brutal-title mb-3 text-center text-2xl">What are SovPoints?</h3>
+          <p className="mx-auto mb-10 max-w-2xl text-center text-[15px] leading-6 text-[#444]">
+            Reward points earned for your attention. They accumulate over time and can be redeemed across the
+            ecosystem.
           </p>
-          <div className="grid sm:grid-cols-3 gap-6 text-center font-heading text-base">
-            <div className="flex flex-col items-center gap-2">
-              <span className="text-4xl">👀</span>
-              <span>View Ads</span>
-            </div>
-            <div className="flex flex-col items-center gap-2">
-              <span className="text-4xl">🎯</span>
-              <span>Earn Points</span>
-            </div>
-            <div className="flex flex-col items-center gap-2">
-              <span className="text-4xl">💰</span>
-              <span>Redeem later</span>
-            </div>
+          <ol className="grid gap-6 text-center sm:grid-cols-3">
+            {sovPointsSteps.map((step, i) => (
+              <li key={step.label} className="flex flex-col items-center gap-3">
+                <span className="flex h-10 w-10 items-center justify-center border border-[#2D2D2D] bg-white text-[#2D2D2D]">
+                  <AdvertiserIcon name={step.icon} className="h-5 w-5" />
+                </span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#888]">Step {i + 1}</span>
+                <span className="text-[14px] font-semibold text-[#2D2D2D]">{step.label}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      {/* ── Live preview ─────────────────────────────────────────────────── */}
+      <section className="border-t border-[#E5E5E5] bg-white px-4 py-16">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="brutal-title mb-2 text-3xl">Live SovAds preview</h2>
+          <p className="mb-10 text-[12px] font-semibold uppercase tracking-[0.18em] text-[#888]">
+            View this ad to earn SovPoints automatically
+          </p>
+          <div className="mx-auto max-w-2xl border border-[#E5E5E5] bg-white p-4">
+            <BannerAdPreview className="min-h-[250px] w-full border border-[#E5E5E5]" />
           </div>
         </div>
       </section>
 
-      {/* Live Preview */}
-      <section className="py-16 px-4 bg-white border-t-2 border-black">
-        <div className="max-w-4xl mx-auto text-center">
-          <h2 className="text-3xl font-heading mb-3 uppercase">Live SovAds Preview</h2>
-          <p className="font-heading text-sm text-gray-500 mb-12 uppercase tracking-widest">
-            View this ad to earn SovPoints automatically
+      {/* ── Pre-footer CTA band ──────────────────────────────────────────── */}
+      <section className="border-t border-[#2D2D2D] bg-[#F5F3F0] px-4 py-20">
+        <div className="mx-auto max-w-4xl text-center">
+          <h2 className="brutal-title mb-5 text-4xl sm:text-6xl">
+            Ready to <span className="bg-[#2D2D2D] px-3 text-white">ship</span>?
+          </h2>
+          <p className="mx-auto mb-10 max-w-xl text-lg text-[#666]">
+            Drop in the SDK. Earn from your first impression. No ad-ops team required.
           </p>
-          <div className="card bg-white p-4 max-w-2xl mx-auto -rotate-1 hover:rotate-0 transition-transform">
-            <BannerAdPreview className="min-h-[250px] w-full border-2 border-black" />
+          <div className="flex flex-col gap-4 justify-center sm:flex-row">
+            <Link href="/advertiser" className="btn btn-primary text-lg">
+              Run an ad campaign
+            </Link>
+            <Link href="/publisher" className="btn btn-outline text-lg">
+              Earn as a site owner
+            </Link>
           </div>
         </div>
       </section>

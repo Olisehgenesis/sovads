@@ -1,6 +1,7 @@
 "use client"
 
 import React from 'react'
+import Image from 'next/image'
 import Link from 'next/link'
 
 export default function Footer() {
@@ -14,7 +15,16 @@ export default function Footer() {
 
           {/* Brand column */}
           <div className="lg:col-span-2">
-            <p className="text-2xl font-heading uppercase tracking-tight mb-3">SovAds</p>
+            <div className="mb-3 flex items-center gap-3">
+              <Image
+                src="/icon.png"
+                alt="SovAds logo"
+                width={40}
+                height={40}
+                className="h-10 w-10 rounded-none border-2 border-black bg-white object-contain shadow-[2px_2px_0px_0px_rgba(0,0,0,1)]"
+              />
+              <p className="text-2xl font-heading uppercase tracking-tight">SovAds</p>
+            </div>
             <p className="text-sm text-[var(--text-secondary)] max-w-xs leading-relaxed mb-6">
               A transparent on-chain advertising protocol. Publishers earn per real impression. Viewers earn SovPoints. Advertisers get verifiable reach — no bots, no black boxes.
             </p>
