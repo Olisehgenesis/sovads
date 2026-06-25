@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { createMDX } from "fumadocs-mdx/next";
 
 const nextConfig: NextConfig = {
   // Add Turbopack config to avoid warning when webpack is customized
@@ -20,6 +21,16 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '2mb',
     },
   },
+  // Serve raw markdown for any /docs/<slug>.mdx — used by the
+  // "Copy as Markdown" button on each docs page.
+  async rewrites() {
+    return [
+      { source: '/docs/:path*.mdx', destination: '/llms.mdx/docs/:path*' },
+      { source: '/docs.mdx',        destination: '/llms.mdx/docs' },
+    ]
+  },
 };
 
-export default nextConfig;
+const withMDX = createMDX();
+
+export default withMDX(nextConfig);

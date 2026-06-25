@@ -1,0 +1,6 @@
+---
+title: Overview
+description: HMAC-signed callbacks for advertiser-confirmed completions.
+---
+
+Use `verifier: "WEBHOOK"` when your own server (or a landing page) is the source of truth for completions. SovAds verifies an HMAC-SHA256 signature on every callback and deduplicates by `externalRef`.

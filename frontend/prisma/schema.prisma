@@ -55,6 +55,12 @@ model PublisherSite {
   apiKey      String
   apiSecret   String
   verified    Boolean   @default(false)
+  // Last time the SDK on this site checked in (heartbeat or ad request).
+  // Throttled writes — only bumped when the previous value is older than
+  // 10 minutes, so high-traffic publishers don't flood the DB.
+  lastSeenAt    DateTime?
+  lastSdkVersion String?
+  lastHref       String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   publisher   Publisher @relation(fields: [publisherId], references: [id])

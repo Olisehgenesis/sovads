@@ -65,6 +65,20 @@ function truncateAddress(address: string) {
   return `${address.slice(0, 6)}…${address.slice(-4)}`
 }
 
+// Renders a relative age like "2m ago" / "5h ago" for the SDK heartbeat
+// column. Capped at "1d+" — anything older than 24h is already shown as
+// "Stale" so finer-grained labels would just clutter the table.
+function formatHeartbeatAge(ageMs: number): string {
+  if (!isFinite(ageMs) || ageMs < 0) return ''
+  const seconds = Math.floor(ageMs / 1000)
+  if (seconds < 60) return `${seconds}s ago`
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) return `${minutes}m ago`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `${hours}h ago`
+  return '1d+ ago'
+}
+
 function formatVaultAmount(value: bigint | string | number, tokenAddress: string) {
   try {
     const info = getTokenInfo(tokenAddress)
@@ -925,8 +939,8 @@ export default function PublisherDashboard() {
                     onRotate={(site) => void rotateSiteCredentials(site)}
                     onRemove={(id) => void removeSiteFromDB(id)}
                     siteStats={siteStats}
-                    siteDailyStats={siteDailyStats}
                     onRefreshSiteStats={(id) => void loadSiteStats(id, statsDays)}
+                    onCopy={(text, label) => void copyToClipboard(text, label)}
                   />
                 )}
 
@@ -1330,8 +1344,8 @@ function WebsitesSection({
   onRotate,
   onRemove,
   siteStats,
-  siteDailyStats,
   onRefreshSiteStats,
+  onCopy,
 }: {
   newDomain: string
   onDomain: (v: string) => void
@@ -1348,9 +1362,12 @@ function WebsitesSection({
   onRotate: (site: PublisherSite) => void
   onRemove: (id: string) => void
   siteStats: Record<string, PublisherStats>
-  siteDailyStats: Record<string, DailyStatEntry[]>
   onRefreshSiteStats: (siteId: string) => void
+  onCopy: (text: string, label?: string) => void
 }) {
+  const [revealedKeys, setRevealedKeys] = useState<Record<string, boolean>>({})
+  const toggleReveal = (id: string) =>
+    setRevealedKeys((prev) => ({ ...prev, [id]: !prev[id] }))
   return (
     <div className="space-y-5">
       <Section title="Add a website" description="Each domain gets its own Site ID and API key.">
@@ -1373,95 +1390,168 @@ function WebsitesSection({
             description="Add your first domain above. Once approved, deploy the SDK snippet and start serving ads."
           />
         ) : (
-          <div className="grid gap-4 xl:grid-cols-2">
-            {sites.map((site) => {
-              const siteStat = siteStats[site.siteId]
-              const siteDaily = siteDailyStats[site.siteId] || []
-              const hasActivity = siteStat && (siteStat.impressions > 0 || siteStat.clicks > 0)
-              return (
-                <div key={site.id} className="border border-[#E5E5E5] bg-white p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <p className="text-[14px] font-semibold text-[#2D2D2D]">{site.domain}</p>
-                    <StatusBadge tone={site.verified ? 'success' : 'warning'}>
-                      {site.verified ? 'Verified' : 'Pending'}
-                    </StatusBadge>
-                    {selectedSite?.id === site.id ? <StatusBadge tone="info">Selected</StatusBadge> : null}
-                  </div>
-                  <dl className="mt-3 space-y-1 text-[12px] text-[#666]">
-                    <div className="flex justify-between gap-3"><dt>Site ID</dt><dd className="font-mono text-[#2D2D2D]">{site.siteId}</dd></div>
-                    <div className="flex justify-between gap-3"><dt>API Key</dt><dd className="break-all font-mono text-[#2D2D2D]">{site.apiKey || '—'}</dd></div>
-                    <div className="flex justify-between gap-3"><dt>Created</dt><dd className="text-[#2D2D2D]">{formatDate(site.createdAt)}</dd></div>
-                  </dl>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Button intent="secondary" size="sm" icon="preview" onClick={() => onPreview(site.siteId)}>Preview</Button>
-                    <Button intent="secondary" size="sm" onClick={() => onSelectSite(site)}>Select</Button>
-                    <Button intent="secondary" size="sm" icon="rotate" onClick={() => onRotate(site)}>Rotate</Button>
-                    <Button intent="danger" size="sm" icon="delete" onClick={() => onRemove(site.id)}>Remove</Button>
-                  </div>
-
-                  {hasActivity ? (
-                    <div className="mt-4 grid grid-cols-4 gap-3 border-t border-[#EFEFEF] pt-3 text-center">
-                      <SiteMini label="Impressions" value={formatNumber(siteStat.impressions)} />
-                      <SiteMini label="Clicks" value={formatNumber(siteStat.clicks)} />
-                      <SiteMini label="CTR" value={`${siteStat.ctr.toFixed(1)}%`} />
-                      <SiteMini label="Revenue" value={siteStat.totalRevenue.toFixed(2)} tone="success" />
-                    </div>
-                  ) : (
-                    <div className="mt-4 flex items-center justify-between border-t border-[#EFEFEF] pt-3 text-[12px] text-[#888]">
-                      <span>No activity yet.</span>
-                      <button type="button" onClick={() => onRefreshSiteStats(site.siteId)} className="font-semibold text-[#2D2D2D] underline">
-                        Refresh
-                      </button>
-                    </div>
-                  )}
-
-                  {siteDaily.length > 0 ? (
-                    <div className="mt-3 overflow-x-auto border border-[#EFEFEF]">
-                      <table className="w-full text-[12px]">
-                        <thead>
-                          <tr className="bg-[#FAFAF8] text-[11px] font-semibold text-[#666]">
-                            <th className="px-2 py-1.5 text-left">Date</th>
-                            <th className="px-2 py-1.5 text-right">Impr</th>
-                            <th className="px-2 py-1.5 text-right">Clicks</th>
-                            <th className="px-2 py-1.5 text-right">CTR</th>
-                            <th className="px-2 py-1.5 text-right">Rev</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...siteDaily]
-                            .sort((a, b) => b.date.localeCompare(a.date))
-                            .slice(0, 5)
-                            .map((row) => {
-                              const rowCtr = row.impressions > 0 ? ((row.clicks / row.impressions) * 100).toFixed(1) : '0'
-                              return (
-                                <tr key={row.date} className="border-t border-[#EFEFEF]">
-                                  <td className="px-2 py-1 text-[#2D2D2D]">{formatDate(row.date)}</td>
-                                  <td className="px-2 py-1 text-right tabular-nums">{row.impressions}</td>
-                                  <td className="px-2 py-1 text-right tabular-nums">{row.clicks}</td>
-                                  <td className="px-2 py-1 text-right tabular-nums text-[#666]">{rowCtr}%</td>
-                                  <td className="px-2 py-1 text-right tabular-nums font-semibold text-[#146C2E]">{row.revenue.toFixed(3)}</td>
-                                </tr>
-                              )
-                            })}
-                        </tbody>
-                      </table>
-                    </div>
-                  ) : null}
-                </div>
-              )
-            })}
+          <div className="overflow-x-auto border border-[#E5E5E5]">
+            <table className="w-full text-[12px]">
+              <thead>
+                <tr className="border-b border-[#E5E5E5] bg-[#FAFAF8] text-[11px] font-semibold uppercase tracking-wide text-[#666]">
+                  <th className="px-3 py-2 text-left">Domain</th>
+                  <th className="px-3 py-2 text-left">Site ID</th>
+                  <th className="px-3 py-2 text-left">API Key</th>
+                  <th className="px-3 py-2 text-left">Integration</th>
+                  <th className="px-3 py-2 text-left">Activity</th>
+                  <th className="px-3 py-2 text-left">Created</th>
+                  <th className="px-3 py-2 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sites.map((site) => {
+                  const siteStat = siteStats[site.siteId]
+                  const hasImpressions = !!siteStat && siteStat.impressions > 0
+                  // SDK heartbeat freshness: anything within 24h means the
+                  // snippet has actually loaded in a real browser recently.
+                  // This is the primary "Integrated" signal — impressions
+                  // only land if a campaign happens to target this domain.
+                  const lastSeenMs = site.lastSeenAt ? new Date(site.lastSeenAt).getTime() : 0
+                  const heartbeatAgeMs = lastSeenMs ? Date.now() - lastSeenMs : Infinity
+                  const heartbeatFresh = heartbeatAgeMs < 24 * 60 * 60 * 1000
+                  const heartbeatStale = lastSeenMs > 0 && !heartbeatFresh
+                  const integrated = heartbeatFresh || hasImpressions
+                  const isSelected = selectedSite?.id === site.id
+                  return (
+                    <tr
+                      key={site.id}
+                      className={`border-t border-[#EFEFEF] align-top ${isSelected ? 'bg-[#FAFAF8]' : 'bg-white'}`}
+                    >
+                      <td className="px-3 py-2.5">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[13px] font-semibold text-[#2D2D2D]">{site.domain}</span>
+                          <StatusBadge tone={site.verified ? 'success' : 'warning'}>
+                            {site.verified ? 'Verified' : 'Pending'}
+                          </StatusBadge>
+                          {isSelected ? <StatusBadge tone="info">Selected</StatusBadge> : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => onCopy(site.siteId, 'Site ID copied')}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-[#E5E5E5] text-[#666] transition hover:border-[#2D2D2D] hover:text-[#2D2D2D]"
+                            title="Copy Site ID"
+                            aria-label="Copy Site ID"
+                          >
+                            <AdvertiserIcon name="copy" className="h-3 w-3" />
+                          </button>
+                          <span className="font-mono text-[11px] text-[#2D2D2D]" title={site.siteId}>
+                            {`${site.siteId.slice(0, 10)}…${site.siteId.slice(-6)}`}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => site.apiKey && onCopy(site.apiKey, 'API key copied')}
+                            disabled={!site.apiKey}
+                            className="inline-flex h-5 w-5 items-center justify-center rounded border border-[#E5E5E5] text-[#666] transition hover:border-[#2D2D2D] hover:text-[#2D2D2D] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-[#E5E5E5] disabled:hover:text-[#666]"
+                            title="Copy API key"
+                            aria-label="Copy API key"
+                          >
+                            <AdvertiserIcon name="copy" className="h-3 w-3" />
+                          </button>
+                          <span className="font-mono text-[11px] text-[#2D2D2D]">
+                            {site.apiKey
+                              ? revealedKeys[site.id]
+                                ? site.apiKey
+                                : `••••${site.apiKey.slice(-4)}`
+                              : '—'}
+                          </span>
+                          {site.apiKey ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleReveal(site.id)}
+                              className="text-[10px] font-semibold uppercase tracking-wide text-[#666] underline-offset-2 transition hover:text-[#2D2D2D] hover:underline"
+                            >
+                              {revealedKeys[site.id] ? 'Hide' : 'Show'}
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {integrated ? (
+                          <div className="flex flex-col gap-0.5">
+                            <StatusBadge tone="success">SDK detected</StatusBadge>
+                            {lastSeenMs > 0 ? (
+                              <span
+                                className="text-[10px] text-[#888]"
+                                title={`Last heartbeat: ${new Date(lastSeenMs).toLocaleString()}${site.lastSdkVersion ? ` · SDK ${site.lastSdkVersion}` : ''}`}
+                              >
+                                {formatHeartbeatAge(heartbeatAgeMs)}
+                                {site.lastSdkVersion ? ` · v${site.lastSdkVersion}` : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-[#888]">via impressions</span>
+                            )}
+                          </div>
+                        ) : heartbeatStale ? (
+                          <div className="flex flex-col gap-0.5">
+                            <StatusBadge tone="warning">Stale</StatusBadge>
+                            <span
+                              className="text-[10px] text-[#888]"
+                              title={`Last heartbeat: ${new Date(lastSeenMs).toLocaleString()}`}
+                            >
+                              {formatHeartbeatAge(heartbeatAgeMs)}
+                            </span>
+                          </div>
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 text-[11px] text-[#888]"
+                            title="We haven't received a heartbeat or impression from this site yet. Paste the SDK snippet on a page that's actually being visited, then click Refresh."
+                          >
+                            <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#C0C0C0]" />
+                            Not detected
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {siteStat ? (
+                          <div className="flex flex-col gap-0.5 text-[11px] text-[#666] tabular-nums">
+                            <span>
+                              <span className="font-semibold text-[#2D2D2D]">{formatNumber(siteStat.impressions)}</span> impr ·{' '}
+                              <span className="font-semibold text-[#2D2D2D]">{formatNumber(siteStat.clicks)}</span> clicks
+                            </span>
+                            <span>
+                              CTR {siteStat.ctr.toFixed(1)}% ·{' '}
+                              <span className="font-semibold text-[#146C2E]">{siteStat.totalRevenue.toFixed(2)}</span> rev
+                            </span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => onRefreshSiteStats(site.siteId)}
+                            className="text-[11px] font-semibold text-[#2D2D2D] underline"
+                          >
+                            Refresh
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-[11px] text-[#666] whitespace-nowrap">{formatDate(site.createdAt)}</td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex flex-wrap justify-end gap-1.5">
+                          <Button intent="secondary" size="sm" icon="preview" onClick={() => onPreview(site.siteId)}>Preview</Button>
+                          <Button intent="secondary" size="sm" onClick={() => onSelectSite(site)}>Select</Button>
+                          <Button intent="secondary" size="sm" icon="rotate" onClick={() => onRotate(site)}>Rotate</Button>
+                          <Button intent="danger" size="sm" icon="delete" onClick={() => onRemove(site.id)}>Remove</Button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </Section>
-    </div>
-  )
-}
-
-function SiteMini({ label, value, tone }: { label: string; value: string; tone?: 'success' }) {
-  return (
-    <div>
-      <p className="text-[11px] text-[#888]">{label}</p>
-      <p className={`text-[13px] font-semibold ${tone === 'success' ? 'text-[#146C2E]' : 'text-[#2D2D2D]'}`}>{value}</p>
     </div>
   )
 }

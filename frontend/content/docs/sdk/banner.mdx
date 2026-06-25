@@ -1,0 +1,21 @@
+---
+title: Banner
+description: Standard rectangular ad rendered into a container you control.
+---
+
+```ts title="banner.ts"
+// HTML
+// <div id="ad-container"></div>
+
+import { SovAds, Banner } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_xxxxxxxxxxxxxxx' })
+const banner = new Banner(ads, 'ad-container', {
+  size: '300x250',     // optional, hints the slot dimensions
+  placementId: 'home', // optional, free-form label for analytics
+  attached: true,      // render inline CTAs under the ad (see below)
+  clickTarget: 'media' // or 'button' — where the click area lives
+})
+
+await banner.render()
+```

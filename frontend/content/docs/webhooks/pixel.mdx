@@ -1,0 +1,14 @@
+---
+title: Tracking pixel
+description: Drop-in conversion pixel for any HTML page.
+---
+
+Drop-in for any HTML page. SovAds returns a 43-byte transparent GIF regardless of outcome (so scrapers can't infer success from the network response). The signature lives in the `sig` query parameter.
+
+```html title="thank-you.html"
+<!-- Drop this anywhere on your "thank you" page. -->
+<img
+  src="https://ads.sovseas.xyz/api/cta-pixel?taskId=task_…&wallet=0xABCD…&ts=1735200000&sig=HEX_HMAC"
+  width="1" height="1" alt="" style="position:absolute;left:-9999px"
+/>
+```

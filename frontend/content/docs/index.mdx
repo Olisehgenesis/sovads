@@ -1,0 +1,100 @@
+---
+title: SovAds Protocol
+description: Drop the SDK on a site to earn for every verified impression. Run on-chain ad campaigns on Celo with built-in CTA tasks, viewer rewards in G$, and a settlement contract you can read yourself.
+---
+
+import { Cards, Card } from 'fumadocs-ui/components/card'
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Pick the path that matches what you're building. Each one is a self-contained track — start there and follow the in-page links.
+
+<Cards>
+  <Card
+    title="For Publishers"
+    description="Earn G$ for every verified impression. Drop the SDK on your site."
+    href="#for-publishers"
+  />
+  <Card
+    title="For Advertisers"
+    description="Fund campaigns on Celo, attach CTA tasks, settle in G$."
+    href="#for-advertisers"
+  />
+  <Card
+    title="Quick install"
+    description="Copy-paste the 5-line snippet."
+    href="#quick-install"
+  />
+</Cards>
+
+## Quick install
+
+Register a site at [/publisher](/publisher) to get your `siteId`, then drop this in:
+
+```bash title="pnpm"
+pnpm add sovads-sdk
+```
+
+```bash title="npm"
+npm install sovads-sdk
+```
+
+```bash title="yarn"
+yarn add sovads-sdk
+```
+
+```ts title="banner.ts"
+import { SovAds, Banner } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_YOUR_SITE_ID' })
+const banner = new Banner(ads, 'ad-container')
+await banner.render()
+```
+
+```html title="No bundler? Drop in a script tag"
+<div id="ad-container"></div>
+<script type="module">
+  import { SovAds, Banner } from 'https://ads.sovseas.xyz/_sovads_sdk/index.js'
+  const ads = new SovAds({ siteId: 'site_YOUR_SITE_ID' })
+  await new Banner(ads, 'ad-container').render()
+</script>
+```
+
+<Callout title="Want the raw markdown?">
+Every doc page has a **Copy as Markdown** button at the top — perfect for pasting into Cursor, Claude, or ChatGPT. There's also a full [`/llms.txt`](/llms.txt) summary of the protocol.
+</Callout>
+
+## For Publishers
+
+You run a site or app and want to earn G$ when verified humans see ads.
+
+<Cards>
+  <Card title="1. Install the SDK" description="npm, pnpm, or CDN" href="/docs/sdk/install" />
+  <Card title="2. Pick a surface" description="Banner, Popup, Sidebar, BottomBar" href="/docs/sdk/banner" />
+  <Card title="3. Configure" description="siteId, fingerprint, rotation, frequency caps" href="/docs/sdk/configuration" />
+  <Card title="4. Track interactions" description="Impressions, clicks, viewer points" href="/docs/api/interactions" />
+  <Card title="5. Get paid" description="Publisher settlement, viewer redeem flow" href="/docs/api/publishers" />
+</Cards>
+
+## For Advertisers
+
+You want to run campaigns on Celo, optionally with CTA tasks (visit, sign, poll, survey, on-chain).
+
+<Cards>
+  <Card title="1. Campaign serving" description="How creatives are selected and delivered" href="/docs/api/serve" />
+  <Card title="2. CTA task overview" description="8 task kinds across attached and standalone surfaces" href="/docs/cta-tasks/overview" />
+  <Card title="3. Verifier types" description="How task completions are proven" href="/docs/cta-tasks/verifiers" />
+  <Card title="4. Rewards & limits" description="Economics, caps, per-viewer budgets" href="/docs/cta-tasks/rewards" />
+  <Card title="5. On-chain settlement" description="SovAdsStreaming on Celo + G$" href="/docs/on-chain/overview" />
+  <Card title="6. Webhooks" description="Postback, pixel, replay, signing" href="/docs/webhooks/overview" />
+</Cards>
+
+## Core concepts
+
+| Term | Meaning |
+| --- | --- |
+| `siteId` | Publisher identifier of the form `site_<publisherId>`. Auto-detected from domain when omitted. |
+| `fingerprint` | Anonymous device identifier. Stored in `localStorage` as `sovads_fingerprint_v1`. |
+| `trackingToken` | Server-issued opaque token returned with each ad. Authenticates impression / click events for that ad. |
+| `SovPoint` | Reward unit. 1 SovPoint redeems for 1 G$ on Celo. Earned by viewers, paid by advertisers. |
+| `G$` | GoodDollar SuperToken on Celo. The settlement currency for the entire protocol. |
+| CTA task | An optional action attached to (or standalone alongside) a campaign — visit, sign, poll, survey, on-chain call. |

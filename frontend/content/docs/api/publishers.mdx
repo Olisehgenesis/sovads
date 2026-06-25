@@ -1,0 +1,15 @@
+---
+title: Publisher routes
+description: Publisher registration, sites, balance, and withdrawals.
+---
+
+All publisher endpoints check that `wallet` in the body matches the publisher record on file. There is no API key — wallet ownership is the credential.
+
+| Endpoint | Description |
+| --- | --- |
+| `POST /register` | Create a publisher + site record, returns `siteId`. |
+| `GET  /sites` | List sites owned by a wallet. |
+| `GET  /balance` | Earned + claimable balance for a site. |
+| `POST /topup` | Deposit G$ to the publisher vault on-chain. |
+| `POST /withdraw` | Withdraw available earnings. |
+| `POST /exchange` | Swap SOV ↔ G$ at the protocol rate. |

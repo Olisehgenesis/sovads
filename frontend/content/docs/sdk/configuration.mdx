@@ -1,0 +1,34 @@
+---
+title: Configuration
+description: All options accepted by the SovAds constructor.
+---
+
+The `SovAds` class accepts one config object. Every field is optional, but production sites should at minimum set `siteId`.
+
+```ts title="sovads.config.ts"
+import { SovAds } from 'sovads-sdk'
+
+const ads = new SovAds({
+  // required for real publishers (auto-detected from domain if omitted)
+  siteId: 'site_xxxxxxxxxxxxxxx',
+
+  // signed tracking (optional but recommended for production)
+  apiKey: process.env.NEXT_PUBLIC_SOVADS_API_KEY,
+  apiSecret: process.env.SOVADS_API_SECRET, // server-side only
+
+  // behaviour
+  debug: false,
+  refreshInterval: 0,           // 0 = no rotation, seconds otherwise
+  lazyLoad: true,
+  rotationEnabled: true,
+  popupMinIntervalMinutes: 30,  // throttle Popup format
+  popupSessionMax: 1,           // hard cap per session
+
+  // viewer attribution
+  walletAddress: '0x…',         // attaches points to a wallet
+
+  // disclosure label shown on every ad
+  disclosureLabel: true,        // or a custom string
+  advertiserName: 'Acme Inc.',
+})
+```

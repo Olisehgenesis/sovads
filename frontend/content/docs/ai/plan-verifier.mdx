@@ -1,0 +1,12 @@
+---
+title: AI plan verifier
+description: Have an LLM generate a verification plan for a CTA task.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Set `verifier: "AI_PLAN"` on a task and pass an `aiPrompt` describing what counts as completion (e.g. _"user must hold > 50 G$ and have staked for at least 30 days"_). SovAds calls `llama-3.3-70b-versatile` via Groq with strict JSON output and stores the resulting verification plan on the task. Each plan step is a read-only RPC call — contract addresses are bounded by the `contractAllowlist` you supply.
+
+<Callout>
+Plan generation is admin-only today: see `POST /api/admin/tasks/generate-plan`. Self-serve flow ships shortly.
+</Callout>

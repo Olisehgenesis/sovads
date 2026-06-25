@@ -1,0 +1,14 @@
+---
+title: BottomBar
+description: Floating bar pinned to the bottom of the viewport.
+---
+
+No container needed.
+
+```ts title="bottombar.ts"
+import { SovAds, BottomBar } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_xxxxxxxxxxxxxxx' })
+const bar = new BottomBar(ads)
+await bar.show()
+```

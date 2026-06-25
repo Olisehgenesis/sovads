@@ -10,6 +10,7 @@ import { isWalletAdmin } from '@/lib/admin'
 
 import AdvertiserIcon from '@/components/advertiser/AdvertiserIcon'
 import AdvertiserSidebar from '@/components/advertiser/AdvertiserSidebar'
+import AdminPopupPreview from './AdminPopupPreview'
 import {
   Alert,
   Button,
@@ -36,6 +37,7 @@ interface Campaign {
   name: string
   description?: string
   bannerUrl?: string
+  mediaType?: 'image' | 'video'
   targetUrl?: string
   budget?: number
   spent?: number
@@ -139,6 +141,7 @@ export default function AdminDashboard() {
   const [isLoading, setIsLoading] = useState(false)
 
   const [selectedCampaignId, setSelectedCampaignId] = useState<string>('')
+  const [previewCampaign, setPreviewCampaign] = useState<Campaign | null>(null)
   const [editBudget, setEditBudget] = useState<string>('')
   const [editSpent, setEditSpent] = useState<string>('')
   const [editMetadata, setEditMetadata] = useState<string>('')
@@ -729,6 +732,7 @@ export default function AdminDashboard() {
                 onTogglePause={handleToggleCampaignPause}
                 onStop={handleStopCampaign}
                 onDelete={handleDeleteCampaign}
+                onPreview={setPreviewCampaign}
                 selectedCampaignId={selectedCampaignId}
                 onSelectCampaign={(id) => {
                   setSelectedCampaignId(id)
@@ -792,6 +796,20 @@ export default function AdminDashboard() {
           </main>
         </div>
       </div>
+      <AdminPopupPreview
+        campaign={
+          previewCampaign
+            ? {
+                name: previewCampaign.name,
+                description: previewCampaign.description ?? '',
+                bannerUrl: previewCampaign.bannerUrl ?? '',
+                mediaType: previewCampaign.mediaType,
+                targetUrl: previewCampaign.targetUrl,
+              }
+            : null
+        }
+        onClose={() => setPreviewCampaign(null)}
+      />
     </div>
   )
 }
@@ -933,6 +951,7 @@ function CampaignsSection({
   onTogglePause,
   onStop,
   onDelete,
+  onPreview,
   selectedCampaignId,
   onSelectCampaign,
   editBudget,
@@ -955,6 +974,7 @@ function CampaignsSection({
   onTogglePause: (c: Campaign) => void
   onStop: (c: Campaign) => void
   onDelete: (c: Campaign) => void
+  onPreview: (c: Campaign) => void
   selectedCampaignId: string
   onSelectCampaign: (id: string) => void
   editBudget: string
@@ -1039,35 +1059,51 @@ function CampaignsSection({
                           <Button
                             size="sm"
                             intent="ghost"
-                            onClick={() => onApprove(c.id)}
-                            disabled={isActionBusy}
+                            icon="preview"
+                            onClick={() => onPreview(c)}
                           >
-                            Approve
+                            Preview
                           </Button>
-                          <Button
-                            size="sm"
-                            intent="ghost"
-                            onClick={() => onReject(c.id)}
-                            disabled={isActionBusy}
-                          >
-                            Reject
-                          </Button>
-                          <Button
-                            size="sm"
-                            intent="ghost"
-                            onClick={() => onTogglePause(c)}
-                            disabled={isActionBusy}
-                          >
-                            {c.paused ? 'Resume' : 'Pause'}
-                          </Button>
-                          <Button
-                            size="sm"
-                            intent="secondary"
-                            onClick={() => onStop(c)}
-                            disabled={isActionBusy}
-                          >
-                            Stop
-                          </Button>
+                          {(label === 'In review' || label === 'Rejected') ? (
+                            <Button
+                              size="sm"
+                              intent="ghost"
+                              onClick={() => onApprove(c.id)}
+                              disabled={isActionBusy}
+                            >
+                              {label === 'Rejected' ? 'Re-approve' : 'Approve'}
+                            </Button>
+                          ) : null}
+                          {label === 'In review' ? (
+                            <Button
+                              size="sm"
+                              intent="ghost"
+                              onClick={() => onReject(c.id)}
+                              disabled={isActionBusy}
+                            >
+                              Reject
+                            </Button>
+                          ) : null}
+                          {(label === 'Active' || label === 'Paused') ? (
+                            <Button
+                              size="sm"
+                              intent="ghost"
+                              onClick={() => onTogglePause(c)}
+                              disabled={isActionBusy}
+                            >
+                              {c.paused ? 'Resume' : 'Pause'}
+                            </Button>
+                          ) : null}
+                          {(label === 'Active' || label === 'Paused') ? (
+                            <Button
+                              size="sm"
+                              intent="secondary"
+                              onClick={() => onStop(c)}
+                              disabled={isActionBusy}
+                            >
+                              Stop
+                            </Button>
+                          ) : null}
                           <Button
                             size="sm"
                             intent="danger"

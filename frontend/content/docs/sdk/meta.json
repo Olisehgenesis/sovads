@@ -1,0 +1,13 @@
+{
+  "title": "SDK",
+  "pages": [
+    "install",
+    "configuration",
+    "banner",
+    "popup",
+    "sidebar",
+    "bottombar",
+    "attached-ctas",
+    "identify"
+  ]
+}

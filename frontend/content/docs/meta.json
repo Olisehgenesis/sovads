@@ -1,0 +1,20 @@
+{
+  "title": "Documentation",
+  "pages": [
+    "index",
+    "---SDK---",
+    "...sdk",
+    "---HTTP API---",
+    "...api",
+    "---CTA Tasks---",
+    "...cta-tasks",
+    "---Webhooks---",
+    "...webhooks",
+    "---On-Chain---",
+    "...on-chain",
+    "---AI---",
+    "...ai",
+    "---Reference---",
+    "...reference"
+  ]
+}

@@ -1,0 +1,18 @@
+---
+title: Auth model
+description: How wallets, fingerprints, and operator signatures authorise requests.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+| Role | Description |
+| --- | --- |
+| Anonymous viewer | Identified by `fingerprint` only. Can earn points; cannot redeem. |
+| Wallet viewer | Calls `ads.identify(wallet)`. Points migrate from the fingerprint. Can sign EIP-712 redeems. |
+| Publisher | Wallet owner of the site record. Auth happens via wallet match on each request body. |
+| Advertiser | Wallet owner of the campaign record. Same wallet-ownership pattern. |
+| Admin / operator | Holds the `SOVADS_OPERATOR_PRIVATE_KEY`. Signs claims, runs the AI plan generator. |
+
+<Callout>
+SIWE is **not** used. Authentication is wallet-ownership on each request plus EIP-712 signatures for value-bearing actions.
+</Callout>

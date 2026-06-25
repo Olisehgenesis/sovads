@@ -1,0 +1,23 @@
+---
+title: POST /api/interactions
+description: Submit a POLL / FEEDBACK / SURVEY response from a standalone unit.
+---
+
+Multi-step surveys keep state via `sessionId`.
+
+```http title="interactions.http"
+POST /api/interactions
+Content-Type: application/json
+
+{
+  "taskId":      "task_…",
+  "wallet":      "0xABCD…",
+  "fingerprint": "fp_…",
+  "siteId":      "site_…",
+  "proof": {
+    "optionId": "yes",     // POLL
+    "rating":   5,          // FEEDBACK
+    "text":     "loved it"  // FEEDBACK / SURVEY
+  }
+}
+```

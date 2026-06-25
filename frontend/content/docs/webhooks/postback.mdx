@@ -1,0 +1,13 @@
+---
+title: Server postback
+description: HMAC-signed POST callbacks from your backend.
+---
+
+Best for backend systems that already track conversions. Send a JSON POST to `/api/cta-postback` with the signature in `X-Sovads-Sig`.
+
+| Field | Description |
+| --- | --- |
+| Endpoint | `POST /api/cta-postback` |
+| Header | `X-Sovads-Sig` (alias `X-Signature`) — HMAC-SHA256 hex. |
+| Body | `taskId`, optional `wallet` / `fingerprint`, optional `externalRef`, required `ts`. |
+| Response | `{ success, completionId, awarded, transaction? }` |

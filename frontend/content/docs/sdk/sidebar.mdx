@@ -1,0 +1,17 @@
+---
+title: Sidebar
+description: Vertical placement for narrow gutters.
+---
+
+Mount into any container.
+
+```ts title="sidebar.ts"
+// HTML
+// <div id="side-ad"></div>
+
+import { SovAds, Sidebar } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_xxxxxxxxxxxxxxx' })
+const side = new Sidebar(ads, 'side-ad')
+await side.render()
+```

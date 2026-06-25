@@ -1,0 +1,29 @@
+---
+title: Attached CTAs
+description: Render inline CTA chips directly under a banner.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Pass `attached: true` to a Banner and up to **2 CTA chips** render directly under the creative. Inline kinds: `VISIT_URL`, `SIGN_MESSAGE`, `POLL`. Standalone CTAs (`FEEDBACK`, `SURVEY`, `QUIZ`, `STAKE_GS`, `CONTRACT_CALL`) appear on dedicated unit pages instead.
+
+```ts title="attached.ts"
+import { SovAds, Banner } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_xxxxxxxxxxxxxxx' })
+
+const banner = new Banner(ads, 'ad-container', {
+  attached: true,
+  onCtaComplete: (event) => {
+    console.log('Viewer completed', event.taskId, 'won', event.awarded)
+  },
+})
+
+await banner.render()
+// The banner now renders up to 2 inline CTA chips under the creative.
+// Supported kinds inline: VISIT_URL, SIGN_MESSAGE, POLL.
+```
+
+<Callout>
+When the campaign runs out of budget, the banner stays visible but `bannerClickActive` drops to `false` and click pricing is suppressed. Attached CTAs continue to award SovPoints as a fallback.
+</Callout>

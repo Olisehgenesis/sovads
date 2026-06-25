@@ -1,6 +1,11 @@
 // SovAds SDK - Modular Ad Network Integration
 // Usage: import { SovAds, Banner, Popup, Sidebar } from '@sovads/sdk'
 
+/** Runtime SDK version. Kept in sync with `sdk/package.json#version`.
+ *  Sent as `X-SovAds-SDK-Version` on signed tracking requests and exported
+ *  so host pages can log / gate on it. */
+export const SDK_VERSION = '1.1.1'
+
 export interface SovAdsConfig {
   siteId?: string // Optional - will be auto-detected if not provided
   apiUrl?: string // Default: http://localhost:3000 for development
@@ -229,6 +234,50 @@ export class SovAds {
     if (this.config.debug) {
       console.log('SovAds SDK initialized:', this.config)
     }
+
+    // Fire-and-forget heartbeat so the publisher dashboard can show an
+    // "SDK detected" badge even before any campaign serves an ad to this
+    // site. The server throttles writes (10-minute window) so we don't
+    // generate a DB write on every page load.
+    this.sendHeartbeat()
+  }
+
+  /**
+   * Lightweight "I'm alive" ping to `/api/sites/heartbeat`. Best-effort:
+   * never blocks SDK init, never retries, never surfaces errors to the
+   * host page. The server is responsible for write-throttling so we can
+   * call this freely on every constructor.
+   */
+  private sendHeartbeat(): void {
+    if (typeof window === 'undefined') return
+    // Resolve siteId without forcing a network round-trip if we can avoid
+    // it. `detectSiteId()` is idempotent and will fall back to the
+    // configured value when present.
+    void this.detectSiteId().then((siteId) => {
+      if (!siteId) return
+      // Skip unregistered / dev placeholder IDs — the server would reject
+      // them anyway, so save the round-trip.
+      if (siteId.startsWith('temp_')) return
+      try {
+        const payload = JSON.stringify({
+          siteId,
+          sdkVersion: SDK_VERSION,
+          href: window.location.href,
+        })
+        const url = `${this.config.apiUrl}/api/sites/heartbeat`
+        // `keepalive` lets the request finish even if the page unloads
+        // shortly after init (e.g. SPA route change), so the heartbeat
+        // doesn't get cancelled.
+        fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+        }).catch(() => { /* best effort */ })
+      } catch {
+        /* never propagate heartbeat failures */
+      }
+    }).catch(() => { /* best effort */ })
   }
 
   /**
@@ -863,7 +912,7 @@ export class SovAds {
       headers: {
         'Content-Type': 'application/json',
         'Cache-Control': 'no-cache',
-        'X-SovAds-SDK-Version': '1.0.8'
+        'X-SovAds-SDK-Version': SDK_VERSION,
       },
       body: envelope,
       keepalive: true,

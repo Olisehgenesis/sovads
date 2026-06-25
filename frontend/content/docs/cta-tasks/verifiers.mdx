@@ -1,0 +1,14 @@
+---
+title: Verifier types
+description: How SovAds proves a CTA completion.
+---
+
+| Verifier | Description |
+| --- | --- |
+| `ORACLE` | Backend trusts the proof from the SDK (with lightweight sanity checks). |
+| `SELF_SIGNED` | Wallet signs a fixed message. Verified with viem `verifyMessage`. |
+| `STAKE_PROOF` | Reads `stakers[wallet].stakedAmount` on `SovAdsStreaming`. |
+| `ONCHAIN_EVENT` | Inspects a tx receipt: sender, target, event signature. |
+| `WEBHOOK` | Advertiser server (or pixel) confirms completion via HMAC-signed callback. |
+| `AI_PLAN` | Groq LLM generates a verification plan (read-only on-chain steps). |
+| `MANUAL` | Admin reviews and approves completions in the backoffice. |

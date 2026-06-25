@@ -75,6 +75,9 @@ export interface PublisherSite {
   apiKey: string
   apiSecret: string
   verified: boolean
+  lastSeenAt?: Date | string | null
+  lastSdkVersion?: string | null
+  lastHref?: string | null
   createdAt: Date
   updatedAt: Date
 }
