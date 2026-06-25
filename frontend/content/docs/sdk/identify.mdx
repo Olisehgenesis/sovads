@@ -1,0 +1,20 @@
+---
+title: Wallet identity
+description: Attach an anonymous viewer to a wallet so accumulated points migrate over.
+---
+
+Call `identify()` the moment a viewer connects a wallet. SovAds will merge their anonymous fingerprint into the wallet account so accumulated points migrate over.
+
+```ts title="identify.ts"
+import { SovAds } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_xxxxxxxxxxxxxxx' })
+
+// After your viewer connects a wallet (wagmi / RainbowKit / etc.):
+ads.identify('0xABCD…')
+
+// Subscribe to identity changes — fires immediately if a wallet is known.
+const unsubscribe = ads.onIdentify((wallet) => {
+  console.log('viewer wallet:', wallet)
+})
+```

@@ -1,0 +1,14 @@
+---
+title: EIP-712 domain
+description: Domain separator and Claim type hash.
+---
+
+Domain separator is read on-chain via `DOMAIN_SEPARATOR()`. The type hash:
+
+```solidity title="claim-types.sol"
+keccak256(
+  "Claim(address recipient,uint256 amount,bytes32 claimRef,uint256 nonce,uint256 deadline)"
+);
+```
+
+`claimRef` is derived as `keccak256(recipient, nonce, random salt)` and is consumed once on-chain via `usedClaimRef[ref] = true`. Each recipient's `nonces` counter increments with every successful claim.

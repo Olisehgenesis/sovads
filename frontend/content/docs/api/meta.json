@@ -1,0 +1,12 @@
+{
+  "title": "HTTP API",
+  "pages": [
+    "serve",
+    "track",
+    "interactions",
+    "tasks-complete",
+    "viewer-points",
+    "viewer-redeem",
+    "publishers"
+  ]
+}

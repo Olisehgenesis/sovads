@@ -1,0 +1,41 @@
+---
+title: Viewer redeem
+description: Cash SovPoints out to G$ via an EIP-712 signed claim.
+---
+
+import { Callout } from 'fumadocs-ui/components/callout'
+
+Initiate a redemption. The server signs an EIP-712 `Claim` with the protocol operator key and returns the signature for the viewer to submit on-chain via `SovAdsStreaming.claimWithSignature`.
+
+## Request
+
+```http title="request.http"
+POST /api/viewers/redeem
+Content-Type: application/json
+
+{ "wallet": "0xABCD…", "amount": 96 }
+```
+
+## Response
+
+```json title="response.json"
+{
+  "success": true,
+  "claimRef":  "0x…",
+  "signature": "0x…",
+  "nonce":     "7",
+  "deadline":  "1735210000"
+}
+```
+
+```ts title="submit on-chain"
+// Submit on-chain yourself:
+sovAdsStreaming.claimWithSignature(
+  recipient, amount, claimRef, nonce, deadline, signature
+)
+```
+
+<Callout type="warn">
+Minimum redeem is **10 SovPoints**. Below that the endpoint returns 400.
+If the protocol operator is unconfigured or unwhitelisted on-chain the endpoint returns `503`.
+</Callout>

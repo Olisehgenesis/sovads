@@ -3,64 +3,78 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* ── Opera Mini / no-CSS-variable fallback ─────────────────────────────────
-   Opera Mini and other proxy browsers don't support CSS custom properties.
-   These rules use plain values so the page is at minimum readable.
-   postcss-custom-properties will also inject static fallbacks inline in the
-   compiled output for every utility class that references a var().
+/* ──────────────────────────────────────────────────────────────────────────
+   IMPORTANT: every custom rule in this file lives inside @layer base or
+   @layer components. Anything left un-layered would automatically WIN over
+   Tailwind utilities (which sit in @layer utilities), and that was the root
+   cause of "text-white not applying on <a> / <Link>": the un-layered
+   `body { color: var(--foreground) }` cascaded into anchors via the bare
+   `a { color: inherit }` rule and Tailwind utility classes could not
+   override it because of layer order, not specificity.
    ────────────────────────────────────────────────────────────────────────── */
-@media not all and (min-resolution: 0.001dpcm) {
-  /* No-op: the real fallbacks are postcss-custom-properties inline values */
-}
 
-body {
-  background-color: #F5F3F0; /* var(--background) */
-  color: #141414;             /* var(--foreground) */
-}
-
-a { color: #000000; }
-button { background-color: #000000; color: #ffffff; }
-
-/* Neubrutalist Theme: light cream background, black accents, thick borders, hard shadows */
+/* CSS variables: must stay un-layered so they propagate into every layer. */
 :root {
   /* Base colors */
   --background: #F5F3F0;
-  --foreground: #141414;
+  --foreground: #2D2D2D;
 
   /* Accent colors */
-  --accent-primary: #000000;
-  --accent-primary-solid: #000000;
+  --accent-primary: #2D2D2D;
+  --accent-primary-solid: #2D2D2D;
   --accent-success: #22c55e;
   --accent-success-solid: #22c55e;
 
   /* Text colors */
-  --text-primary: #141414;
+  --text-primary: #2D2D2D;
   --text-secondary: #666666;
   --text-tertiary: #999999;
 
   /* Neubrutalist details */
   --border-width: 2px;
-  --hard-shadow: 4px 4px 0px 0px rgba(0, 0, 0, 1);
-  --hard-shadow-hover: 6px 6px 0px 0px rgba(0, 0, 0, 1);
-  --hard-shadow-active: 2px 2px 0px 0px rgba(0, 0, 0, 1);
+  --hard-shadow: 4px 4px 0px 0px rgba(45, 45, 45, 0.92);
+  --hard-shadow-hover: 6px 6px 0px 0px rgba(45, 45, 45, 0.92);
+  --hard-shadow-active: 2px 2px 0px 0px rgba(45, 45, 45, 0.92);
 
   /* Theme mapping for Tailwind */
   --card: #ffffff;
-  --card-foreground: #141414;
-  --primary: #000000;
+  --card-foreground: #2D2D2D;
+  --primary: #2D2D2D;
   --primary-foreground: #ffffff;
   --secondary: #ffffff;
-  --secondary-foreground: #141414;
+  --secondary-foreground: #2D2D2D;
   --muted: #f3f4f6;
   --muted-foreground: #6b7280;
-  --accent: #000000;
+  --accent: #2D2D2D;
   --accent-foreground: #ffffff;
   --destructive: #ef4444;
-  --border: #000000;
+  --border: #2D2D2D;
   --input: #ffffff;
-  --ring: #000000;
+  --ring: #2D2D2D;
   --radius: 0px;
-  /* Neubrutalist often uses sharp corners or minimal radius */
+
+  /* ──────────────────────────────────────────────────────────────────
+     SovAds SDK theme shim (Phase 5).
+
+     The SDK paints its components using `var(--sovads-*, fallback)`. By
+     defining these variables here we make every embedded ad component
+     pick up SovAds' own brand tokens automatically — banner CTAs, poll
+     buttons, reward chips, disclosure badges. Publishers embedding the
+     SDK on a third-party site can redefine the same variables in their
+     own stylesheet to recolour the units without forking the SDK.
+     ────────────────────────────────────────────────────────────────── */
+  --sovads-accent: var(--accent-primary);
+  --sovads-on-accent: var(--background);
+  --sovads-on-accent-strong: #ffffff;
+  --sovads-surface: #FAFAF8;
+  --sovads-surface-hover: #EFEDE7;
+  --sovads-accent-hover: #1A1A1A;
+  --sovads-text-muted: var(--text-secondary);
+  --sovads-border-soft: #E5E5E5;
+  --sovads-success: var(--accent-success);
+  --sovads-placeholder-bg: transparent;
+  --sovads-disclosure-bg-dark: rgba(255, 255, 255, 0.92);
+  --sovads-disclosure-bg-light: rgba(0, 0, 0, 0.62);
 }
 
 @theme inline {
@@ -88,222 +102,272 @@ button { background-color: #000000; color: #ffffff; }
   --font-heading: var(--font-heading), sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
-  font-size: 16px;
-  line-height: 1.5;
+/* ── Base layer ─────────────────────────────────────────────────────────── */
+@layer base {
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-body), ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 16px;
+    line-height: 1.5;
+  }
+
+  /* Let utilities (text-white, text-[var(...)]) override naturally.
+     `inherit` keeps anchors picking up parent color when no utility is set. */
+  a { color: inherit; }
+
+  /* <button> base reset.
+     We intentionally do NOT set `background-color` or `color` here.
+     Every <button> in the codebase already sets its own Tailwind classes
+     (bg-…, text-…). Applying a charcoal default here would force a dark
+     fill on tiny icon-only buttons (mobile menu burger, dropdown carets,
+     modal close ✕, etc.) that don't set their own bg, producing
+     dark-on-dark text. UA default is transparent — let utilities decide. */
+  button {
+    background-color: transparent;
+    color: inherit;
+    border: 0;
+    padding: 0;
+    font: inherit;
+  }
+
+  /* Force heading font on all headers. */
+  h1, h2, .anton {
+    font-family: var(--font-heading) !important;
+    text-transform: uppercase;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+  }
+
+  h3, h4, h5, h6 {
+    font-family: var(--font-heading) !important;
+    line-height: 1.2;
+  }
+
+  /* Default cursor for interactive elements.
+     Text inputs/textareas keep the UA default (text cursor); only the
+     button-like form controls get pointer. */
+  button,
+  select,
+  [role="button"],
+  a,
+  label[for],
+  .cursor-pointer {
+    cursor: pointer;
+  }
+
+  /* Inputs: calm defaults. Utilities still override (specificity 0,1,0
+     in utilities layer beats the 0,0,1 of this rule). */
+  input,
+  textarea,
+  select {
+    background: white;
+    border: 1px solid #E5E5E5;
+    padding: 12px 16px;
+    font-family: var(--font-sans);
+    font-size: 16px;
+    color: #2D2D2D;
+    outline: none;
+    border-radius: 0px;
+  }
+
+  input:focus,
+  textarea:focus,
+  select:focus {
+    border-color: #2D2D2D;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #999;
+  }
+
+  /* Neutralise Chrome's autofill yellow + inset shadow so inputs stay flat. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  textarea:-webkit-autofill,
+  select:-webkit-autofill {
+    -webkit-box-shadow: 0 0 0 1000px white inset;
+    -webkit-text-fill-color: #2D2D2D;
+    box-shadow: 0 0 0 1000px white inset;
+    transition: background-color 9999s ease-in-out 0s;
+  }
+
+  /* Anchor reset (no underline by default). Color is deliberately not set
+     here so Tailwind text utilities win. */
+  a:not(.btn) {
+    text-decoration: none;
+    font-weight: 700;
+    transition: color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
+  }
+
+  a:not(.btn):hover {
+    text-decoration: none;
+  }
 }
 
-.font-mono-data {
-  font-family: var(--font-body), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
+/* ── Components layer ───────────────────────────────────────────────────── */
+@layer components {
+  .font-mono-data {
+    font-family: var(--font-body), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  }
 
-.font-heading {
-  font-family: var(--font-heading), sans-serif !important;
-}
+  .font-heading {
+    font-family: var(--font-heading), sans-serif !important;
+  }
 
-/* Force heading font on all headers and specific classes */
-h1,
-h2,
-.anton {
-  font-family: var(--font-heading) !important;
-  text-transform: uppercase;
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-}
+  .brutal-title {
+    font-family: var(--font-heading);
+    font-size: 4rem;
+    text-transform: uppercase;
+    letter-spacing: -2px;
+    line-height: 0.9;
+    margin-bottom: 1rem;
+  }
 
-h3,
-h4,
-h5,
-h6 {
-  font-family: var(--font-heading) !important;
-  line-height: 1.2;
-}
+  /* Neubrutalist card utility - overriding glass-card for backward compatibility */
+  .glass-card,
+  .card,
+  .neubrutalist-card {
+    background: white;
+    border: var(--border-width) solid #2D2D2D;
+    box-shadow: var(--hard-shadow);
+    border-radius: 0px;
+    transition: transform 0.1s, box-shadow 0.1s;
+    backdrop-filter: none;
+  }
 
-/* Neubrutalist utility for text strokes or heavy look */
-.brutal-title {
-  font-family: var(--font-heading);
-  font-size: 4rem;
-  text-transform: uppercase;
-  letter-spacing: -2px;
-  line-height: 0.9;
-  margin-bottom: 1rem;
-}
+  .glass-card:hover,
+  .card:hover,
+  .neubrutalist-card:hover {
+    transform: translate(-4px, -4px);
+    box-shadow: var(--hard-shadow-hover);
+  }
 
-/* Interactive elements cursor */
-button,
-input,
-textarea,
-select,
-[role="button"],
-a,
-label[for],
-.cursor-pointer {
-  cursor: pointer;
-}
+  /* Button utilities */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    white-space: nowrap;
+    font-weight: 700;
+    transition: all 0.2s;
+    font-family: var(--font-sans);
+    border: var(--border-width) solid #2D2D2D;
+    border-radius: 0px;
+    text-transform: uppercase;
+  }
+  .btn:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 1px var(--ring);
+  }
+  .btn:disabled {
+    pointer-events: none;
+    opacity: 0.5;
+  }
 
-/* Neubrutalist card utility - overriding glass-card for backward compatibility */
-.glass-card,
-.card,
-.neubrutalist-card {
-  background: white !important;
-  border: var(--border-width) solid black !important;
-  box-shadow: var(--hard-shadow) !important;
-  border-radius: 0px !important;
-  transition: transform 0.1s, box-shadow 0.1s;
-  backdrop-filter: none !important;
-}
+  .btn-primary {
+    background: #2D2D2D;
+    color: white;
+    box-shadow: var(--hard-shadow);
+    padding: 0.75rem 1.5rem;
+  }
 
-.glass-card:hover,
-.card:hover,
-.neubrutalist-card:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: var(--hard-shadow-hover) !important;
-}
+  .btn-primary:hover {
+    transform: translate(-4px, -4px);
+    box-shadow: var(--hard-shadow-hover);
+  }
 
-/* Button utilities */
-.btn {
-  @apply inline-flex items-center justify-center whitespace-nowrap font-bold transition-all focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50;
-  font-family: var(--font-sans);
-  border: var(--border-width) solid black;
-  border-radius: 0px;
-  text-transform: uppercase;
-}
+  .btn-primary:active {
+    transform: translate(2px, 2px);
+    box-shadow: var(--hard-shadow-active);
+  }
 
-.btn-primary {
-  background: black;
-  color: white;
-  box-shadow: var(--hard-shadow);
-  @apply px-6 py-3;
-}
+  .btn-outline {
+    background: white;
+    color: #2D2D2D;
+    box-shadow: var(--hard-shadow);
+    padding: 0.75rem 1.5rem;
+  }
 
-.btn-primary:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: var(--hard-shadow-hover);
-}
+  .btn-outline:hover {
+    transform: translate(-4px, -4px);
+    box-shadow: var(--hard-shadow-hover);
+  }
 
-.btn-primary:active {
-  transform: translate(2px, 2px);
-  box-shadow: var(--hard-shadow-active);
-}
+  .btn-outline:active {
+    transform: translate(2px, 2px);
+    box-shadow: var(--hard-shadow-active);
+  }
 
-.btn-outline {
-  background: white;
-  color: black;
-  box-shadow: var(--hard-shadow);
-  @apply px-6 py-3;
-}
+  .btn-danger {
+    background: var(--destructive);
+    color: white;
+    box-shadow: var(--hard-shadow);
+    padding: 0.75rem 1.5rem;
+  }
 
-.btn-outline:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: var(--hard-shadow-hover);
-}
+  .btn-danger:hover {
+    transform: translate(-4px, -4px);
+    box-shadow: var(--hard-shadow-hover);
+  }
 
-.btn-outline:active {
-  transform: translate(2px, 2px);
-  box-shadow: var(--hard-shadow-active);
-}
+  .btn-danger:active {
+    transform: translate(2px, 2px);
+    box-shadow: var(--hard-shadow-active);
+  }
 
-.btn-danger {
-  background: var(--destructive);
-  color: white;
-  box-shadow: var(--hard-shadow);
-  @apply px-6 py-3;
-}
+  .btn-sm {
+    padding: 0.375rem 0.75rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+  }
 
-.btn-danger:hover {
-  transform: translate(-4px, -4px);
-  box-shadow: var(--hard-shadow-hover);
-}
+  /* SovAds banner sizing */
+  .sovads-banner-slot .sovads-banner,
+  .sovads-banner-slot .sovads-banner img,
+  .sovads-banner-slot .sovads-banner video {
+    max-width: 100% !important;
+    width: 100% !important;
+    height: auto !important;
+    box-sizing: border-box;
+    border: var(--border-width) solid var(--accent-primary);
+    box-shadow: var(--hard-shadow);
+  }
 
-.btn-danger:active {
-  transform: translate(2px, 2px);
-  box-shadow: var(--hard-shadow-active);
-}
+  /* Admin specific softer styles */
+  .admin-card {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 1.5rem;
+    transition: all 0.2s ease;
+  }
 
-.btn-sm {
-  @apply px-3 py-1.5 text-xs;
-}
+  .admin-card:hover {
+    border-color: #d1d5db;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  }
 
-/* Input styling */
-input,
-textarea,
-select {
-  background: white;
-  border: var(--border-width) solid black;
-  padding: 12px 16px;
-  font-family: var(--font-sans);
-  font-size: 16px;
-  color: black;
-  outline: none;
-  box-shadow: var(--hard-shadow);
-  border-radius: 0px;
-}
+  .btn-admin {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    transition: all 0.2s;
+    border-radius: 0.5rem;
+    background: #1f2937;
+    color: white;
+    border: 1px solid #111827;
+  }
 
-input:focus,
-textarea:focus,
-select:focus {
-  transform: translate(-2px, -2px);
-  box-shadow: var(--hard-shadow-hover);
-}
+  .btn-admin:hover {
+    background: #374151;
+    transform: translateY(-1px);
+  }
 
-input::placeholder,
-textarea::placeholder {
-  color: #999;
-}
-
-/* Neubrutalist Links (ahfers) */
-a:not(.btn) {
-  color: inherit;
-  text-decoration: none;
-  font-weight: 700;
-  transition: color 0.2s ease, background-color 0.2s ease, opacity 0.2s ease;
-}
-
-a:not(.btn):hover {
-  color: inherit;
-  text-decoration: none;
-}
-
-/* SovAds banner sizing */
-.sovads-banner-slot .sovads-banner,
-.sovads-banner-slot .sovads-banner img,
-.sovads-banner-slot .sovads-banner video {
-  max-width: 100% !important;
-  width: 100% !important;
-  height: auto !important;
-  box-sizing: border-box;
-  border: var(--border-width) solid var(--accent-primary);
-  box-shadow: var(--hard-shadow);
-}
-/* Admin specific softer styles */
-.admin-card {
-  background: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 1.5rem;
-  transition: all 0.2s ease;
-}
-
-.admin-card:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-}
-
-.btn-admin {
-  @apply inline-flex items-center justify-center font-semibold transition-all rounded-lg;
-  background: #1f2937;
-  color: white;
-  border: 1px solid #111827;
-}
-
-.btn-admin:hover {
-  background: #374151;
-  transform: translateY(-1px);
-}
-
-.btn-admin:active {
-  transform: translateY(0);
+  .btn-admin:active {
+    transform: translateY(0);
+  }
 }

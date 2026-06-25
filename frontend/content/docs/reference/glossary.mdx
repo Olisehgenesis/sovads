@@ -1,0 +1,12 @@
+---
+title: Glossary
+description: Terms used across the SovAds protocol.
+---
+
+| Term | Definition |
+| --- | --- |
+| Operator | Off-chain key SovAds uses to sign EIP-712 claims. Must be whitelisted via `addOperator()`. |
+| Vault | Per-campaign holding of G$ funded by the advertiser. Decremented as ads serve. |
+| Unit | A standalone non-banner CTA surface (POLL / FEEDBACK / SURVEY). |
+| `externalRef` | Idempotency key supplied by an advertiser's server. Prevents double-credit. |
+| Tracking token | Per-ad opaque token issued by `/api/serve`. Required for signed tracking calls. |

@@ -1,0 +1,27 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+
+@source '../../../node_modules/fumadocs-ui/dist/**/*.js';
+
+/* ─── Sidebar weight tweaks ──────────────────────────────────────────────
+   - Section separators (rendered from `---Section---` page-tree entries) get
+     a bold, uppercase, muted label so they read as headings.
+   - Regular sidebar links drop to a normal weight; only the active item is
+     emphasised.
+   ────────────────────────────────────────────────────────────────────── */
+#nd-docs-layout #nd-sidebar p {
+  font-weight: 700;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-fd-muted-foreground);
+}
+
+#nd-docs-layout #nd-sidebar a[data-active] {
+  font-weight: 600;
+}
+
+#nd-docs-layout #nd-sidebar a:not([data-active]) {
+  font-weight: 400;
+}

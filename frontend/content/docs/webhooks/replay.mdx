@@ -1,0 +1,6 @@
+---
+title: Replay protection
+description: Timestamp window and externalRef deduplication.
+---
+
+`ts` is a Unix timestamp in **seconds**. The default acceptance window is **±5 minutes**; configure `maxAgeSec` on the task (up to 24h) for asynchronous postbacks. Set `deduplicateBy: "externalRef"` on the task config so a single conversion can never be credited twice.

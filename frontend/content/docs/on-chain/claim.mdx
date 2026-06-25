@@ -1,0 +1,17 @@
+---
+title: Claim with signature
+description: Submit an EIP-712 signed claim on-chain.
+---
+
+Every viewer redeem and every CTA G$ payout returns an EIP-712 signature. The viewer submits the transaction themselves — SovAds never custodies funds. The relevant ABI method:
+
+```solidity title="SovAdsStreaming.sol"
+function claimWithSignature(
+  address recipient,
+  uint256 amount,
+  bytes32 claimRef,
+  uint256 nonce,
+  uint256 deadline,
+  bytes   signature
+) external returns (uint256 claimId);
+```

@@ -1,0 +1,16 @@
+---
+title: Task kinds
+description: The eight CTA task kinds supported today.
+---
+
+| Kind | Surface | Verifiers | Notes |
+| --- | --- | --- | --- |
+| `VISIT_URL` | attached, standalone | `ORACLE`, `WEBHOOK`, `AI_PLAN` | Minimum dwell time (default 3s) |
+| `SIGN_MESSAGE` | attached, standalone | `SELF_SIGNED`, `ORACLE`, `WEBHOOK` | EIP-191 personal_sign of a fixed message |
+| `POLL` | attached, standalone | `ORACLE`, `WEBHOOK` | Single-choice from a fixed option set |
+| `FEEDBACK` | standalone | `ORACLE`, `WEBHOOK` | Rating + free-text comment |
+| `SURVEY` | standalone | `ORACLE`, `WEBHOOK` | Multi-step session, resumable |
+| `QUIZ` | standalone | `ORACLE`, `WEBHOOK` | Expected answer match |
+| `SOCIAL_FOLLOW` | standalone | `ORACLE`, `WEBHOOK` | Trust client + optional postback |
+| `STAKE_GS` | standalone | `STAKE_PROOF`, `AI_PLAN` | Reads wallet stake on-chain |
+| `CONTRACT_CALL` | standalone | `ONCHAIN_EVENT`, `AI_PLAN` | Verifies tx hash + event log |

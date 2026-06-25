@@ -1,31 +1,28 @@
 import type { AdvertiserIconName } from './models'
 
-export type AdvertiserSectionId = 'dashboard' | 'campaigns' | 'create' | 'analytics' | 'billing' | 'settings'
+export type AdvertiserSectionId =
+  | 'overview'
+  | 'campaigns'
+  | 'analytics'
+  | 'billing'
+  | 'settings'
 
 export interface AdvertiserSidebarItem {
   label: string
   icon: AdvertiserIconName
+  /** Internal section id. Required for in-page sections (no href). */
   sectionId?: AdvertiserSectionId
+  /** When set, the sidebar item navigates to this route instead of switching section. */
+  href?: string
+  /** Stable id for the item (used as React key + selection). Defaults to sectionId or href. */
+  id?: string
 }
 
 export const advertiserSidebarItems: AdvertiserSidebarItem[] = [
-  { label: 'Dashboard', icon: 'dashboard', sectionId: 'dashboard' },
+  { label: 'Overview', icon: 'dashboard', sectionId: 'overview' },
   { label: 'Campaigns', icon: 'campaign', sectionId: 'campaigns' },
-  { label: 'New Campaign', icon: 'activate', sectionId: 'create' },
+  { label: 'Review', icon: 'inbox', href: '/advertiser/review', id: 'review' },
   { label: 'Analytics', icon: 'analytics', sectionId: 'analytics' },
-  { label: 'Billing', icon: 'earnings', sectionId: 'billing' },
+  { label: 'Billing', icon: 'wallet', sectionId: 'billing' },
   { label: 'Settings', icon: 'settings', sectionId: 'settings' },
 ]
-
-export const advertiserTheme = {
-  primary: '#000000',
-  background: '#F5F3F0',
-  card: '#FFFFFF',
-  textPrimary: '#141414',
-  textSecondary: '#666666',
-  border: '#000000',
-  success: '#22c55e',
-  warning: '#F59E0B',
-  danger: '#ef4444',
-  shadow: '4px 4px 0px 0px rgba(0,0,0,1)',
-} as const

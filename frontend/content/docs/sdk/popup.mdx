@@ -1,0 +1,16 @@
+---
+title: Popup
+description: Frequency-capped modal ad format.
+---
+
+Honours `popupMinIntervalMinutes` and `popupSessionMax` automatically.
+
+```ts title="popup.ts"
+import { SovAds, Popup } from 'sovads-sdk'
+
+const ads = new SovAds({ siteId: 'site_xxxxxxxxxxxxxxx' })
+const popup = new Popup(ads)
+
+// Honours popupMinIntervalMinutes + popupSessionMax automatically.
+await popup.show()
+```

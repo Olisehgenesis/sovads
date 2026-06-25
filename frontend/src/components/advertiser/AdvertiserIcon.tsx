@@ -23,6 +23,7 @@ const paths: Record<AdvertiserIconName, string[]> = {
   wallet: ['M3.75 6.25h12.5v8.5H3.75z', 'M12.25 10h3.5', 'M12.5 10h.01'],
   exchange: ['M4 7.25h10.5', 'M11.5 4.25l3 3l-3 3', 'M16 12.75H5.5', 'M8.5 9.75l-3 3l3 3'],
   withdraw: ['M3.75 6.25h12.5v8.5H3.75z', 'M12.5 10.5h.01', 'M6 6.25V4.75h8v1.5'],
+  inbox: ['M3.25 11.5l2-6.25h9.5l2 6.25', 'M3.25 11.5h4l.75 1.75h4l.75-1.75h4', 'M3.25 11.5v3.75h13.5V11.5'],
 }
 
 export default function AdvertiserIcon({

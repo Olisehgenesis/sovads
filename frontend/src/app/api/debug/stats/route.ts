@@ -2,7 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 
 /**
- * Get debug statistics and data
+ * Get debug statistics and data.
+ *
+ * NOTE: As of the Turso firehose migration, new SDK/API/callback log rows
+ * are written to Turso `sdk_logs` (see lib/turso/schema.ts).
+ * This endpoint still reads the legacy Postgres tables for HISTORICAL
+ * counts only — they will return 0 for any time window after the migration
+ * cutover. A Turso-backed replacement will land in the analytics phase.
  */
 export async function GET(request: NextRequest) {
   try {

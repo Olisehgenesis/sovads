@@ -6,6 +6,7 @@ import {
   getAllowedCreativeFormatLabel,
   hasAllowedCreativeExtension,
 } from '@/lib/creative-validation'
+import { MIN_BUDGET_GS } from '@/lib/campaign-limits'
 
 export async function POST(request: NextRequest) {
   try {
@@ -20,8 +21,17 @@ export async function POST(request: NextRequest) {
       endDate,
     } = body
 
-    if (!wallet || !campaignData || !transactionHash || !contractCampaignId) {
+    if (!wallet || !campaignData) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 })
+    }
+
+    // Draft mode: campaign is created in the DB only. On-chain submission
+    // happens later via /api/campaigns/submit. If a transactionHash IS
+    // provided we treat it as a one-shot "create + publish" call (legacy path)
+    // and the campaign goes straight to status='review'.
+    const isDraft = !transactionHash || !contractCampaignId
+    if (!isDraft && (!transactionHash || !contractCampaignId)) {
+      return NextResponse.json({ error: 'transactionHash + contractCampaignId required when not draft' }, { status: 400 })
     }
 
     let advertiser = await prisma.advertiser.findFirst({ where: { wallet } })
@@ -43,10 +53,19 @@ export async function POST(request: NextRequest) {
     }
 
     const budget = Number.parseFloat(campaignData.budget)
-    const cpc = Number.parseFloat(campaignData.cpc || '0.01')
+    const cpc = Number.parseFloat(campaignData.cpc || '2')
 
     if (Number.isNaN(budget) || budget <= 0) {
       return NextResponse.json({ error: 'Invalid budget amount' }, { status: 400 })
+    }
+
+    // Network-wide minimum applies only on publish — drafts can be saved
+    // at any amount so the advertiser can keep iterating before going live.
+    if (!isDraft && budget < MIN_BUDGET_GS) {
+      return NextResponse.json(
+        { error: `Minimum publish budget is ${MIN_BUDGET_GS} G$.` },
+        { status: 400 }
+      )
     }
 
     if (Number.isNaN(cpc) || cpc < 0) {
@@ -106,12 +125,17 @@ export async function POST(request: NextRequest) {
         budget,
         spent: 0,
         cpc,
-        active: true,
+        // Drafts must NOT be active — otherwise the advertiser dashboard
+        // counts them as live campaigns and shows the green "Active" badge
+        // even though nothing has been published on-chain. `active` flips
+        // true only when the on-chain submission succeeds (publish flow,
+        // or the later /api/campaigns/submit step that promotes a draft).
+        active: !isDraft,
         tokenAddress: campaignData.tokenAddress || null,
         onChainId: (onChainId !== undefined && onChainId !== null) ? Number(onChainId) : undefined,
         metadataURI: JSON.stringify({
-          contractCampaignId,
-          transactionHash,
+          contractCampaignId: contractCampaignId ?? null,
+          transactionHash: transactionHash ?? null,
           startDate: startDateValue?.toISOString(),
           endDate: endDateValue?.toISOString(),
           tags,
@@ -125,7 +149,9 @@ export async function POST(request: NextRequest) {
         startDate: startDateValue,
         endDate: endDateValue,
         mediaType,
-        verificationStatus: 'pending',
+        verificationStatus: isDraft ? null : 'pending',
+        status: isDraft ? 'draft' : 'review',
+        submittedAt: isDraft ? null : now,
       },
     })
 
@@ -137,6 +163,7 @@ export async function POST(request: NextRequest) {
           name: campaign.name,
           budget: campaign.budget,
           active: campaign.active,
+          status: campaign.status,
           tags,
           targetLocations,
           mediaType,

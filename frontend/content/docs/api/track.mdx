@@ -1,0 +1,25 @@
+---
+title: POST /api/track
+description: Record an IMPRESSION or CLICK event.
+---
+
+Record an `IMPRESSION` or `CLICK`. Deduplicated server-side by fingerprint + campaign + type within a one-hour window. The SDK calls this for you — you only need it for custom integrations.
+
+```http title="track.http"
+POST /api/track
+Content-Type: application/json
+
+{
+  "type": "IMPRESSION",
+  "campaignId": "cmp_…",
+  "adId":       "ad_…",
+  "siteId":     "site_…",
+  "fingerprint": "fp_…",
+  "rendered": true,
+  "viewportVisible": true,
+  "renderTime": 142,
+  "timestamp": 1735200000000,
+  "pageUrl": "https://yourdomain.com/article",
+  "userAgent": "Mozilla/5.0 …"
+}
+```

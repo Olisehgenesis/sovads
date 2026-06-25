@@ -15,8 +15,11 @@ export const GS_TOKEN_ADDRESS = '0x62B8B11039FcfE5aB0C56E502b1C372A3d2a9c7A' as 
 // G$ on Celo uses 18 decimals. 1 SovPoint = 1 G$
 const GS_DECIMALS = 18
 
-// Minimum cashout amount (in SovPoints / G$)
-export const MINIMUM_CASHOUT_POINTS = 10
+// Minimum cashout amount (in SovPoints / G$).
+// Override via env: SOVADS_MINIMUM_CASHOUT_POINTS. Falls back to 10.
+const _minRaw = process.env.SOVADS_MINIMUM_CASHOUT_POINTS?.trim()
+const _minParsed = _minRaw ? Number(_minRaw) : NaN
+export const MINIMUM_CASHOUT_POINTS = Number.isFinite(_minParsed) && _minParsed > 0 ? _minParsed : 10
 
 // Designate Campaign ID 1 as the Global Treasury for G$ payouts (SovAdsManager fallback)
 export const GLOBAL_TREASURY_CAMPAIGN_ID = BigInt(1)

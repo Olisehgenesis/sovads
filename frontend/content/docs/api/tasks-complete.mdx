@@ -1,0 +1,44 @@
+---
+title: POST /api/tasks/complete
+description: Submit completion for a CTA task and receive a signed EIP-712 claim.
+---
+
+Submit completion for a CTA task. The shape of `proof` depends on the task's configured verifier — see the [verifier table](/docs/cta-tasks/verifiers).
+
+## Request
+
+```http title="request.http"
+POST /api/tasks/complete
+Content-Type: application/json
+
+{
+  "taskId":      "task_…",
+  "wallet":      "0xABCD…",
+  "fingerprint": "fp_…",
+  "proof": {
+    "dwellMs":   3500,     // VISIT_URL
+    "signature": "0x…",    // SIGN_MESSAGE
+    "message":   "Verify with SovAds",
+    "txHash":    "0x…",    // ONCHAIN_EVENT
+    "answer":    "celo"    // QUIZ
+  }
+}
+```
+
+## Response
+
+On success you get a signed EIP-712 claim you can submit on-chain yourself:
+
+```json title="response.json"
+{
+  "success": true,
+  "completionId": "tc_…",
+  "awarded": { "points": 5, "gs": 0.5 },
+  "transaction": {
+    "claimRef":  "0x…",
+    "signature": "0x…",
+    "nonce":     "12",
+    "deadline":  "1735210000"
+  }
+}
+```

@@ -1,0 +1,36 @@
+---
+title: HMAC signing
+description: Build a canonical JSON payload and HMAC-SHA256 it with your task secret.
+---
+
+Build a canonical JSON string of the payload (keys sorted alphabetically) and HMAC it with the task secret from your dashboard.
+
+```js title="sign.js"
+import crypto from 'node:crypto'
+
+function canonical(obj) {
+  const keys = Object.keys(obj).sort()
+  return JSON.stringify(Object.fromEntries(keys.map((k) => [k, obj[k]])))
+}
+
+const payload = {
+  taskId:      'task_…',
+  wallet:      '0xABCD…',
+  externalRef: 'order_abc123',
+  ts:          Math.floor(Date.now() / 1000),
+}
+
+const signature = crypto
+  .createHmac('sha256', process.env.SOVADS_TASK_SECRET)
+  .update(canonical(payload))
+  .digest('hex')
+
+await fetch('https://ads.sovseas.xyz/api/cta-postback', {
+  method: 'POST',
+  headers: {
+    'Content-Type':  'application/json',
+    'X-Sovads-Sig':  signature,
+  },
+  body: JSON.stringify(payload),
+})
+```

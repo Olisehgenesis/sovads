@@ -258,9 +258,11 @@ export const useStreamingAds = () => {
         return result;
     }, [writeContract, publicClient, handleContractCall, address, userAddress, ensureAllowance]);
 
-    // when a user stakes we also award them viewer points so they climb the leaderboard
-    // the hook now returns an object with the transaction hash and how many points were
-    // applied (useful for showing a toast/alert in the UI)
+    // when a user stakes for the first time we award a one-time 5 SovPoints bonus.
+    // the server (POST /api/viewers/points with type='STAKE') is the source of truth:
+    // it checks for any prior STAKE reward on this wallet and only awards once.
+    // the hook returns the transaction hash and how many points were actually awarded
+    // (0 / undefined if the wallet had already claimed the first-time bonus).
     const stake = useCallback(async (amount: string): Promise<{ hash?: string; pointsAwarded?: number } | undefined> => {
         setStakingPhase('approving');
         try {
@@ -283,31 +285,11 @@ export const useStreamingAds = () => {
                 return h;
             }, 'stake G$');
 
-            let pointsToAward: number | undefined;
-            // only try to award points if staking succeeded and we have an address
+            let pointsAwarded: number | undefined;
+            // only ask the server to award points if staking actually succeeded
             if (hash && userAddress) {
-                pointsToAward = 5;
                 try {
-                    const lb = await fetch('/api/viewers/leaderboard');
-                    if (lb.ok) {
-                        const data = await lb.json();
-                        const entries: Array<{ points: number }> = data.entries || [];
-                        if (entries.length) {
-                            const top = entries[0].points;
-                            const bottom = entries[entries.length - 1]?.points || 0;
-                            const range = top - bottom;
-                            const tenPct = Math.floor(range * 0.1);
-                            if (tenPct > pointsToAward) {
-                                pointsToAward = tenPct;
-                            }
-                        }
-                    }
-                } catch (e) {
-                    console.warn('could not fetch leaderboard for bonus calculation', e);
-                }
-
-                try {
-                    await fetch('/api/viewers/points', {
+                    const res = await fetch('/api/viewers/points', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -316,15 +298,23 @@ export const useStreamingAds = () => {
                             campaignId: '0',
                             adId: '0',
                             siteId: 'staking',
-                            points: pointsToAward,
+                            points: 5, // server clamps to the fixed first-time bonus
+                            stakeAmount: amount, // server requires >= 1,000,000 G$ to award the bonus
                         }),
                     });
+                    if (res.ok) {
+                        const data = await res.json();
+                        // server returns pointsAwarded = 0 when the wallet already claimed
+                        if (typeof data?.pointsAwarded === 'number' && data.pointsAwarded > 0) {
+                            pointsAwarded = data.pointsAwarded;
+                        }
+                    }
                 } catch (e) {
-                    console.warn('failed to award stake points', e);
+                    console.warn('failed to award first-time stake bonus', e);
                 }
             }
 
-            return { hash, pointsAwarded: pointsToAward };
+            return { hash, pointsAwarded };
         } finally {
             setStakingPhase('idle');
         }

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Anton, Space_Mono } from "next/font/google";
+import { Anton, Inter } from "next/font/google";
 import "./globals.css";
 import { headers } from 'next/headers'
 import ContextProvider from '@/context'
@@ -15,9 +15,9 @@ const anton = Anton({
   subsets: ["latin"],
 });
 
-const spaceMono = Space_Mono({
+const inter = Inter({
   variable: "--font-body",
-  weight: ["400", "700"],
+  weight: ["400", "500", "600", "700"],
   subsets: ["latin"],
 });
 
@@ -31,8 +31,8 @@ export const metadata: Metadata = {
   authors: [{ name: "SovAds Team" }],
   creator: "SovAds Protocol",
   icons: {
-    icon: "/logo.svg",
-    apple: "/logo.svg",
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
   },
   openGraph: {
     type: "website",
@@ -42,7 +42,7 @@ export const metadata: Metadata = {
     title: "SovAds - Decentralized Ad Network",
     description: "Earn crypto by serving ads on your website. Transparent, fraud-resistant, and on-chain accountable.",
     images: [{
-      url: "/logo.svg",
+      url: "/icon.png",
       width: 512,
       height: 512,
       alt: "SovAds Logo",
@@ -52,7 +52,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "SovAds - Decentralized Ad Network",
     description: "Transparent, fraud-resistant, and on-chain accountable ad protocol.",
-    images: ["/logo.svg"],
+    images: ["/icon.png"],
     creator: "@sovads",
   },
 };
@@ -66,7 +66,7 @@ export default async function RootLayout({
   const cookies = headersObj.get('cookie')
 
   return (
-    <html lang="en" className={`${anton.variable} ${spaceMono.variable}`}>
+    <html lang="en" className={`${anton.variable} ${inter.variable}`}>
       <head>
         <link
           rel="preload"
@@ -75,6 +75,9 @@ export default async function RootLayout({
           type="font/woff2"
           crossOrigin="anonymous"
         />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="shortcut icon" href="/favicon.ico" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
       </head>
       <body className="antialiased bg-background text-foreground min-h-screen flex flex-col font-body">
         <ContextProvider cookies={cookies}>

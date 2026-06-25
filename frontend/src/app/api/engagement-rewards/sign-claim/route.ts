@@ -62,7 +62,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Signing not configured' }, { status: 500, headers: corsHeaders })
     }
 
-    // Rate limit: max 5 sign requests per wallet per hour
+    // Retry budget: max 5 sign requests per wallet per hour.
+    // A successful claim only needs ONE signature, but legitimate retries can happen because
+    // each signature is bound to `validUntilBlock` (~600 blocks / ~50 min on Celo) and is
+    // invalidated by: user rejecting in wallet, tx failing/expiring before inclusion,
+    // page refresh mid-flow, or re-running eligibility checks. The cap absorbs those
+    // retries while preventing a single wallet from spamming the app signer.
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000)
     const recentCount = await prisma.engagementRewardClaim.count({
       where: {

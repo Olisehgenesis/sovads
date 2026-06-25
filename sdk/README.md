@@ -1,6 +1,21 @@
-# @sovads/sdk
+# sovads-sdk
 
-SovAds SDK for publisher integration - A modular ad network SDK with banner, popup, and sidebar components.
+[![npm version](https://img.shields.io/npm/v/sovads-sdk.svg)](https://www.npmjs.com/package/sovads-sdk)
+[![license](https://img.shields.io/npm/l/sovads-sdk.svg)](https://github.com/sovseas/sovads/blob/main/sdk/LICENSE)
+
+Publisher SDK for the [SovAds](https://ads.sovseas.xyz) ad network. Ships
+seven modular surfaces (Banner, Sidebar, Popup, BottomBar, Overlay,
+Interstitial, NativeCard) plus an opt-in **attached CTA** system that lets a
+single ad carry up to two on-page tasks (visit-url, sign-message, poll) and
+reward viewers for completing them.
+
+- Zero peer dependencies. Works in any HTML page or framework (React, Vue,
+  Svelte, plain `<script type="module">`).
+- Full TypeScript types.
+- Backward compatible — every existing positional call site keeps working;
+  attached CTAs are strictly opt-in.
+
+---
 
 ## Installation
 
@@ -12,138 +27,259 @@ pnpm add sovads-sdk@latest
 yarn add sovads-sdk@latest
 ```
 
-## Usage
-
-### Basic Setup
-
-```javascript
-import { SovAds, Banner, Popup, Sidebar } from 'sovads-sdk'
-
-// Initialize SDK
-const sovads = new SovAds({
-  apiUrl: 'https://ads.sovseas.xyz', // Optional, defaults to production URL
-  debug: false, // Enable debug logging
-  siteId: 'your-site-id', // Optional, will auto-detect if not provided
-})
-
-// Banner Ad
-const banner = new Banner(sovads, 'banner-container')
-await banner.render()
-
-// Popup Ad
-const popup = new Popup(sovads)
-await popup.show() // Shows after 3 seconds by default
-
-// Bottom bar (floating banner at bottom with close button)
-const bottomBar = new BottomBar(sovads)
-await bottomBar.show()
-
-// Sidebar Ad
-const sidebar = new Sidebar(sovads, 'sidebar-container')
-await sidebar.render()
-```
-
-### HTML Example
+CDN / no-bundler usage:
 
 ```html
-<!DOCTYPE html>
-<html>
-<head>
-  <title>My Site with SovAds</title>
-</head>
-<body>
-  <h1>Welcome to My Site</h1>
-  
-  <!-- Banner Ad Container -->
-  <div id="banner-container"></div>
-  
-  <!-- Sidebar Ad Container -->
-  <div id="sidebar-container"></div>
-  
-  <script type="module">
-    import { SovAds, Banner, Sidebar } from 'sovads-sdk'
-    
-    const sovads = new SovAds({ debug: true })
-    const banner = new Banner(sovads, 'banner-container')
-    const sidebar = new Sidebar(sovads, 'sidebar-container')
-    
-    banner.render()
-    sidebar.render()
-  </script>
-</body>
-</html>
+<script type="module">
+  import { SovAds, Banner } from 'https://ads.sovseas.xyz/api/v1/sdk'
+  const sovads = new SovAds({ debug: true })
+  await new Banner(sovads, 'banner').render()
+</script>
 ```
 
-## API Reference
+---
 
-### SovAds
+## Quick start
 
-Main SDK class for initialization and configuration.
+```ts
+import { SovAds, Banner, Popup, Sidebar, BottomBar } from 'sovads-sdk'
 
-#### Constructor
+const sovads = new SovAds({
+  // apiUrl defaults to https://ads.sovseas.xyz in production builds; override
+  // for self-hosting or local dev.
+  apiUrl: 'https://ads.sovseas.xyz',
+  debug: false,
+  // Optional — auto-detected from the page origin if omitted.
+  siteId: 'your-site-id',
+  // Optional — viewer wallet for reward attribution.
+  walletAddress: '0x...',
+})
 
-```typescript
-new SovAds(config?: SovAdsConfig)
+// 1. Inline banner
+await new Banner(sovads, 'banner-container').render()
+
+// 2. Sidebar
+await new Sidebar(sovads, 'sidebar-container').render()
+
+// 3. Popup (modal, with frequency cap)
+await new Popup(sovads).show()
+
+// 4. Bottom bar (sticky, dismissible)
+await new BottomBar(sovads).show()
 ```
 
-#### Config Options
+---
 
-- `apiUrl?: string` - API endpoint URL (default: `https://ads.sovseas.xyz`)
-- `debug?: boolean` - Enable debug logging (default: `false`)
-- `siteId?: string` - Site ID (optional, will auto-detect)
-- `consumerId?: string` - Consumer ID for targeting specific advertisers
+## Attached CTAs (v1.1+)
 
-### Banner
+A campaign can attach up to **2 tasks** to its banner. The SDK renders them
+inline beneath the media. Reward issuance and HMAC-signed verification are
+handled server-side; the SDK only mounts UI and reports submissions.
 
-Banner ad component.
+```ts
+import { Banner } from 'sovads-sdk'
 
-```typescript
-const banner = new Banner(sovads: SovAds, containerId: string)
-await banner.render(consumerId?: string)
+const banner = new Banner(sovads, 'banner-container', {
+  attached: true,              // ask the server for attached tasks
+  clickTarget: 'button',       // optional: route click-through through an
+                               //   explicit "Learn more" button (recommended)
+  onCtaComplete: (ev) => {
+    if (ev.ok) {
+      console.log('rewarded', ev.awarded) // { points, gs, bonusPointsInLieuOfGs? }
+    } else if (ev.needsSignature) {
+      // SIGN_MESSAGE task — your wallet code should sign ev.needsSignature.message
+    }
+  },
+})
+await banner.render()
 ```
 
-### Popup
+Supported task kinds:
 
-Popup ad component.
+| Kind            | What the viewer does                       |
+| --------------- | ------------------------------------------ |
+| `VISIT_URL`     | Clicks through and dwells `minDwellMs`.    |
+| `SIGN_MESSAGE`  | Signs a short message with their wallet.   |
+| `POLL`          | Picks one of up to 4 options.              |
 
-```typescript
-const popup = new Popup(sovads: SovAds)
-await popup.show(consumerId?: string, delay?: number)
-popup.hide()
+If the campaign has no attached tasks, or you don't pass `attached: true`, the
+SDK falls back to the classic banner-only experience.
+
+### Pure-CTA unit (no media)
+
+For a CTA-only slot (e.g. an inline poll under an article):
+
+```ts
+import { CtaUnit } from 'sovads-sdk'
+
+await new CtaUnit(sovads, 'poll-here').render({
+  layout: 'auto',   // 'stack' | 'inline' | 'auto' (inline at 2 tasks)
+  onCtaComplete: (ev) => { /* … */ },
+})
 ```
 
-### BottomBar
+---
 
-Floating bottom bar ad with a built-in close (`×`) button. Designed to sit fixed at the bottom of the viewport; click the `×` or the ad itself to dismiss. You can style the bar by targeting the `.sovads-bottom-bar` class in your CSS.
+## API reference
 
-```typescript
-const bottomBar = new BottomBar(sovads: SovAds)
-await bottomBar.show(consumerId?: string)
-bottomBar.hide()
+### `new SovAds(config?: SovAdsConfig)`
+
+| Field                       | Type                       | Default                       | Notes                                                                                |
+| --------------------------- | -------------------------- | ----------------------------- | ------------------------------------------------------------------------------------ |
+| `apiUrl`                    | `string`                   | `https://ads.sovseas.xyz`     | API origin. Set to your local server in dev.                                         |
+| `siteId`                    | `string`                   | auto-detected                 | Publisher site ID.                                                                   |
+| `apiKey` / `apiSecret`      | `string`                   | —                             | Enables HMAC-signed tracking.                                                        |
+| `debug`                     | `boolean`                  | `false`                       | Verbose console logging.                                                             |
+| `consumerId`                | `string`                   | —                             | Target a specific advertiser slug.                                                   |
+| `walletAddress`             | `string`                   | —                             | Viewer wallet for reward attribution.                                                |
+| `refreshInterval`           | `number` (seconds)         | `0` (off)                     | Auto-refresh interval for Banner / Sidebar.                                          |
+| `lazyLoad`                  | `boolean`                  | `true`                        | Use IntersectionObserver to defer load until in-viewport.                            |
+| `rotationEnabled`           | `boolean`                  | `true`                        | Rotate between ads when refreshing.                                                  |
+| `popupMinIntervalMinutes`   | `number`                   | `30`                          | Min minutes between popup / overlay impressions per viewer.                          |
+| `popupSessionMax`           | `number`                   | `1`                           | Hard cap on popup / overlay impressions per browser session.                         |
+| `disclosureLabel`           | `boolean \| string`        | `true` (`"Sponsored"`)        | Force a custom label (e.g. `"Ad"`) or `false` to suppress (not recommended).         |
+| `advertiserName`            | `string`                   | —                             | Appended to the disclosure: `"Sponsored · {advertiserName}"`.                        |
+
+### `Banner`
+
+```ts
+new Banner(sovads, containerId, slotConfig?: SlotConfig)
+banner.render(consumerId?: string, forceRefresh?: boolean): Promise<void>
 ```
 
-### Sidebar
+`SlotConfig`: `{ placementId?, size?, attached?, onCtaComplete?, clickTarget?, disclosureLabel? }`.
 
-Sidebar ad component.
+### `Sidebar`
 
-```typescript
-const sidebar = new Sidebar(sovads: SovAds, containerId: string)
-await sidebar.render(consumerId?: string)
+```ts
+new Sidebar(sovads, containerId, slotConfig?: SlotConfig)
+sidebar.render(consumerId?: string, forceRefresh?: boolean): Promise<void>
 ```
+
+### `Popup`
+
+```ts
+new Popup(sovads)
+popup.show(consumerIdOrOpts?: string | PopupShowOptions): Promise<void>
+popup.hide(): void
+```
+
+`PopupShowOptions`: `{ consumerId?, delay? (ms, default 3000), attached?, onCtaComplete?, clickTarget?, disclosureLabel? }`.
+
+### `BottomBar`
+
+```ts
+new BottomBar(sovads)
+bottomBar.show(consumerIdOrOpts?: string | BottomBarShowOptions): Promise<void>
+bottomBar.hide(): void
+```
+
+Defaults to `clickTarget: 'button'` to suppress accidental bar-wide clicks.
+
+### `Overlay` / `Interstitial`
+
+`Overlay` is a full-viewport modal with backdrop dismiss. `Interstitial`
+extends it with its own frequency-cap counter so the two surfaces never
+share a budget.
+
+```ts
+new Overlay(sovads)
+overlay.show(opts?: OverlayShowOptions): Promise<void>
+overlay.hide(): void
+
+new Interstitial(sovads) // same API
+```
+
+`OverlayShowOptions`: `{ consumerId?, attached?, onCtaComplete?, clickTarget?, disclosureLabel?, dismissOnBackdrop? (default true), dismissOnEscape? (default true) }`.
+
+### `NativeCard`
+
+```ts
+new NativeCard(sovads, containerId)
+card.render(consumerIdOrOpts?: string | NativeCardRenderOptions): Promise<void>
+```
+
+### `CtaUnit`
+
+Pure CTA panel (no media). See [Attached CTAs](#attached-ctas-v11) above.
+
+### Other exports
+
+- `SDK_VERSION` — runtime version string, kept in sync with `package.json`.
+- `mountMedia`, `mountCtaPanel`, `renderAttachedCtas` — low-level building blocks for custom layouts.
+- `buildRewardBadge`, `buildDisclosureBadge` — drop-in UI primitives.
+- `toStreamingEmbed`, `buildStreamingIframe` — helpers for video creatives.
+- Types: `SovAdsConfig`, `AdComponent`, `AttachedTask`, `AttachedTaskKind`, `AttachedPollOption`, `AttachedCtaCompleteEvent`, `SlotConfig`, `PopupShowOptions`, `BottomBarShowOptions`, `OverlayShowOptions`, `NativeCardRenderOptions`, `CtaUnitRenderOptions`, `AdSurface`.
+
+---
+
+## Styling
+
+Every surface ships unstyled-friendly hooks; target these classes in your own
+CSS to brand the units:
+
+| Class                          | Surface       |
+| ------------------------------ | ------------- |
+| `.sovads-banner`               | Banner        |
+| `.sovads-sidebar`              | Sidebar       |
+| `.sovads-popup-overlay`        | Popup         |
+| `.sovads-bottom-bar`           | BottomBar     |
+| `.sovads-overlay`              | Overlay / Interstitial |
+| `.sovads-native-card`          | NativeCard    |
+| `.sovads-cta-panel`            | Attached CTA panel (all surfaces) |
+| `.sovads-disclosure`           | "Sponsored" badge |
+| `.sovads-reward-badge`         | "Earn N pts" badge |
+
+---
+
+## Frequency capping
+
+Popup, Overlay, and Interstitial each persist a `last-shown` timestamp in
+`localStorage` and a session counter in `sessionStorage`. The same
+`popupMinIntervalMinutes` / `popupSessionMax` knobs apply to all three —
+publishers don't have to think about three sets of dials. Banner / Sidebar /
+BottomBar / NativeCard do **not** frequency-cap (they're publisher-placed).
+
+---
+
+## Tracking
+
+The SDK sends two events:
+
+- `IMPRESSION` — fired once the creative is verified visible
+  (IntersectionObserver, ≥ 50% area for ≥ 1s by default).
+- `CLICK` — fired on banner / button click-through.
+
+Attached-CTA submissions go through the regular `/api/tasks/*` endpoints and
+emit `onCtaComplete` callbacks.
+
+All outbound tracking carries the `X-SovAds-SDK-Version` header so the server
+can correlate metrics with SDK releases.
+
+---
 
 ## Features
 
-- ✅ Automatic site detection
-- ✅ Impression and click tracking
-- ✅ Render verification with IntersectionObserver
-- ✅ Image load error handling
-- ✅ Network retry logic
-- ✅ CORS support
-- ✅ TypeScript support
-- ✅ Debug logging
-- 🎨 Customizable styling via CSS classes (e.g. `.sovads-banner`, `.sovads-sidebar`, `.sovads-popup-overlay`, `.sovads-bottom-bar`)
+- Automatic site detection
+- IntersectionObserver-based viewability tracking
+- Network retry with exponential backoff
+- Image / video load error handling
+- `navigator.sendBeacon` fallback for tracking on page unload
+- Reduced-motion respect (`prefers-reduced-motion`)
+- TypeScript-first
+- Zero runtime dependencies
+
+## Browser support
+
+Evergreen Chromium, Firefox, Safari (last 2 versions). Requires native
+`IntersectionObserver` and ES2020.
 
 ## License
 
-MIT
+MIT — see [LICENSE](https://github.com/sovseas/sovads/blob/main/sdk/LICENSE).
 
+## Links
+
+- [Documentation](https://ads.sovseas.xyz/docs)
+- [Repository](https://github.com/sovseas/sovads)
+- [Issues](https://github.com/sovseas/sovads/issues)

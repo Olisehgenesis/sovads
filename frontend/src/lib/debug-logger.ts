@@ -1,18 +1,25 @@
 import 'server-only'
-import { prisma } from './prisma'
 import { NextRequest } from 'next/server'
+import { trackSdkLog, type SdkLogType } from '@/lib/analytics/track'
+
+/**
+ * Debug Logger — writes all SDK/API/callback logs to Turso.
+ *
+ * The public API (logSdkRequest, logSdkInteraction, logApiRouteCall,
+ * logCallback, getIpAddress) is preserved so existing call sites don't
+ * need to change. Internally everything funnels through the Turso
+ * batched writer (`trackSdkLog`).
+ *
+ * Postgres firehose tables (SdkRequest, SdkInteraction, ApiRouteCall,
+ * CallbackLog) are now write-frozen — historical rows are still readable
+ * via Prisma but no new rows are added here.
+ */
 
 const MAX_RESPONSE_LOG_LENGTH = 10_000
 
-const safeStringify = (value: unknown): string | null => {
-  if (value === undefined || value === null) {
-    return null
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
+function safeStringify(value: unknown): string | null {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'string') return value
   try {
     return JSON.stringify(value)
   } catch (error) {
@@ -21,9 +28,20 @@ const safeStringify = (value: unknown): string | null => {
   }
 }
 
-/**
- * Debug Logger - Tracks all SDK interactions and API calls
- */
+function safeJson(value: unknown): Record<string, unknown> | null {
+  if (value === undefined || value === null) return null
+  if (typeof value === 'object') return value as Record<string, unknown>
+  try {
+    return { value: String(value) }
+  } catch {
+    return null
+  }
+}
+
+function truncate(s: string | null, max: number): string | null {
+  if (!s) return s
+  return s.length > max ? `${s.substring(0, max)}... [truncated]` : s
+}
 
 export interface SdkRequestLog {
   type: string
@@ -76,9 +94,6 @@ export interface CallbackLogData {
   error?: string
 }
 
-/**
- * Extract IP address from request
- */
 export function getIpAddress(request: NextRequest): string | undefined {
   return (
     request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
@@ -90,50 +105,54 @@ export function getIpAddress(request: NextRequest): string | undefined {
 }
 
 /**
- * Log SDK request
+ * Returns a synthetic request id. We used to return the Postgres row id;
+ * SDK callers only use this opaquely so a UUID is fine.
  */
 export async function logSdkRequest(data: SdkRequestLog): Promise<string> {
+  const id =
+    typeof crypto !== 'undefined' && 'randomUUID' in crypto
+      ? crypto.randomUUID()
+      : `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
   try {
-    const record = await prisma.sdkRequest.create({
-      data: {
-        type: data.type,
-        endpoint: data.endpoint,
-        method: data.method,
-        siteId: data.siteId,
-        domain: data.domain,
-        pageUrl: data.pageUrl,
+    trackSdkLog({
+      type: 'SDK_REQUEST' as SdkLogType,
+      endpoint: data.endpoint,
+      method: data.method,
+      siteId: data.siteId,
+      domain: data.domain,
+      pageUrl: data.pageUrl,
+      fingerprint: data.fingerprint,
+      payload: {
+        id,
+        subtype: data.type,
         userAgent: data.userAgent,
         ipAddress: data.ipAddress,
-        fingerprint: data.fingerprint,
-        requestBody: data.requestBody !== undefined ? (safeStringify(data.requestBody) ?? undefined) : undefined,
-        responseStatus: data.responseStatus,
-        responseBody: data.responseBody !== undefined ? (safeStringify(data.responseBody) ?? undefined) : undefined,
-        error: data.error,
-        duration: data.duration,
+        requestBody: safeJson(data.requestBody),
+        responseBody: safeJson(data.responseBody),
       },
+      responseStatus: data.responseStatus,
+      durationMs: data.duration != null ? Math.round(data.duration) : null,
+      errorText: data.error ?? null,
     })
-    return record.id
   } catch (error) {
     console.error('Error logging SDK request:', error)
-    return ''
   }
+  return id
 }
 
-/**
- * Log SDK interaction
- */
 export async function logSdkInteraction(data: SdkInteractionLog): Promise<void> {
   try {
-    await prisma.sdkInteraction.create({
-      data: {
+    trackSdkLog({
+      type: 'SDK_INTERACTION' as SdkLogType,
+      endpoint: data.elementType ?? null,
+      siteId: data.siteId,
+      pageUrl: data.pageUrl,
+      payload: {
         requestId: data.requestId,
-        type: data.type,
+        subtype: data.type,
         adId: data.adId,
         campaignId: data.campaignId,
-        siteId: data.siteId,
-        pageUrl: data.pageUrl,
-        elementType: data.elementType,
-        metadata: data.metadata ? (data.metadata as object) : undefined,
+        metadata: data.metadata,
       },
     })
   } catch (error) {
@@ -141,54 +160,47 @@ export async function logSdkInteraction(data: SdkInteractionLog): Promise<void> 
   }
 }
 
-/**
- * Log API route call
- */
 export async function logApiRouteCall(data: ApiRouteCallLog): Promise<void> {
   try {
-    const responseBodyString = safeStringify(data.responseBody)
-    const truncatedResponseBody =
-      responseBodyString && responseBodyString.length > MAX_RESPONSE_LOG_LENGTH
-        ? `${responseBodyString.substring(0, MAX_RESPONSE_LOG_LENGTH)}... [truncated]`
-        : responseBodyString
-
-    await prisma.apiRouteCall.create({
-      data: {
-        route: data.route,
-        method: data.method,
-        statusCode: data.statusCode,
+    trackSdkLog({
+      type: 'API_CALL' as SdkLogType,
+      endpoint: data.route,
+      method: data.method,
+      payload: {
         ipAddress: data.ipAddress,
         userAgent: data.userAgent,
-        requestBody: data.requestBody !== undefined ? (safeStringify(data.requestBody) ?? undefined) : undefined,
-        responseBody: truncatedResponseBody ?? undefined,
-        error: data.error,
-        duration: data.duration,
+        requestBody: safeJson(data.requestBody),
+        responseBody: safeJson(
+          typeof data.responseBody === 'string'
+            ? truncate(data.responseBody, MAX_RESPONSE_LOG_LENGTH)
+            : data.responseBody,
+        ),
       },
+      responseStatus: data.statusCode,
+      durationMs: data.duration != null ? Math.round(data.duration) : null,
+      errorText: data.error ?? null,
     })
   } catch (error) {
     console.error('Error logging API route call:', error)
   }
 }
 
-/**
- * Log callback/webhook
- */
 export async function logCallback(data: CallbackLogData): Promise<void> {
   try {
-    await prisma.callbackLog.create({
-      data: {
-        type: data.type,
-        endpoint: data.endpoint,
-        payload: safeStringify(data.payload) ?? '',
+    trackSdkLog({
+      type: 'CALLBACK' as SdkLogType,
+      endpoint: data.endpoint,
+      fingerprint: data.fingerprint,
+      payload: {
+        subtype: data.type,
         ipAddress: data.ipAddress,
         userAgent: data.userAgent,
-        fingerprint: data.fingerprint,
-        statusCode: data.statusCode,
-        error: data.error,
+        body: safeJson(data.payload) ?? safeStringify(data.payload),
       },
+      responseStatus: data.statusCode ?? null,
+      errorText: data.error ?? null,
     })
   } catch (error) {
     console.error('Error logging callback:', error)
   }
 }
-

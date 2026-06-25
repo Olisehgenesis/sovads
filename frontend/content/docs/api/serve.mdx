@@ -1,0 +1,49 @@
+---
+title: GET /api/serve
+description: Type-aware serving endpoint. Returns a banner, a standalone unit, or NONE.
+---
+
+Type-aware serving endpoint. Returns a banner, a standalone unit (`POLL` / `FEEDBACK` / `SURVEY`), or `NONE`. CORS is wide open: any origin can call it.
+
+## Parameters
+
+| Parameter | Description |
+| --- | --- |
+| `siteId` | **required** |
+| `kind` | Comma-separated. `BANNER`, `POLL`, `FEEDBACK`, `SURVEY`. Defaults to `BANNER`. |
+| `size` | Hint, e.g. `300x250`. |
+| `placement` | Free-form label for analytics. |
+| `wallet` | Optional. Binds the issued `trackingToken` to a wallet for cleaner attribution. |
+| `attached` | `1` includes inline CTA tasks + serves banners even when click-pricing is suppressed. |
+
+## Request
+
+```http title="request.http"
+GET /api/serve?siteId=site_xxx&kind=BANNER,POLL&size=300x250&attached=1
+Host: ads.sovseas.xyz
+Origin: https://yourdomain.com
+```
+
+## Response
+
+```json title="response.json"
+// Banner result
+{
+  "kind": "BANNER",
+  "ad": {
+    "id": "ad_…",
+    "campaignId": "cmp_…",
+    "bannerUrl": "https://cdn.sovseas.xyz/…",
+    "targetUrl": "https://advertiser.example.com/landing",
+    "description": "Sponsored: Acme Inc.",
+    "mediaType": "image",
+    "trackingToken": "tt_…"
+  },
+  "bannerClickActive": true,
+  "attachedTasks": [/* up to 2 CTA tasks */]
+}
+
+// Or a standalone unit
+{ "kind": "POLL",  "task": { /* … */ } }
+{ "kind": "NONE" }
+```

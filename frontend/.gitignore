@@ -1,2 +1,5 @@
 .vercel
 .env*.local
+
+# Local SDK build output (produced by `pnpm sdk:build` / `pnpm dev`).
+src/_sovads_sdk/

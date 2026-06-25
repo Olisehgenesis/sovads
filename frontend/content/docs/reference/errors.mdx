@@ -1,0 +1,12 @@
+---
+title: Errors
+description: HTTP status codes the SovAds API returns.
+---
+
+| Code | Meaning |
+| --- | --- |
+| `400` | Validation failure — bad address, missing required field, amount below minimum. |
+| `401` | Wallet does not own the referenced campaign / publisher record. |
+| `403` | HMAC signature invalid or replay window exceeded (webhook routes). |
+| `409` | `claimRef` already used, or `externalRef` already credited. |
+| `503` | Operator not configured / not whitelisted on-chain. Retry later. |

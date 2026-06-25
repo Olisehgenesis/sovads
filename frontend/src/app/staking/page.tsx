@@ -273,16 +273,14 @@ function StakeModal({
                         <div className="bg-yellow-50 border-2 border-yellow-400 p-3 space-y-1">
                             <p className="text-[10px] font-black uppercase tracking-widest text-yellow-700 mb-1">What happens when you stake:</p>
                             <ul className="text-xs font-bold text-black/70 list-disc pl-4 space-y-1">
-                                <li>Rewards stream to you instantly via Superfluid</li>
-                                <li>Time-boost multiplier starts accruing</li>
-                                <li>SovPoints earned for leaderboard (+5 pts / 10% range)</li>
+                                <li>Rewards stream to you instantly via Superfluid GDA — no claiming needed</li>
+                                <li>Stake at least 1,000,000 G$ on your first stake to receive a 5 SovPoints bonus</li>
                             </ul>
                         </div>
                     ) : (
                         <div className="bg-pink-50 border-2 border-pink-400 p-3 space-y-1">
                             <p className="text-[10px] font-black uppercase tracking-widest text-pink-700 mb-1">⚠ Warning:</p>
                             <ul className="text-xs font-bold text-black/70 list-disc pl-4 space-y-1">
-                                <li>Unstaking resets your time-accrued multiplier to 1.0x</li>
                                 <li>Reward stream stops for the withdrawn amount</li>
                             </ul>
                         </div>
@@ -654,7 +652,6 @@ export default function StakingPage() {
         stake,
         unstake,
         getStakerInfo,
-        updateStakingMultiplier,
         totalStaked,
         isLoading,
         stakingPhase,
@@ -662,9 +659,7 @@ export default function StakingPage() {
     } = useStreamingAds();
 
     const [stakedAmount, setStakedAmount] = useState('0');
-    const [multiplier, setMultiplier] = useState('1.0');
     const [stakingTime, setStakingTime] = useState('—');
-    const [units, setUnits] = useState('0');
     const [modal, setModal] = useState<ModalMode>(null);
     const [toast, setToast] = useState<string | null>(null);
     const [swapError, setSwapError] = useState<string | null>(null);
@@ -948,7 +943,6 @@ export default function StakingPage() {
         if (!info) return;
         const stakedEther = formatEther(info.stakedAmount);
         setStakedAmount(stakedEther);
-        setUnits(info.units.toString());
 
         // stakingTime is a unix timestamp (seconds) of when staking began — compute elapsed
         const startTs = Number(info.stakingTime);
@@ -961,14 +955,6 @@ export default function StakingPage() {
             const mins = Math.floor((elapsed % 3600) / 60);
             setStakingTime(elapsed < 3600 ? `${mins}m` : elapsed < 86400 ? `${hrs}h ${mins}m` : `${days}d ${hrs}h`);
         }
-
-        // Multiplier: units-per-G$ staked. Divide by ether value to avoid BigInt→Number overflow.
-        const stakedNum = Number(stakedEther);
-        setMultiplier(
-            stakedNum > 0
-                ? (Number(info.units) / stakedNum).toFixed(2)
-                : '1.00'
-        );
     }, [address, getStakerInfo]);
 
     useEffect(() => {
@@ -981,7 +967,7 @@ export default function StakingPage() {
         if (modal === 'stake') {
             const result = await stake(amount);
             if (result?.pointsAwarded) {
-                setToast(`+${result.pointsAwarded.toLocaleString()} SovPoints earned 🔥`);
+                setToast(`+${result.pointsAwarded.toLocaleString()} SovPoints — first-time staker bonus 🔥`);
                 setTimeout(() => setToast(null), 5000);
             }
         } else {
@@ -999,7 +985,7 @@ export default function StakingPage() {
                     <div className="text-5xl mb-5">⚡</div>
                     <h2 className="text-2xl font-black uppercase tracking-tighter mb-2">Stake G$</h2>
                     <p className="text-xs font-bold text-black/50 uppercase mb-6">
-                        Connect your wallet to stake and earn streaming rewards.
+                        Stake G$ and earn SovPoints.
                     </p>
                     <WalletButton />
                 </div>
@@ -1010,9 +996,7 @@ export default function StakingPage() {
     // ── Table rows ─────────────────────────────────────────────────────────────
     const tableRows: StatRow[] = [
         { label: 'Active Stake', value: `${Number(stakedAmount).toLocaleString()} G$` },
-        { label: 'Units Earned', value: Number(units).toLocaleString(), sub: 'proportional reward weight' },
         { label: 'Time Staked', value: stakingTime },
-        { label: 'Your Multiplier', value: `${multiplier}x`, sub: 'time-boost factor' },
         { label: 'Wallet Balance', value: balanceData ? `${Number(balanceData.formatted).toFixed(2)} ${balanceData.symbol}` : '—' },
         { label: 'Global TVL', value: totalStaked ? `${Number(formatEther(totalStaked)).toLocaleString()} G$` : '0 G$' },
     ];
@@ -1069,8 +1053,7 @@ export default function StakingPage() {
                     </div>
 
                     {/* ── Hero stat cards ── */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                        <StatCard label="Your Multiplier" value={`${multiplier}x`} sub="time-boost" accent="bg-yellow-400" />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <StatCard label="Active Stake" value={`${Number(stakedAmount).toFixed(2)} G$`} accent="bg-black text-white [&_p]:text-white" />
                         <StatCard label="Global TVL" value={totalStaked ? `${Number(formatEther(totalStaked)).toLocaleString()} G$` : '0 G$'} />
                     </div>
@@ -1095,14 +1078,6 @@ export default function StakingPage() {
                             title="Swap G$ to cUSD or CELO"
                         >
                             ⇄
-                        </button>
-                        <button
-                            onClick={() => updateStakingMultiplier()}
-                            disabled={isLoading}
-                            title="Sync your time-boost multiplier on-chain"
-                            className="px-4 py-4 bg-white border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:-translate-x-0.5 hover:-translate-y-0.5 active:shadow-none active:translate-x-1 active:translate-y-1 transition-all font-black text-xl disabled:opacity-40"
-                        >
-                            ⟳
                         </button>
                     </div>
 
@@ -1148,7 +1123,7 @@ export default function StakingPage() {
                                 },
                                 {
                                     n: '03', bg: 'bg-pink-400 text-white', title: 'Zero Lock',
-                                    body: 'Unstake anytime. Capital is always liquid — but your multiplier is built by staying.',
+                                    body: 'Unstake anytime. Capital is always liquid — but your reward share is built by staying.',
                                 },
                             ].map(({ n, bg, title, body }) => (
                                 <div key={n} className="border-2 border-black p-4 bg-white shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">

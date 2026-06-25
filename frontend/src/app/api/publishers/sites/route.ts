@@ -59,6 +59,12 @@ const toSiteView = (site: any) => ({
   apiKey: site.apiKey,
   verified: site.verified,
   createdAt: site.createdAt,
+  // SDK heartbeat fields — populated by /api/sites/heartbeat. Allows the
+  // publisher dashboard to show "SDK detected" without waiting for the
+  // first impression to land.
+  lastSeenAt: site.lastSeenAt ?? null,
+  lastSdkVersion: site.lastSdkVersion ?? null,
+  lastHref: site.lastHref ?? null,
 })
 
 async function verifyPublisherRequest(request: NextRequest, wallet: string): Promise<NextResponse | null> {

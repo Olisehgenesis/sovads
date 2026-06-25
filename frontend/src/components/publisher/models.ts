@@ -37,35 +37,11 @@ export interface CampaignVaultSummary {
   claimed: bigint | string | number
 }
 
-export type PublisherSectionId = 'dashboard' | 'websites' | 'analytics' | 'integration' | 'earnings' | 'rewards' | 'settings'
-
-export type PublisherIconName =
+export type PublisherSectionId =
   | 'dashboard'
-  | 'websites'
   | 'analytics'
+  | 'websites'
+  | 'integration'
   | 'earnings'
   | 'rewards'
-  | 'leaderboard'
-  | 'docs'
   | 'settings'
-  | 'impressions'
-  | 'clicks'
-  | 'ctr'
-  | 'revenue'
-  | 'points'
-  | 'preview'
-  | 'activate'
-  | 'rotate'
-  | 'delete'
-  | 'copy'
-  | 'exchange'
-  | 'withdraw'
-  | 'wallet'
-
-export interface PublisherSidebarItem {
-  label: string
-  icon: PublisherIconName
-  sectionId?: PublisherSectionId
-  href?: string
-  external?: boolean
-}
