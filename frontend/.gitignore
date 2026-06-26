@@ -3,3 +3,6 @@
 
 # Local SDK build output (produced by `pnpm sdk:build` / `pnpm dev`).
 src/_sovads_sdk/
+
+.source/
+next-env.d.ts
