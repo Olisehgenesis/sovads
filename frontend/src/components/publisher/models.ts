@@ -20,6 +20,9 @@ export interface PublisherSite {
   apiSecret?: string
   verified: boolean
   createdAt: string
+  lastSeenAt?: string | null
+  lastSdkVersion?: string | null
+  lastHref?: string | null
 }
 
 export interface ExchangeHistoryEntry {
