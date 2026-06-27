@@ -91,16 +91,16 @@ export default function CampaignPreviewModal({ campaign, onClose }: CampaignPrev
     : SURFACES.filter((s) => s.id === surface)
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative z-10 flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden border-2 border-black bg-white shadow-[8px_8px_0_0_#000]">
+      <div className="relative z-10 flex max-h-[95vh] w-full max-w-5xl flex-col overflow-hidden border-2 border-black bg-white shadow-[8px_8px_0_0_#000] sm:max-h-[92vh]">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black bg-white px-4 py-3">
-          <div className="min-w-0">
-            <h3 className="truncate text-[14px] font-black uppercase tracking-tight text-[#2D2D2D]">{campaign.name}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black bg-white px-3 py-2 sm:gap-3 sm:px-4 sm:py-3">
+          <div className="min-w-0 flex-1">
+            <h3 className="truncate text-[13px] font-black uppercase tracking-tight text-[#2D2D2D] sm:text-[14px]">{campaign.name}</h3>
             <p className="line-clamp-1 text-[11px] text-[#666]">{campaign.description || 'No description'}</p>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex flex-shrink-0 items-center gap-1">
             <SegToggle
               value={device}
               onChange={setDevice}
@@ -116,33 +116,36 @@ export default function CampaignPreviewModal({ campaign, onClose }: CampaignPrev
               className="ml-1 inline-flex items-center gap-1 border border-transparent px-2 py-1 text-[10px] font-black uppercase tracking-wider text-[#2D2D2D] hover:bg-[#F5F3F0]"
             >
               <AdvertiserIcon name="delete" className="h-3 w-3" />
-              Close
+              <span className="hidden sm:inline">Close</span>
             </button>
           </div>
         </div>
 
-        {/* Surface tabs */}
-        <div className="flex flex-wrap gap-1 border-b border-[#E5E5E5] bg-[#FAFAF8] px-3 py-2">
-          {SURFACES.map((s) => (
-            <button
-              key={s.id}
-              type="button"
-              onClick={() => setSurface(s.id)}
-              className={[
-                'border px-2.5 py-1 text-[11px] font-medium transition-colors',
-                surface === s.id
-                  ? 'border-[#2D2D2D] bg-[#2D2D2D] text-white'
-                  : 'border-[#E5E5E5] bg-white text-[#2D2D2D] hover:bg-[#F4F4F2]',
-              ].join(' ')}
-            >
-              {s.label}
-            </button>
-          ))}
+        {/* Surface tabs — horizontally scrollable strip on narrow screens so
+         *  the tab row never wraps to multiple lines and eats vertical space. */}
+        <div className="-mx-px overflow-x-auto border-b border-[#E5E5E5] bg-[#FAFAF8]">
+          <div className="flex min-w-max gap-1 px-3 py-2">
+            {SURFACES.map((s) => (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => setSurface(s.id)}
+                className={[
+                  'whitespace-nowrap border px-2.5 py-1 text-[11px] font-medium transition-colors',
+                  surface === s.id
+                    ? 'border-[#2D2D2D] bg-[#2D2D2D] text-white'
+                    : 'border-[#E5E5E5] bg-white text-[#2D2D2D] hover:bg-[#F4F4F2]',
+                ].join(' ')}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Body */}
-        <div className="overflow-y-auto bg-[#FAFAF8] p-5">
-          <div className="space-y-6">
+        <div className="overflow-y-auto bg-[#FAFAF8] p-3 sm:p-5">
+          <div className="space-y-4 sm:space-y-6">
             {visible.map((s) => (
               <SurfaceFrame key={s.id} title={s.label} hint={s.hint}>
                 <SurfacePreview surface={s.id as Exclude<SurfaceId, 'all'>} device={device} campaign={campaign} />
@@ -422,31 +425,108 @@ export function BottomBarPreview({
 }
 
 export function PopupPreview({ campaign }: { campaign: PreviewCampaign }) {
+  const [open, setOpen] = useState(false)
+
+  // Esc closes the launched overlay; locking body scroll isn't needed because
+  // the parent modal already locked it.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
   return (
     <SizeFrame label="Centered modal">
-      <div className="relative mx-6 my-6" style={{ width: 480, maxWidth: '100%' }}>
-        <div className="absolute -inset-6 bg-black/40" aria-hidden />
-        <div className="relative border-2 border-black bg-white shadow-[6px_6px_0_0_#000]">
-          <div className="aspect-video overflow-hidden border-b-2 border-black">
-            <Creative campaign={campaign} />
-          </div>
-          <div className="space-y-3 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <h4 className="text-[14px] font-black uppercase tracking-tight text-[#2D2D2D]">{campaign.name}</h4>
-              <RewardBadge />
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="inline-flex items-center gap-2 bg-[#2D2D2D] px-3 py-2 text-[11px] font-black uppercase tracking-wider text-white hover:bg-[#1F1F1F]"
+        >
+          Launch popup preview
+        </button>
+
+        {/* Static inline mock so the layout is visible even without launching. */}
+        <div className="relative mx-0 my-2 sm:mx-6 sm:my-6" style={{ width: 480, maxWidth: '100%' }}>
+          <div className="absolute -inset-2 bg-black/20 sm:-inset-6 sm:bg-black/40" aria-hidden />
+          <div className="relative border-2 border-black bg-white shadow-[6px_6px_0_0_#000]">
+            <div className="aspect-video overflow-hidden border-b-2 border-black">
+              <Creative campaign={campaign} />
             </div>
-            <p className="text-[12px] text-[#666]">{campaign.description}</p>
-            <div className="flex items-center justify-end gap-2 pt-1">
-              <button type="button" className="border border-[#E5E5E5] px-3 py-1.5 text-[11px] font-semibold text-[#444]">
-                Not now
-              </button>
-              <button type="button" className="bg-[#2D2D2D] px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white">
-                Visit & earn
-              </button>
+            <div className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="text-[14px] font-black uppercase tracking-tight text-[#2D2D2D]">{campaign.name}</h4>
+                <RewardBadge />
+              </div>
+              <p className="text-[12px] text-[#666]">{campaign.description}</p>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button type="button" className="border border-[#E5E5E5] px-3 py-1.5 text-[11px] font-semibold text-[#444]">
+                  Not now
+                </button>
+                <button type="button" className="bg-[#2D2D2D] px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white">
+                  Visit &amp; earn
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Real popup overlay — fixed to the viewport, sits above the parent
+       *  modal (z-[60] > the modal's z-50). Click backdrop or press Esc to
+       *  dismiss. No SDK frequency cap; closes only on user input. */}
+      {open && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            type="button"
+            aria-label="Close popup preview"
+            className="absolute inset-0 cursor-default bg-black/60"
+            onClick={() => setOpen(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="relative z-10 w-full max-w-[480px] border-2 border-black bg-white shadow-[8px_8px_0_0_#000]"
+          >
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              aria-label="Close"
+              className="absolute right-2 top-2 z-10 inline-flex h-7 w-7 items-center justify-center border border-[#2D2D2D] bg-white text-[14px] font-bold text-[#2D2D2D] hover:bg-[#F4F4F2]"
+            >
+              ×
+            </button>
+            <div className="aspect-video overflow-hidden border-b-2 border-black">
+              <Creative campaign={campaign} />
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <h4 className="pr-8 text-[14px] font-black uppercase tracking-tight text-[#2D2D2D]">{campaign.name}</h4>
+                <RewardBadge />
+              </div>
+              <p className="text-[12px] text-[#666]">{campaign.description}</p>
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setOpen(false)}
+                  className="border border-[#E5E5E5] px-3 py-1.5 text-[11px] font-semibold text-[#444] hover:bg-[#F4F4F2]"
+                >
+                  Not now
+                </button>
+                <button
+                  type="button"
+                  className="bg-[#2D2D2D] px-3 py-1.5 text-[11px] font-black uppercase tracking-wider text-white"
+                >
+                  Visit &amp; earn
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </SizeFrame>
   )
 }
