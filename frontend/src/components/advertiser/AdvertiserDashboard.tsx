@@ -15,10 +15,19 @@ import { GOODDOLLAR_ADDRESS, chainId } from '@/lib/chain-config'
 import AdvertiserIcon from './AdvertiserIcon'
 import AdvertiserSidebar from './AdvertiserSidebar'
 import { advertiserSidebarItems, type AdvertiserSectionId } from './advertiser-config'
-import CampaignPreviewModal from './CampaignPreviewModal'
+import CampaignPreviewModal, {
+  BannerPreview,
+  SidebarPreview,
+  PopupPreview,
+  BottomBarPreview,
+  NativeCardPreview,
+  type PreviewCampaign,
+  type PreviewDevice,
+} from './CampaignPreviewModal'
 import EditCampaignModal from './EditCampaignModal'
 import CampaignTable from './CampaignTable'
 import CampaignCard from './CampaignCard'
+import { BannerAd, SidebarAd, PopupAd } from '@/components/ads/AdSlots'
 import {
   Alert,
   Button,
@@ -423,6 +432,10 @@ export default function AdvertiserDashboard() {
                 onRowAction={handleAction}
                 isProcessing={busy || isContractLoading}
               />
+            )}
+
+            {section === 'preview' && (
+              <PreviewSection address={address ?? undefined} campaigns={campaigns} />
             )}
 
             {section === 'analytics' && (
@@ -927,6 +940,302 @@ function AnalyticsSection({
         </div>
       )}
     </Section>
+  )
+}
+
+// ─── Section: Preview ────────────────────────────────────────────────────
+
+type PreviewSurface = 'banner' | 'sidebar' | 'bottombar' | 'native' | 'popup'
+type PreviewMode = 'campaign' | 'live'
+
+const PREVIEW_SURFACES: { id: PreviewSurface; label: string; hint: string }[] = [
+  { id: 'banner', label: 'Banner', hint: 'Leaderboard / mobile banner.' },
+  { id: 'sidebar', label: 'Sidebar', hint: 'Half-page rail next to content.' },
+  { id: 'bottombar', label: 'Bottom bar', hint: 'Sticky footer strip.' },
+  { id: 'native', label: 'Native card', hint: 'Inline feed card.' },
+  { id: 'popup', label: 'Popup', hint: 'Centered modal overlay.' },
+]
+
+function PreviewSection({
+  address,
+  campaigns,
+}: {
+  address?: string
+  campaigns: Campaign[]
+}) {
+  // Default to the advertiser's own campaign — the user complained the live
+  // SDK was serving someone else's expired ad. The "Live SDK" toggle is still
+  // available as a secondary path for those who want to see real serving.
+  const [mode, setMode] = useState<PreviewMode>('campaign')
+  const [campaignId, setCampaignId] = useState<string>(() => campaigns[0]?.id ?? '')
+  const [surface, setSurface] = useState<PreviewSurface>('banner')
+  const [device, setDevice] = useState<PreviewDevice>('desktop')
+  const [popupOpen, setPopupOpen] = useState(false)
+  const [useWallet, setUseWallet] = useState(true)
+  const [slotEpoch, setSlotEpoch] = useState(0)
+  const [livePopupKey, setLivePopupKey] = useState(0)
+
+  // Adopt the first campaign as soon as the list loads / changes.
+  useEffect(() => {
+    if (!campaignId && campaigns[0]) {
+      setCampaignId(campaigns[0].id)
+    }
+  }, [campaigns, campaignId])
+
+  const selected = campaigns.find((c) => c.id === campaignId) ?? null
+
+  const previewCampaign: PreviewCampaign | null = selected
+    ? {
+        name: selected.name,
+        description: selected.description,
+        bannerUrl: selected.bannerUrl,
+        mediaType: selected.mediaType,
+        targetUrl: selected.targetUrl,
+        cpc: selected.cpc,
+      }
+    : null
+
+  const consumerId = useWallet ? address : undefined
+  const slotKey = `${surface}-${slotEpoch}-${consumerId ?? 'any'}`
+
+  return (
+    <div className="space-y-5">
+      <Section
+        title="Ad preview"
+        description="See exactly how your campaign will render across every SovAds surface. Pick a campaign — no real ads are served, no impressions are tracked."
+      >
+        <div className="space-y-3">
+          <div className="inline-flex border border-[#E5E5E5] bg-white">
+            <button
+              type="button"
+              onClick={() => setMode('campaign')}
+              className={[
+                'px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider',
+                mode === 'campaign' ? 'bg-[#2D2D2D] text-white' : 'text-[#444] hover:bg-[#F4F4F2]',
+              ].join(' ')}
+            >
+              My campaign
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('live')}
+              className={[
+                'px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wider',
+                mode === 'live' ? 'bg-[#2D2D2D] text-white' : 'text-[#444] hover:bg-[#F4F4F2]',
+              ].join(' ')}
+            >
+              Live SDK render
+            </button>
+          </div>
+
+          {mode === 'campaign' && (
+            <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+              <Field label="Campaign">
+                {campaigns.length === 0 ? (
+                  <p className="border border-dashed border-[#E5E5E5] bg-[#FAFAF8] px-3 py-2 text-[12px] text-[#888]">
+                    Create a campaign to preview it here.
+                  </p>
+                ) : (
+                  <select
+                    value={campaignId}
+                    onChange={(e) => setCampaignId(e.target.value)}
+                    className="w-full border border-[#E5E5E5] bg-white px-3 py-2 text-[13px] text-[#2D2D2D]"
+                  >
+                    {campaigns.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} · #{c.onChainId ?? '—'}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </Field>
+              <Field label="Device">
+                <div className="inline-flex border border-[#E5E5E5] bg-white">
+                  {(['desktop', 'mobile'] as PreviewDevice[]).map((d) => (
+                    <button
+                      key={d}
+                      type="button"
+                      onClick={() => setDevice(d)}
+                      className={[
+                        'px-3 py-2 text-[11px] font-semibold uppercase tracking-wider',
+                        device === d ? 'bg-[#2D2D2D] text-white' : 'text-[#444] hover:bg-[#F4F4F2]',
+                      ].join(' ')}
+                    >
+                      {d}
+                    </button>
+                  ))}
+                </div>
+              </Field>
+            </div>
+          )}
+
+          {mode === 'live' && (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="inline-flex items-center gap-2 text-[12px] text-[#2D2D2D]">
+                <input
+                  type="checkbox"
+                  checked={useWallet}
+                  disabled={!address}
+                  onChange={(e) => setUseWallet(e.target.checked)}
+                  className="h-3.5 w-3.5 accent-[#2D2D2D]"
+                />
+                <span>
+                  Target my wallet
+                  {address ? (
+                    <span className="ml-1 font-mono text-[11px] text-[#888]">
+                      ({address.slice(0, 6)}…{address.slice(-4)})
+                    </span>
+                  ) : (
+                    <span className="ml-1 text-[11px] text-[#888]">(connect a wallet)</span>
+                  )}
+                </span>
+              </label>
+              <Button
+                intent="secondary"
+                size="sm"
+                onClick={() => {
+                  setSlotEpoch((n) => n + 1)
+                  setLivePopupKey((n) => n + 1)
+                }}
+              >
+                Reload ad
+              </Button>
+              <p className="text-[11px] text-[#999]">
+                Note: live mode serves whatever ad the network selects — could be any active campaign.
+              </p>
+            </div>
+          )}
+
+          {/* Surface tabs (apply to both modes) */}
+          <div className="flex flex-wrap gap-1 border-t border-[#EFEFEF] pt-3">
+            {PREVIEW_SURFACES.map((s) => {
+              const active = s.id === surface
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSurface(s.id)}
+                  className={[
+                    'inline-flex items-center gap-1.5 border px-3 py-1.5 text-[12px] font-semibold transition-colors',
+                    active
+                      ? 'border-[#2D2D2D] bg-[#2D2D2D] text-white'
+                      : 'border-[#E5E5E5] bg-white text-[#2D2D2D] hover:bg-[#F4F4F2]',
+                  ].join(' ')}
+                >
+                  {s.label}
+                </button>
+              )
+            })}
+            <span className="ml-1 self-center text-[11px] text-[#888]">
+              {PREVIEW_SURFACES.find((s) => s.id === surface)?.hint}
+            </span>
+          </div>
+        </div>
+      </Section>
+
+      <Section title="Preview surface">
+        <div className="border border-dashed border-[#CFCFCF] bg-[#FAFAF8] p-4">
+          {mode === 'campaign' && previewCampaign ? (
+            <>
+              {surface === 'banner' && (
+                <div className="flex justify-center overflow-auto">
+                  <BannerPreview device={device} campaign={previewCampaign} />
+                </div>
+              )}
+              {surface === 'sidebar' && (
+                <div className="overflow-auto">
+                  <SidebarPreview campaign={previewCampaign} />
+                </div>
+              )}
+              {surface === 'bottombar' && (
+                <div className="flex justify-center overflow-auto">
+                  <BottomBarPreview device={device} campaign={previewCampaign} />
+                </div>
+              )}
+              {surface === 'native' && (
+                <div className="flex justify-center overflow-auto">
+                  <NativeCardPreview device={device} campaign={previewCampaign} />
+                </div>
+              )}
+              {surface === 'popup' && (
+                <div className="space-y-3">
+                  <p className="text-[12px] text-[#666]">
+                    The popup mounts as a centered modal at runtime. Click below to launch a true
+                    in-page popup with your creative — close with the × or Esc.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button intent="primary" size="sm" onClick={() => setPopupOpen(true)}>
+                      Launch popup preview
+                    </Button>
+                    <span className="text-[11px] text-[#888]">Inline preview below for layout review.</span>
+                  </div>
+                  <div className="overflow-auto pt-2">
+                    <PopupPreview campaign={previewCampaign} />
+                  </div>
+                </div>
+              )}
+            </>
+          ) : mode === 'campaign' && !previewCampaign ? (
+            <EmptyState
+              title="No campaign selected"
+              description="Pick a campaign from the dropdown above to preview it."
+            />
+          ) : null}
+
+          {mode === 'live' && (
+            <>
+              {surface === 'banner' && (
+                <div key={slotKey} className="mx-auto flex w-full max-w-[970px] justify-center">
+                  <BannerAd consumerId={consumerId} />
+                </div>
+              )}
+              {surface === 'sidebar' && (
+                <div key={slotKey} className="grid gap-4 lg:grid-cols-[1fr_320px]">
+                  <div className="border border-[#E5E5E5] bg-white p-4 text-[12px] text-[#666]">
+                    <p className="font-semibold text-[#2D2D2D]">Main content placeholder</p>
+                    <p className="mt-1">
+                      This column simulates the publisher article body. The sidebar unit on the right
+                      is the live SDK render.
+                    </p>
+                  </div>
+                  <div className="flex justify-center">
+                    <SidebarAd consumerId={consumerId} />
+                  </div>
+                </div>
+              )}
+              {surface === 'popup' && (
+                <div className="space-y-3">
+                  <p className="text-[12px] text-[#666]">
+                    Note: the live popup is subject to the SDK&apos;s session frequency cap and may not
+                    show again immediately. Use the My-campaign tab for a deterministic preview.
+                  </p>
+                  <Button intent="primary" size="sm" onClick={() => setLivePopupKey((n) => n + 1)}>
+                    Show live popup
+                  </Button>
+                  <PopupAd key={livePopupKey} consumerId={consumerId} delay={500} />
+                </div>
+              )}
+              {(surface === 'bottombar' || surface === 'native') && (
+                <EmptyState
+                  title="Not available in live mode"
+                  description="Bottom bar and Native surfaces don't have a standalone SDK component yet. Use My-campaign mode to preview them."
+                />
+              )}
+            </>
+          )}
+        </div>
+      </Section>
+
+      {/* True popup overlay launched from the My-campaign tab. Reuses the
+       *  full CampaignPreviewModal with the chosen campaign so the advertiser
+       *  can review every surface from the same launcher. */}
+      {popupOpen && previewCampaign && (
+        <CampaignPreviewModal
+          campaign={previewCampaign}
+          onClose={() => setPopupOpen(false)}
+        />
+      )}
+    </div>
   )
 }
 

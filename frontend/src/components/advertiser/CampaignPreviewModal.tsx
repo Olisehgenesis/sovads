@@ -20,17 +20,26 @@ import { toStreamingEmbed, GOOD_DOLLAR_ICON_DATA_URI } from '@/lib/sdk'
  * rather than a generic placeholder. Sizes mirror the IAB presets the SDK
  * ships with.
  */
+/** Minimal creative shape consumed by every surface preview. Exported so
+ *  other surfaces (e.g. the inline Preview tab in the advertiser shell) can
+ *  reuse the same renderers without depending on the modal wrapper. */
+export interface PreviewCampaign {
+  name: string
+  description: string
+  bannerUrl: string
+  mediaType?: 'image' | 'video'
+  targetUrl?: string
+  cpc?: number
+}
+
 interface CampaignPreviewModalProps {
-  campaign: {
-    name: string
-    description: string
-    bannerUrl: string
-    mediaType?: 'image' | 'video'
-    targetUrl?: string
-    cpc?: number
-  } | null
+  campaign: PreviewCampaign | null
   onClose: () => void
 }
+
+/** Re-exported so callers can build their own surface tab UI. */
+export type PreviewSurfaceId = Exclude<SurfaceId, 'all'>
+export type PreviewDevice = Device
 
 type SurfaceId =
   | 'all'
@@ -216,12 +225,12 @@ function SegToggle<T extends string>({
  * sized to fill its parent. Used by every surface so the same media handling
  * isn't duplicated.
  */
-function Creative({
+export function Creative({
   campaign,
   className = '',
   cover = true,
 }: {
-  campaign: NonNullable<CampaignPreviewModalProps['campaign']>
+  campaign: PreviewCampaign
   className?: string
   cover?: boolean
 }) {
@@ -297,14 +306,14 @@ function AdLabel() {
 
 /* ───────── Per-surface previews ───────── */
 
-function SurfacePreview({
+export function SurfacePreview({
   surface,
   device,
   campaign,
 }: {
-  surface: Exclude<SurfaceId, 'all'>
-  device: Device
-  campaign: NonNullable<CampaignPreviewModalProps['campaign']>
+  surface: PreviewSurfaceId
+  device: PreviewDevice
+  campaign: PreviewCampaign
 }) {
   switch (surface) {
     case 'banner':       return <BannerPreview device={device} campaign={campaign} />
@@ -317,10 +326,10 @@ function SurfacePreview({
   }
 }
 
-function BannerPreview({
+export function BannerPreview({
   device,
   campaign,
-}: { device: Device; campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+}: { device: PreviewDevice; campaign: PreviewCampaign }) {
   if (device === 'mobile') {
     return (
       <SizeFrame label="320 × 50  (Mobile banner)">
@@ -352,7 +361,7 @@ function BannerPreview({
   )
 }
 
-function SidebarPreview({ campaign }: { campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+export function SidebarPreview({ campaign }: { campaign: PreviewCampaign }) {
   return (
     <div className="flex items-start gap-4">
       <div className="hidden flex-1 sm:block">
@@ -382,10 +391,10 @@ function SidebarPreview({ campaign }: { campaign: NonNullable<CampaignPreviewMod
   )
 }
 
-function BottomBarPreview({
+export function BottomBarPreview({
   device,
   campaign,
-}: { device: Device; campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+}: { device: PreviewDevice; campaign: PreviewCampaign }) {
   const w = device === 'mobile' ? 360 : 720
   return (
     <SizeFrame label={`${w} × 64  (Sticky footer)`}>
@@ -412,7 +421,7 @@ function BottomBarPreview({
   )
 }
 
-function PopupPreview({ campaign }: { campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+export function PopupPreview({ campaign }: { campaign: PreviewCampaign }) {
   return (
     <SizeFrame label="Centered modal">
       <div className="relative mx-6 my-6" style={{ width: 480, maxWidth: '100%' }}>
@@ -442,10 +451,10 @@ function PopupPreview({ campaign }: { campaign: NonNullable<CampaignPreviewModal
   )
 }
 
-function NativeCardPreview({
+export function NativeCardPreview({
   device,
   campaign,
-}: { device: Device; campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+}: { device: PreviewDevice; campaign: PreviewCampaign }) {
   const w = device === 'mobile' ? 320 : 480
   return (
     <SizeFrame label="Inline feed card">
@@ -469,10 +478,10 @@ function NativeCardPreview({
   )
 }
 
-function InterstitialPreview({
+export function InterstitialPreview({
   device,
   campaign,
-}: { device: Device; campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+}: { device: PreviewDevice; campaign: PreviewCampaign }) {
   const isMobile = device === 'mobile'
   return (
     <SizeFrame label={isMobile ? 'Mobile takeover (390 × 720)' : 'Desktop takeover (960 × 540)'}>
@@ -502,7 +511,7 @@ function InterstitialPreview({
   )
 }
 
-function CtaUnitPreview({ campaign }: { campaign: NonNullable<CampaignPreviewModalProps['campaign']> }) {
+export function CtaUnitPreview({ campaign }: { campaign: PreviewCampaign }) {
   return (
     <SizeFrame label="CTA pill (attaches to any creative)">
       <div className="space-y-1.5">
