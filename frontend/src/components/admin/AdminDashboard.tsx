@@ -412,6 +412,40 @@ export default function AdminDashboard() {
     setIsActionBusy(false)
   }
 
+  // Re-activates a campaign that's sitting `active=false` in the DB. We
+  // intentionally do NOT touch the contract here: there's no on-chain
+  // "resume" verb (`stopCampaign` is terminal in the streaming contract),
+  // and the common reason a campaign is Inactive is one of:
+  //   - admin Stop wrote `active=false` and we want to undo the DB side
+  //   - older approve flow left `verificationStatus='approved'` but
+  //     `active=false` (the bug we just fixed for new approvals)
+  //   - manual DB toggle
+  // For all of those the right move is: flip `active=true`, clear any
+  // stray `paused` flag. Serve endpoints filter on `active`, so this is
+  // what gets it serving again. If the on-chain state is actually
+  // stopped, billing will fail on the next click — surface that as an
+  // honest follow-up to the admin instead of pretending to reverse it.
+  const handleActivateCampaign = async (campaign: Campaign) => {
+    const targetId = String(campaign.id)
+    try {
+      setIsActionBusy(true)
+      const ok = await setCampaignDbState(targetId, { active: true, paused: false })
+      if (!ok) throw new Error('DB update failed')
+      setFeedback({
+        tone: 'success',
+        text:
+          campaign.onChainId != null
+            ? `Campaign ${targetId} reactivated in DB. If it was Stop'd on-chain, billing may still be disabled.`
+            : `Campaign ${targetId} reactivated`,
+      })
+      refreshData()
+    } catch (err) {
+      setFeedback({ tone: 'error', text: err instanceof Error ? err.message : 'Activate failed' })
+    } finally {
+      setIsActionBusy(false)
+    }
+  }
+
   const handleUpdateMetadata = async () => {
     if (!selectedCampaignId) {
       setFeedback({ tone: 'error', text: 'Select a campaign first' })
@@ -730,6 +764,7 @@ export default function AdminDashboard() {
                 onApprove={(id) => handleVerifyCampaign(id, 'approved')}
                 onReject={(id) => handleVerifyCampaign(id, 'rejected')}
                 onTogglePause={handleToggleCampaignPause}
+                onActivate={handleActivateCampaign}
                 onStop={handleStopCampaign}
                 onDelete={handleDeleteCampaign}
                 onPreview={setPreviewCampaign}
@@ -949,6 +984,7 @@ function CampaignsSection({
   onApprove,
   onReject,
   onTogglePause,
+  onActivate,
   onStop,
   onDelete,
   onPreview,
@@ -972,6 +1008,7 @@ function CampaignsSection({
   onApprove: (id: string) => void
   onReject: (id: string) => void
   onTogglePause: (c: Campaign) => void
+  onActivate: (c: Campaign) => void
   onStop: (c: Campaign) => void
   onDelete: (c: Campaign) => void
   onPreview: (c: Campaign) => void
@@ -1092,6 +1129,17 @@ function CampaignsSection({
                               disabled={isActionBusy}
                             >
                               {c.paused ? 'Resume' : 'Pause'}
+                            </Button>
+                          ) : null}
+                          {label === 'Inactive' ? (
+                            <Button
+                              size="sm"
+                              intent="primary"
+                              onClick={() => onActivate(c)}
+                              disabled={isActionBusy}
+                              title="Set Campaign.active=true in the DB so it serves again. Does not reverse an on-chain Stop."
+                            >
+                              Activate
                             </Button>
                           ) : null}
                           {(label === 'Active' || label === 'Paused') ? (
