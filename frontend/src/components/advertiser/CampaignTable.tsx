@@ -136,6 +136,9 @@ export default function CampaignTable({ campaigns, onAction, isProcessing }: Pro
                       </>
                     ) : (
                       <>
+                        <Button size="sm" intent="ghost" onClick={() => onAction('preview', c)}>
+                          Preview
+                        </Button>
                         <Button size="sm" intent="ghost" onClick={() => onAction('stats', c)}>
                           Stats
                         </Button>
