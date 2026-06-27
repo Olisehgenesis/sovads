@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { getTokenSymbol } from '@/lib/tokens'
 import AdvertiserIcon from './AdvertiserIcon'
-import { StatusBadge, Button, formatNumber, formatPct, getCampaignStatusDisplay } from './ui'
+import { StatusBadge, Button, formatNumber, formatPct, getCampaignStatusDisplay, computeBudgetUsage } from './ui'
 import type { Campaign } from './types'
 
 type Action = 'preview' | 'stats' | 'fund' | 'pause' | 'edit' | 'extend' | 'publish' | 'discard'
@@ -40,8 +40,8 @@ export default function CampaignTable({ campaigns, onAction, isProcessing }: Pro
         <tbody>
           {campaigns.map((c, i) => {
             const tokenSymbol = getTokenSymbol(c.tokenAddress)
-            const usedPct = c.budget > 0 ? Math.min(100, (c.spent / c.budget) * 100) : 0
-            const budgetExhausted = c.budget > 0 && c.spent >= c.budget
+            const usage = computeBudgetUsage(c.budget, c.spent)
+            const budgetExhausted = usage.isOver || (c.budget > 0 && c.spent >= c.budget)
             const { label: statusLabel, tone } = getCampaignStatusDisplay(c)
             const isDraft = c.status === 'draft'
             const canFund = c.onChainId != null
@@ -110,9 +110,17 @@ export default function CampaignTable({ campaigns, onAction, isProcessing }: Pro
                 </Td>
                 <Td align="right">
                   <div className="inline-flex items-center gap-2">
-                    <span className="tabular-nums text-[#666]">{formatPct(usedPct)}</span>
+                    <span
+                      className={`tabular-nums ${usage.isOver ? 'font-semibold text-[#8A1F1F]' : 'text-[#666]'}`}
+                      title={usage.isOver ? `Over by ${formatNumber(usage.overspend)} ${tokenSymbol}` : undefined}
+                    >
+                      {formatPct(usage.labelPct)}
+                    </span>
                     <span className="h-1.5 w-14 bg-[#EFEFEF]">
-                      <span className="block h-full bg-[#2D2D2D]" style={{ width: `${usedPct}%` }} />
+                      <span
+                        className={`block h-full ${usage.isOver ? 'bg-[#8A1F1F]' : 'bg-[#2D2D2D]'}`}
+                        style={{ width: `${usage.barPct}%` }}
+                      />
                     </span>
                   </div>
                 </Td>

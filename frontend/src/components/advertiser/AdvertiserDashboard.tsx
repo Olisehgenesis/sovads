@@ -33,6 +33,7 @@ import {
   formatNumber,
   formatPct,
   getCampaignStatusDisplay,
+  computeBudgetUsage,
 } from './ui'
 import type { Campaign, DailyEntry } from './types'
 
@@ -971,8 +972,8 @@ function BillingSection({
         ) : (
           <ul className="divide-y divide-[#EFEFEF] border border-[#E5E5E5]">
             {campaigns.map((c) => {
-              const usedPct = c.budget > 0 ? Math.min(100, (c.spent / c.budget) * 100) : 0
-              const budgetExhausted = c.budget > 0 && c.spent >= c.budget
+              const usage = computeBudgetUsage(c.budget, c.spent)
+              const budgetExhausted = usage.isOver || (c.budget > 0 && c.spent >= c.budget)
               const { label: statusLabel, tone } = getCampaignStatusDisplay(c)
               return (
                 <li key={c.id} className="flex flex-wrap items-center justify-between gap-3 bg-white px-3 py-2.5">
@@ -983,7 +984,11 @@ function BillingSection({
                       {budgetExhausted && <StatusBadge tone="warning">Out of budget</StatusBadge>}
                     </div>
                     <p className="mt-0.5 text-[11px] text-[#888]">
-                      Budget {formatNumber(c.budget)} · Spent {formatNumber(c.spent)} ({formatPct(usedPct)})
+                      Budget {formatNumber(c.budget)} · Spent {formatNumber(c.spent)} (
+                      <span className={usage.isOver ? 'font-semibold text-[#8A1F1F]' : undefined}>
+                        {formatPct(usage.labelPct)}
+                      </span>
+                      )
                     </p>
                     {budgetExhausted && (
                       <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#8A1F1F]">
@@ -991,7 +996,10 @@ function BillingSection({
                       </p>
                     )}
                     <div className="mt-1 h-1 w-full max-w-xs bg-[#EFEFEF]">
-                      <div className="h-full bg-[#2D2D2D]" style={{ width: `${usedPct}%` }} />
+                      <div
+                        className={`h-full ${usage.isOver ? 'bg-[#8A1F1F]' : 'bg-[#2D2D2D]'}`}
+                        style={{ width: `${usage.barPct}%` }}
+                      />
                     </div>
                   </div>
                   {c.onChainId != null ? (

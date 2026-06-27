@@ -2,7 +2,7 @@
 
 import { getTokenSymbol } from '@/lib/tokens'
 import AdvertiserIcon from './AdvertiserIcon'
-import { StatusBadge, Button, formatNumber, formatPct, getCampaignStatusDisplay } from './ui'
+import { StatusBadge, Button, formatNumber, formatPct, getCampaignStatusDisplay, computeBudgetUsage } from './ui'
 import type { Campaign } from './types'
 
 interface Props {
@@ -21,8 +21,8 @@ interface Props {
  */
 export default function CampaignCard({ campaign, onPreview, onStats, onFund, onEdit, onPublish, onDiscard }: Props) {
   const tokenSymbol = getTokenSymbol(campaign.tokenAddress)
-  const usedPct = campaign.budget > 0 ? Math.min(100, (campaign.spent / campaign.budget) * 100) : 0
-  const budgetExhausted = campaign.budget > 0 && campaign.spent >= campaign.budget
+  const usage = computeBudgetUsage(campaign.budget, campaign.spent)
+  const budgetExhausted = usage.isOver || (campaign.budget > 0 && campaign.spent >= campaign.budget)
   const { label: statusLabel, tone } = getCampaignStatusDisplay(campaign)
   const isDraft = campaign.status === 'draft'
 
@@ -57,7 +57,7 @@ export default function CampaignCard({ campaign, onPreview, onStats, onFund, onE
         <dl className="grid grid-cols-3 gap-0 border border-[#EFEFEF] bg-[#FAFAF8] text-center">
           <Stat label={`${tokenSymbol} budget`} value={formatNumber(campaign.budget)} />
           <Stat label="Spent" value={formatNumber(campaign.spent)} bordered />
-          <Stat label="Used" value={formatPct(usedPct)} />
+          <Stat label="Used" value={formatPct(usage.labelPct)} />
         </dl>
 
         {budgetExhausted && (
@@ -73,7 +73,10 @@ export default function CampaignCard({ campaign, onPreview, onStats, onFund, onE
         )}
 
         <div className="h-1.5 w-full bg-[#EFEFEF]">
-          <div className="h-full bg-[#2D2D2D]" style={{ width: `${usedPct}%` }} />
+          <div
+            className={`h-full ${usage.isOver ? 'bg-[#8A1F1F]' : 'bg-[#2D2D2D]'}`}
+            style={{ width: `${usage.barPct}%` }}
+          />
         </div>
 
         <p className="text-[11px] text-[#888]">

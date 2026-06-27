@@ -38,11 +38,10 @@ interface CampaignPreviewModalProps {
 }
 
 /** Re-exported so callers can build their own surface tab UI. */
-export type PreviewSurfaceId = Exclude<SurfaceId, 'all'>
+export type PreviewSurfaceId = SurfaceId
 export type PreviewDevice = Device
 
 type SurfaceId =
-  | 'all'
   | 'banner'
   | 'sidebar'
   | 'bottombar'
@@ -51,21 +50,25 @@ type SurfaceId =
   | 'interstitial'
   | 'cta'
 
-const SURFACES: { id: SurfaceId; label: string; hint: string }[] = [
-  { id: 'all', label: 'All', hint: 'Every surface, stacked.' },
-  { id: 'banner', label: 'Banner', hint: 'Leaderboard (728×90) and medium rectangle (300×250).' },
-  { id: 'sidebar', label: 'Sidebar', hint: 'Half-page (300×600) — typical right rail.' },
-  { id: 'bottombar', label: 'Bottom bar', hint: 'Sticky footer strip — common on mobile.' },
-  { id: 'popup', label: 'Popup', hint: 'Centered modal opened from a publisher trigger.' },
-  { id: 'native', label: 'Native card', hint: 'Inline card matching the host site\u2019s feed.' },
-  { id: 'interstitial', label: 'Interstitial', hint: 'Full-screen takeover (skippable after 5s).' },
-  { id: 'cta', label: 'CTA unit', hint: 'Reward pill that publishers attach to existing ads.' },
+/** Representative aspect ratio (width / height) per surface, used to size
+ *  the bottom thumbnail strip. We deliberately preserve the variance —
+ *  banners are long strips, sidebars are tall towers, interstitials are
+ *  cinema-frame — so the thumb row doubles as a size legend instead of
+ *  flattening every placement into the same rectangle. */
+const SURFACES: { id: SurfaceId; label: string; hint: string; aspect: number }[] = [
+  { id: 'banner',       label: 'Banner',       hint: 'Leaderboard (728×90) and medium rectangle (300×250).', aspect: 728 / 90 },
+  { id: 'sidebar',      label: 'Sidebar',      hint: 'Half-page (300×600) — typical right rail.',           aspect: 300 / 600 },
+  { id: 'bottombar',    label: 'Bottom bar',   hint: 'Sticky footer strip — common on mobile.',             aspect: 720 / 64 },
+  { id: 'popup',        label: 'Popup',        hint: 'Centered modal opened from a publisher trigger.',     aspect: 480 / 360 },
+  { id: 'native',       label: 'Native card',  hint: 'Inline card matching the host site\u2019s feed.',     aspect: 1.0 },
+  { id: 'interstitial', label: 'Interstitial', hint: 'Full-screen takeover (skippable after 5s).',          aspect: 960 / 540 },
+  { id: 'cta',          label: 'CTA unit',     hint: 'Reward pill that publishers attach to existing ads.', aspect: 320 / 220 },
 ]
 
 type Device = 'desktop' | 'mobile'
 
 export default function CampaignPreviewModal({ campaign, onClose }: CampaignPreviewModalProps) {
-  const [surface, setSurface] = useState<SurfaceId>('all')
+  const [surface, setSurface] = useState<SurfaceId>('banner')
   const [device, setDevice] = useState<Device>('desktop')
 
   // Lock body scroll while the modal is open; restore on close. Esc also
@@ -86,9 +89,7 @@ export default function CampaignPreviewModal({ campaign, onClose }: CampaignPrev
 
   if (!campaign) return null
 
-  const visible = surface === 'all'
-    ? SURFACES.filter((s) => s.id !== 'all')
-    : SURFACES.filter((s) => s.id === surface)
+  const current = SURFACES.find((s) => s.id === surface) ?? SURFACES[0]
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4">
@@ -121,50 +122,55 @@ export default function CampaignPreviewModal({ campaign, onClose }: CampaignPrev
           </div>
         </div>
 
-        {/* Surface tabs — horizontally scrollable strip on narrow screens so
-         *  the tab row never wraps to multiple lines and eats vertical space. */}
-        <div className="-mx-px overflow-x-auto border-b border-[#E5E5E5] bg-[#FAFAF8]">
-          <div className="flex min-w-max gap-1 px-3 py-2">
-            {SURFACES.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => setSurface(s.id)}
-                className={[
-                  'whitespace-nowrap border px-2.5 py-1 text-[11px] font-medium transition-colors',
-                  surface === s.id
-                    ? 'border-[#2D2D2D] bg-[#2D2D2D] text-white'
-                    : 'border-[#E5E5E5] bg-white text-[#2D2D2D] hover:bg-[#F4F4F2]',
-                ].join(' ')}
-              >
-                {s.label}
-              </button>
-            ))}
+        {/* Hero — one surface at a time, centered. The old `All` view stacked
+         *  7 IAB sizes top-to-bottom which read as visual noise because they
+         *  share no rhythm (728×90 → 300×600 → 960×540 is a 30× area swing).
+         *  Showing one surface restores focus; the bottom thumbnail strip
+         *  promotes the size variance from "layout problem" to "size legend". */}
+        <div className="flex-1 overflow-y-auto bg-[#FAFAF8] p-4 sm:p-6">
+          <div className="mx-auto max-w-4xl space-y-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-[11px] font-black uppercase tracking-[0.2em] text-[#2D2D2D]">{current.label}</p>
+              <p className="truncate text-[10px] text-[#888]">{current.hint}</p>
+            </div>
+            <div className="flex justify-center overflow-x-auto bg-[#F5F3F0] p-4 sm:p-6">
+              <SurfacePreview surface={surface} device={device} campaign={campaign} />
+            </div>
+
+            {campaign.targetUrl && (
+              <div className="border border-[#E5E5E5] bg-white px-3 py-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666]">Landing URL</p>
+                <p className="mt-1 break-all text-[12px] font-semibold text-[#2D2D2D]">{campaign.targetUrl}</p>
+              </div>
+            )}
+
+            <p className="border border-dashed border-[#E5E5E5] bg-white px-3 py-2 text-[10px] text-[#888]">
+              Visual preview only. Actual rendering may vary by publisher site theme, available reward, and viewer device.
+              The reward badge, disclosure label, and CTA buttons are injected by the SDK at runtime — only the creative
+              and copy you control are shown above.
+            </p>
           </div>
         </div>
 
-        {/* Body */}
-        <div className="overflow-y-auto bg-[#FAFAF8] p-3 sm:p-5">
-          <div className="space-y-4 sm:space-y-6">
-            {visible.map((s) => (
-              <SurfaceFrame key={s.id} title={s.label} hint={s.hint}>
-                <SurfacePreview surface={s.id as Exclude<SurfaceId, 'all'>} device={device} campaign={campaign} />
-              </SurfaceFrame>
-            ))}
-          </div>
-
-          {campaign.targetUrl && (
-            <div className="mt-5 border border-[#E5E5E5] bg-white px-3 py-2">
-              <p className="text-[10px] font-black uppercase tracking-[0.2em] text-[#666]">Landing URL</p>
-              <p className="mt-1 break-all text-[12px] font-semibold text-[#2D2D2D]">{campaign.targetUrl}</p>
+        {/* Thumbnail strip — each tile fits the surface's TRUE aspect ratio
+         *  inside a uniform 96×48 slot, so banners look long, sidebars look
+         *  tall, interstitials look cinematic. That shape variance IS the
+         *  signal we want to surface. */}
+        <div className="border-t-2 border-black bg-white">
+          <div className="overflow-x-auto">
+            <div className="flex min-w-max items-end gap-2 px-3 py-3">
+              {SURFACES.map((s) => (
+                <ThumbButton
+                  key={s.id}
+                  label={s.label}
+                  aspect={s.aspect}
+                  campaign={campaign}
+                  active={s.id === surface}
+                  onClick={() => setSurface(s.id)}
+                />
+              ))}
             </div>
-          )}
-
-          <p className="mt-4 border border-dashed border-[#E5E5E5] bg-white px-3 py-2 text-[10px] text-[#888]">
-            Visual preview only. Actual rendering may vary by publisher site theme, available reward, and viewer device.
-            The reward badge, disclosure label, and CTA buttons are injected by the SDK at runtime — only the creative
-            and copy you control are shown above.
-          </p>
+          </div>
         </div>
       </div>
     </div>
@@ -173,23 +179,65 @@ export default function CampaignPreviewModal({ campaign, onClose }: CampaignPrev
 
 /* ───────── Building blocks ───────── */
 
-function SurfaceFrame({
-  title,
-  hint,
-  children,
+/** Thumbnail tile for the bottom surface strip. The outer slot is a fixed
+ *  96×48 hit target so the row stays orderly; the INNER rectangle is sized
+ *  to the surface's true aspect ratio so the shape itself communicates the
+ *  IAB size. The campaign creative fills the inner rectangle. */
+function ThumbButton({
+  label,
+  aspect,
+  campaign,
+  active,
+  onClick,
 }: {
-  title: string
-  hint: string
-  children: React.ReactNode
+  label: string
+  aspect: number
+  campaign: PreviewCampaign
+  active: boolean
+  onClick: () => void
 }) {
+  const slotW = 96
+  const slotH = 48
+  const slotAspect = slotW / slotH
+  // Fit the surface rectangle inside the slot, contain-style. Width-bound
+  // when the surface is wider than the slot's ratio, height-bound otherwise.
+  const innerW = aspect > slotAspect ? slotW : slotH * aspect
+  const innerH = aspect > slotAspect ? slotW / aspect : slotH
   return (
-    <section className="border border-[#E5E5E5] bg-white">
-      <header className="flex items-baseline justify-between gap-3 border-b border-[#EFEFEF] px-3 py-2">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[#2D2D2D]">{title}</p>
-        <p className="truncate text-[10px] text-[#888]">{hint}</p>
-      </header>
-      <div className="overflow-auto bg-[#F5F3F0] p-4">{children}</div>
-    </section>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={[
+        'group flex flex-col items-center gap-1.5 px-1 pb-0.5 pt-1',
+        active ? '' : 'opacity-70 hover:opacity-100',
+      ].join(' ')}
+    >
+      <div
+        style={{ width: slotW, height: slotH }}
+        className={[
+          'relative flex items-center justify-center border bg-[#F5F3F0] transition-colors',
+          active
+            ? 'border-[#2D2D2D] ring-1 ring-[#2D2D2D]'
+            : 'border-[#E5E5E5] group-hover:border-[#2D2D2D]',
+        ].join(' ')}
+      >
+        <div
+          style={{ width: innerW, height: innerH }}
+          className="overflow-hidden border border-[#2D2D2D] bg-white"
+        >
+          <Creative campaign={campaign} />
+        </div>
+      </div>
+      <span
+        className={[
+          'whitespace-nowrap text-[10px] font-semibold uppercase tracking-wider',
+          active ? 'text-[#2D2D2D]' : 'text-[#888] group-hover:text-[#2D2D2D]',
+        ].join(' ')}
+      >
+        {label}
+      </span>
+    </button>
   )
 }
 

@@ -312,3 +312,29 @@ export function formatPct(n: number, digits = 1) {
 export const DashboardCard = Section
 export const MetricCard = Metric
 export const formatDateLabel = formatDate
+
+// Centralised budget-usage math. The previous duplicated `Math.min(100, …)`
+// math across `CampaignTable`, `CampaignCard`, and the Overview list silently
+// drifted: one of them rendered a raw 319.8% number when CTA spend exceeded
+// `Campaign.budget` because `Campaign.budget` wasn't being synced after
+// on-chain top-ups. Even after that root cause is fixed (see
+// `/api/campaigns/topup`), the UI should NEVER paint a progress bar wider
+// than its track, and should surface overspend explicitly instead of just
+// flashing a giant percentage. This helper returns both views:
+//   - `barPct`: 0–100, safe to use as a width.
+//   - `labelPct`: 0–999, the raw ratio for the inline numeric label, capped
+//     so a divide-by-tiny doesn't render "12,431%".
+//   - `overspend`: amount past budget (>=0), G$.
+//   - `isOver`:   true when spent > budget.
+export function computeBudgetUsage(budget: number, spent: number) {
+  const b = Number.isFinite(budget) && budget > 0 ? budget : 0
+  const s = Number.isFinite(spent) && spent >= 0 ? spent : 0
+  if (b === 0) return { barPct: 0, labelPct: 0, overspend: 0, isOver: false }
+  const raw = (s / b) * 100
+  return {
+    barPct: Math.min(100, raw),
+    labelPct: Math.min(999, raw),
+    overspend: Math.max(0, s - b),
+    isOver: s > b,
+  }
+}

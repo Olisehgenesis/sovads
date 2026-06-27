@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { useAccount } from 'wagmi'
 import { useAds } from '@/hooks/useAds'
 import { getTokenSymbol } from '@/lib/tokens'
 
@@ -20,6 +21,7 @@ interface Props {
 
 export default function TopUpModal({ open, campaign, onClose, onSuccess }: Props) {
   const { topUpCampaign } = useAds()
+  const { address } = useAccount()
   const [amount, setAmount] = useState('')
   const [isProcessing, setIsProcessing] = useState(false)
   const [msgError, setMsgError] = useState<string | null>(null)
@@ -36,6 +38,35 @@ export default function TopUpModal({ open, campaign, onClose, onSuccess }: Props
     setMsgSuccess(null)
     try {
       const txHash = await topUpCampaign(Number(campaign.onChainId), amount, campaign.tokenAddress)
+
+      // Record the top-up in Postgres so `Campaign.budget` reflects the
+      // on-chain reality. Without this the advertiser dashboard divides
+      // spend against the original (smaller) creation budget and shows
+      // bogus "used %" numbers >100% even when the campaign is well-funded.
+      if (address) {
+        try {
+          const res = await fetch('/api/campaigns/topup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              campaignId: campaign.id,
+              wallet: address,
+              amount,
+              txHash: txHash ?? null,
+            }),
+          })
+          if (!res.ok) {
+            const errBody = (await res.json().catch(() => ({}))) as { error?: string }
+            // Best-effort: don't fail the whole flow — the on-chain tx
+            // already landed. Surface a soft warning instead so the user
+            // can re-sync later.
+            console.warn('Top-up DB sync failed:', errBody.error)
+          }
+        } catch (syncErr) {
+          console.warn('Top-up DB sync threw:', syncErr)
+        }
+      }
+
       setMsgSuccess(txHash ? `Transaction sent: ${txHash}` : 'Funded successfully')
       setAmount('')
       onSuccess?.()
