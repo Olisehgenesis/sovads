@@ -4,7 +4,7 @@
 /** Runtime SDK version. Kept in sync with `sdk/package.json#version`.
  *  Sent as `X-SovAds-SDK-Version` on signed tracking requests and exported
  *  so host pages can log / gate on it. */
-export const SDK_VERSION = '1.1.1'
+export const SDK_VERSION = '1.2.1'
 
 export interface SovAdsConfig {
   siteId?: string // Optional - will be auto-detected if not provided
@@ -1827,43 +1827,40 @@ export function renderAttachedCtas(opts: {
     return
   }
 
-  const wallet = sovads!.getWalletAddress()
-  if (!wallet) {
-    // Lazy-load: no wallet yet \u2192 show a compact connect-wallet hint and
-    // subscribe to identity changes. When the host page calls
-    // `sovads.identify(addr)` we fetch completion status and swap in the
-    // real CTA buttons.
-    const placeholder = document.createElement('div')
-    placeholder.style.cssText =
-      'display:flex;align-items:center;justify-content:center;gap:6px;font-size:12px;font-weight:600;' +
-      'color:var(--sovads-text-muted, #666);' +
-      'background:var(--sovads-surface, #FAFAF8);' +
-      'border:1px dashed var(--sovads-border-soft, #E5E5E5);' +
-      'border-radius:6px;padding:10px 12px;'
-    placeholder.innerHTML =
-      '<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:#ffb020;"></span>' +
-      'Connect your wallet to unlock rewards'
-    panel.appendChild(placeholder)
-
-    let unsub: (() => void) | null = null
-    unsub = sovads!.onIdentify(async (next) => {
-      if (!next) return
-      if (unsub) { unsub(); unsub = null }
-      const statusByTask = await sovads!.fetchTaskStatuses(campaignId)
-      mountTasks(statusByTask)
-    })
-    return
-  }
-
-  // Wallet already known on first render \u2014 render an immediate skeleton-free
-  // pass then patch with completion status once it arrives. We render the
-  // buttons first so the panel doesn't flash empty space; done-badges appear
-  // a tick later when the status fetch resolves.
+  // No wallet-gate: render buttons immediately so anonymous viewers can still
+  // click a VISIT_URL (we record start time, open the link, run the dwell
+  // timer, and submit) \u2014 attribution falls back to the SDK fingerprint until
+  // a wallet connects. When the wallet does arrive we re-fetch task status so
+  // already-completed tasks pick up their \u2713 badge.
   mountTasks(new Map())
+
+  // Phase 8 (#5): always fetch statuses, regardless of wallet state. The
+  // server's GET /api/tasks/status accepts a `fingerprint`-only lookup and
+  // fetchTaskStatuses already forwards `this.fingerprint`. Without this,
+  // anonymous viewers who already submitted would see the button as "not
+  // done" and only learn it's a duplicate after the server returns 409,
+  // surfacing a misleading "Submit failed" message.
   sovads!.fetchTaskStatuses(campaignId).then((statusByTask) => {
     if (statusByTask.size === 0) return
     mountTasks(statusByTask)
   }).catch(() => { /* swallow \u2014 panel already rendered live */ })
+
+  // Also refresh once a wallet shows up so badges + per-wallet caps become
+  // visible from the wallet's perspective (the wallet may carry completion
+  // history that the fingerprint lookup didn't surface). One-shot: subsequent
+  // renders are driven by the host calling `sovads.identify(...)` which
+  // already updates SDK state.
+  let unsub: (() => void) | null = null
+  unsub = sovads!.onIdentify(async (next) => {
+    if (!next) return
+    if (unsub) { unsub(); unsub = null }
+    try {
+      const statusByTask = await sovads!.fetchTaskStatuses(campaignId)
+      mountTasks(statusByTask)
+    } catch {
+      /* swallow \u2014 buttons stay live */
+    }
+  })
 }
 
 /** A task counts as "done" for badge purposes when the viewer has any
@@ -1916,6 +1913,12 @@ function buildTaskRow(
   const row = document.createElement('div')
   // `position:relative` so the absolute \u2713 corner badge anchors to the row.
   row.style.cssText = 'position:relative;display:flex;flex-direction:column;gap:2px;'
+  // Phase 8 (#12): expose stable identifiers on the row so hosts (admin
+  // preview, tests, custom analytics) can look up rows by task instead of
+  // DOM index. The index-based fallback breaks the moment we inject any
+  // wrapper element (e.g. the POLL reward-chip wrapper).
+  row.dataset.taskId = task.id
+  row.dataset.taskKind = task.kind
 
   const reward = totalReward(task)
 
@@ -1982,9 +1985,15 @@ function buildTaskRow(
   // Apply the "already completed" visual treatment: faded button + \u2713
   // corner badge anchored to the row. We intentionally keep the original
   // label so the viewer remembers what they did, just dimmed.
+  // Phase 8 (#8): pull the button out of the keyboard tab order and mark it
+  // aria-disabled so assistive tech doesn't announce it as actionable.
+  // `disabled` already blocks focus in most browsers, but tabIndex=-1 is
+  // belt-and-braces across SR + custom keyboard nav.
   const applyDoneStyling = (btn: HTMLButtonElement) => {
     if (!ctx.done) return
     btn.disabled = true
+    btn.tabIndex = -1
+    btn.setAttribute('aria-disabled', 'true')
     btn.style.opacity = '0.55'
     btn.style.cursor = 'default'
     btn.style.pointerEvents = 'none'
@@ -2005,20 +2014,94 @@ function buildTaskRow(
         }
       }
       const dwell = Math.max(0, task.minDwellMs ?? 3000)
+      // Phase 8 (#2): the dwell must actually be "time the viewer plausibly
+      // engaged with the new tab". A naive setTimeout fires regardless of
+      // visibilityState, so a bot can dispatch a synthetic click on a hidden
+      // iframe and submit `dwellMs=3000` 3s later without ever rendering the
+      // target page. Here we walk the wall clock in 200ms ticks and only
+      // accrue `visibleMs` when document.visibilityState === 'visible' AND
+      // the window has focus. We send BOTH numbers \u2014 the server can reject
+      // when visibleMs is implausibly low (future work, gated behind a
+      // signed /api/tasks/start token; see loophole #1).
+      let visibleMs = 0
+      const startedAt = Date.now()
       if (dwell > 0) {
         setStatus(`Keep the tab open for ${Math.round(dwell / 1000)}s\u2026`)
-        await new Promise((r) => setTimeout(r, dwell))
+        const tick = 200
+        while (visibleMs < dwell) {
+          await new Promise((r) => setTimeout(r, tick))
+          // hasFocus() is false when devtools are focused on some browsers;
+          // we intentionally accept that hit \u2014 trusting visibilityState alone
+          // is far more easily spoofed.
+          const visible =
+            typeof document !== 'undefined' && document.visibilityState === 'visible'
+          const focused =
+            typeof document !== 'undefined' && (document.hasFocus?.() ?? true)
+          if (visible && focused) visibleMs += tick
+        }
       }
-      await submit({ dwellMs: dwell }, btn)
+      const dwellMs = Date.now() - startedAt
+      await submit({ dwellMs, visibleMs }, btn)
     })
     applyDoneStyling(btn)
     row.appendChild(btn)
   } else if (task.kind === 'SIGN_MESSAGE') {
-    const btn = makeButton(task.buttonLabel || task.label || 'Sign to claim', 'primary', {
+    // Phase 8 (#6): when no wallet is connected, the old flow dead-ended \u2014
+    // the button got disabled forever after the first click. Now we relabel
+    // the button up front so anonymous viewers see "Connect wallet to sign",
+    // leave it ENABLED on click (so they can click again after connecting),
+    // and swap back to the original label via onIdentify the moment a wallet
+    // shows up.
+    const originalLabel = task.buttonLabel || task.label || 'Sign to claim'
+    const noWalletLabel = 'Connect wallet to sign'
+    const hasWallet = !!ctx.sovads?.getWalletAddress()
+    const btn = makeButton(hasWallet ? originalLabel : noWalletLabel, 'primary', {
       reward,
       gsLogoUrl: ctx.gsLogoUrl,
     })
+    // `makeButton(..., reward)` puts the label in the first <span> child.
+    // Hold a handle so onIdentify can swap the text without a full rebuild.
+    const labelEl = btn.firstElementChild as HTMLElement | null
+    const setLabel = (text: string) => {
+      if (labelEl && labelEl.tagName === 'SPAN') labelEl.textContent = text
+      else btn.textContent = text
+    }
+
+    // Live mode only: subscribe to wallet identification so the label tracks
+    // reality. Auto-unsub on first wallet arrival. No-op in preview / done.
+    if (!ctx.preview && !ctx.done && !hasWallet && ctx.sovads) {
+      let unsubSign: (() => void) | null = null
+      unsubSign = ctx.sovads.onIdentify((next) => {
+        if (!next) return
+        setLabel(originalLabel)
+        if (unsubSign) {
+          unsubSign()
+          unsubSign = null
+        }
+      })
+    }
+
     wireClick(btn, async () => {
+      const wallet = ctx.sovads?.getWalletAddress() || null
+      if (!wallet) {
+        // Anonymous click: signal the host (so it can pop its connect modal)
+        // but DON'T disable the button \u2014 the viewer needs to be able to
+        // click again once they're connected.
+        setStatus('Connect your wallet, then click again to sign.')
+        try {
+          ctx.onComplete?.({
+            taskId: task.id,
+            campaignId: task.campaignId,
+            kind: task.kind,
+            ok: false,
+            status: 0,
+            needsSignature: { message: task.signMessage || task.label },
+          })
+        } catch {
+          /* host handler threw - swallow */
+        }
+        return
+      }
       setStatus('Awaiting signature from your wallet\u2026')
       btn.disabled = true
       btn.style.opacity = '0.6'
@@ -4645,8 +4728,17 @@ export function buildRewardBadge(opts?: {
 }): HTMLElement {
   const amount = opts?.amount ?? '0.5'
   const variant = opts?.variant ?? 'dark'
-  const bg = variant === 'dark' ? '#2D2D2D' : 'rgba(255,255,255,0.95)'
-  const fg = variant === 'dark' ? '#FFFFFF' : '#2D2D2D'
+  // Phase 5: brand hexes must always ship inside a `var(--sovads-*, …)`
+  // fallback so publishers can re-theme the badge. Bare literals would
+  // fail the bundle-grep regression test.
+  const bg =
+    variant === 'dark'
+      ? 'var(--sovads-accent, #2D2D2D)'
+      : 'rgba(255,255,255,0.95)'
+  const fg =
+    variant === 'dark'
+      ? '#FFFFFF'
+      : 'var(--sovads-accent, #2D2D2D)'
   const span = document.createElement('span')
   span.className = 'sovads-reward-badge'
   span.setAttribute('role', 'note')

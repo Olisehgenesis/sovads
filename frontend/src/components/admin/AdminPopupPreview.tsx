@@ -171,18 +171,20 @@ export default function AdminPopupPreview({ campaign, onClose }: AdminPopupPrevi
       })
 
       // SDK preview mode strips click handlers; wire admin-only "open target"
-      // handlers so the rendered CTA buttons actually navigate. We match
-      // rows to tasks by DOM order (renderAttachedCtas appends one row per
-      // task in the same order we passed them).
+      // handlers so the rendered CTA buttons actually navigate. We look up
+      // rows by `data-task-id` (set by the SDK on every task row) rather than
+      // by DOM index — index alignment would break the moment the SDK adds a
+      // wrapper element ahead of a row (e.g. POLL's reward-chip wrapper).
       const panel = host.querySelector('.sovads-cta-panel')
       if (panel) {
-        const rows = Array.from(panel.children) as HTMLElement[]
-        attachedTasks.forEach((task, i) => {
-          const row = rows[i]
-          if (!row) return
+        attachedTasks.forEach((task) => {
           if (task.kind !== 'VISIT_URL') return
           const url = task.url
           if (!url) return
+          const row = panel.querySelector(
+            `[data-task-id="${CSS.escape(task.id)}"]`
+          ) as HTMLElement | null
+          if (!row) return
           const btn = row.querySelector('button')
           if (!btn) return
           btn.style.cursor = 'pointer'
