@@ -1,7 +1,7 @@
 /** Runtime SDK version. Kept in sync with `sdk/package.json#version`.
  *  Sent as `X-SovAds-SDK-Version` on signed tracking requests and exported
  *  so host pages can log / gate on it. */
-export declare const SDK_VERSION = "1.2.1";
+export declare const SDK_VERSION = "1.3.0";
 export interface SovAdsConfig {
     siteId?: string;
     apiUrl?: string;
@@ -119,6 +119,24 @@ interface SlotConfig {
     /** Phase 2: per-slot override for the disclosure badge. Falls back to
      *  `SovAdsConfig.disclosureLabel` (which defaults to `true`). */
     disclosureLabel?: boolean | string;
+    /** Phase 8: how the creative fits into the reserved slot.
+     *  - 'contain' (default) \u2014 always fit the whole image, letterboxing
+     *    when the creative aspect ratio doesn't match the slot.
+     *  - 'cover' \u2014 fill the slot and crop the overflow. Use when the
+     *    advertiser provides creatives sized to the slot.
+     *  - 'auto' \u2014 RECOMMENDED. Start with `contain` and upgrade to
+     *    `cover` on load() when the creative ratio is within \u00b110% of
+     *    the slot ratio (i.e. no visible crop, just a perfect fit). */
+    fit?: 'contain' | 'cover' | 'auto';
+    /** Phase 8: `object-position` value used when fit resolves to `cover`.
+     *  Defaults to `'50% 50%'` (centred). Example: `'50% 30%'` keeps the
+     *  upper third in frame \u2014 useful for product shots / faces. */
+    focus?: string;
+    /** Phase 8: render a blurred copy of the creative behind it to fill the
+     *  letterbox bars when fit resolves to `contain`. Defaults to ON when
+     *  a slot `size` is given (so the slot never looks empty), OFF otherwise.
+     *  Pass `false` to keep the transparent placeholder background. */
+    letterboxBlur?: boolean;
 }
 export interface AttachedCtaCompleteEvent {
     taskId: string;
@@ -334,6 +352,44 @@ export declare function mountMedia(opts: {
     /** Optional inline style override; helper sets sensible defaults. */
     style?: string;
 }): MediaMountResult;
+export interface AdMediaMountOptions {
+    ad: AdComponent;
+    /** Optional IAB size like '728x90'. Drives the aspect-ratio reservation
+     *  on the returned wrapper AND the `auto`-fit ratio check. When omitted,
+     *  layout falls back to media-driven (legacy `height:auto`). */
+    size?: string;
+    /**
+     * - 'contain' (default) \u2014 always fit the whole image, letterbox the rest.
+     * - 'cover'              \u2014 fill the slot, crop overflow.
+     * - 'auto'               \u2014 start with contain, promote to cover on load()
+     *                          when the creative ratio is within \u00b110% of the
+     *                          slot ratio (no visible crop, just a perfect fit).
+     */
+    fit?: 'contain' | 'cover' | 'auto';
+    /** `object-position`, applied when the effective fit is cover. Default '50% 50%'. */
+    focus?: string;
+    /** Render a blurred copy of the creative behind it when letterboxing.
+     *  Defaults to TRUE when `size` is given, FALSE otherwise. */
+    letterboxBlur?: boolean;
+    /** CSS `border-radius` to apply to the wrapper. Default ''. */
+    borderRadius?: string;
+    /** CSS `background` for the wrapper (visible when no backdrop is rendered). */
+    background?: string;
+    /** Optional `max-width` for the wrapper. Default unset (parent controls width). */
+    maxWidth?: string;
+}
+export interface AdMediaMountResult {
+    /** Positioning context that holds the media (+ optional blur backdrop).
+     *  Append THIS to your slot container. */
+    wrapper: HTMLElement;
+    /** The actual ad media. Attach `load` / `loadeddata` / `error` listeners here. */
+    element: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement;
+    kind: 'image' | 'video' | 'streaming';
+    /** True only for plain images. Video / streaming iframes intercept their
+     *  own pointer events \u2014 callers must render an explicit "Learn more" CTA. */
+    clickable: boolean;
+}
+export declare function mountAdMedia(opts: AdMediaMountOptions): AdMediaMountResult;
 /**
  * Build a compact "Sponsored" disclosure badge.
  *
@@ -493,6 +549,14 @@ export interface PopupShowOptions {
     clickTarget?: 'media' | 'button';
     /** Phase 2: per-slot override for the Sponsored badge. */
     disclosureLabel?: boolean | string;
+    /** Phase 8: see `SlotConfig.fit`. Defaults to `'auto'` for the popup
+     *  surface — popups don't have a fixed slot ratio so the media drives
+     *  layout; `auto` just picks the most flattering object-fit at load. */
+    fit?: 'contain' | 'cover' | 'auto';
+    /** Phase 8: see `SlotConfig.focus`. */
+    focus?: string;
+    /** Phase 8: see `SlotConfig.letterboxBlur`. */
+    letterboxBlur?: boolean;
 }
 export declare class Popup {
     private sovads;
@@ -542,6 +606,12 @@ export interface BottomBarShowOptions {
     clickTarget?: 'media' | 'button';
     /** Phase 2: per-slot override for the Sponsored badge. */
     disclosureLabel?: boolean | string;
+    /** Phase 8: see `SlotConfig.fit`. */
+    fit?: 'contain' | 'cover' | 'auto';
+    /** Phase 8: see `SlotConfig.focus`. */
+    focus?: string;
+    /** Phase 8: see `SlotConfig.letterboxBlur`. */
+    letterboxBlur?: boolean;
 }
 export declare class BottomBar {
     private sovads;
@@ -603,6 +673,12 @@ export interface OverlayShowOptions {
     dismissOnBackdrop?: boolean;
     /** When true, pressing Escape dismisses the overlay. Default true. */
     dismissOnEscape?: boolean;
+    /** Phase 8: see `SlotConfig.fit`. */
+    fit?: 'contain' | 'cover' | 'auto';
+    /** Phase 8: see `SlotConfig.focus`. */
+    focus?: string;
+    /** Phase 8: see `SlotConfig.letterboxBlur`. */
+    letterboxBlur?: boolean;
 }
 export declare class Overlay {
     protected sovads: SovAds;
@@ -646,6 +722,8 @@ export interface NativeCardRenderOptions {
     clickTarget?: 'media' | 'button';
     /** Phase 2: per-slot override for the Sponsored badge. */
     disclosureLabel?: boolean | string;
+    /** Phase 8: `object-position` for the 80×80 thumb. Default `'50% 50%'`. */
+    focus?: string;
 }
 export declare class NativeCard {
     private sovads;

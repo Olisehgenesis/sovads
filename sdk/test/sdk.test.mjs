@@ -27,7 +27,7 @@ Object.defineProperty(globalThis, 'btoa', {
   configurable: true,
 })
 
-const { SovAds, BottomBar, Banner, Popup, NativeCard, CtaUnit, Overlay, Interstitial, mountMedia, buildDisclosureBadge, renderAttachedCtas, resolveDisclosureLabel, buildPositionedDisclosure, parseAdSize, reserveAdSlot, prefersReducedMotion } = await import('../dist/index.js')
+const { SovAds, BottomBar, Banner, Popup, NativeCard, CtaUnit, Overlay, Interstitial, mountMedia, mountAdMedia, buildDisclosureBadge, renderAttachedCtas, resolveDisclosureLabel, buildPositionedDisclosure, parseAdSize, reserveAdSlot, prefersReducedMotion } = await import('../dist/index.js')
 
 test('normalizeUrl adds protocol for localhost', () => {
   const sdk = new SovAds({ apiUrl: 'http://localhost:3000' })
@@ -371,5 +371,68 @@ test('Phase 8: Banner/Popup/NativeCard mount their CTA panel with layout: auto',
   // intentionally stay on 'stack' because they have vertical room.
   const matches = src.match(/layout:\s*['\"]auto['\"]/g) ?? []
   assert.ok(matches.length >= 3, `expected \u22653 layout:'auto' callsites, found ${matches.length}`)
+})
+// Phase 8 (creative fit) \u2014 mountAdMedia is the single source of truth for
+// <img>/<video>/streaming construction. It must (a) be exported, (b) be the
+// one called by every visible surface, and (c) wire the auto-fit + blur
+// backdrop logic that fixes the "creatives get their bottoms chopped off"
+// bug from Phase 3.
+
+test('Phase 8 (fit): mountAdMedia is exported', () => {
+  assert.equal(typeof mountAdMedia, 'function')
+})
+
+test('Phase 8 (fit): every visible surface routes through mountAdMedia', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const src = await readFile(new URL('../dist/index.js', import.meta.url), 'utf8')
+  // Banner, Sidebar, Popup, BottomBar, Overlay \u2014 5 surfaces, 5 call sites.
+  const calls = src.match(/mountAdMedia\s*\(\s*\{/g) ?? []
+  assert.ok(
+    calls.length >= 5,
+    `expected \u22655 mountAdMedia() call sites (Banner/Sidebar/Popup/BottomBar/Overlay), found ${calls.length}`,
+  )
+})
+
+test('Phase 8 (fit): bundle wires the auto-fit ratio comparison', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const src = await readFile(new URL('../dist/index.js', import.meta.url), 'utf8')
+  // The auto-fit branch promotes contain\u2192cover when |creativeRatio - slotRatio|
+  // is within \u00b110%. We assert the literal `naturalWidth` and the 0.1 drift
+  // threshold are both present so a refactor that drops one fails loudly.
+  assert.ok(src.includes('naturalWidth'), 'expected naturalWidth read in auto-fit branch')
+  assert.ok(/drift\s*<\s*0\.1/.test(src), 'expected drift < 0.1 threshold in bundle')
+})
+
+test('Phase 8 (fit): bundle ships a blurred letterbox backdrop', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const src = await readFile(new URL('../dist/index.js', import.meta.url), 'utf8')
+  // The visual polish that hides ratio mismatches \u2014 a soft, blurred copy
+  // of the creative behind the contained image. If a future refactor drops
+  // it, ad slots will start looking like cheap iframes again.
+  assert.ok(/filter:blur\(/.test(src), 'expected filter:blur(...) in bundle')
+})
+
+test('Phase 8 (fit): legacy raw width:100%;height:auto img mounts are gone', async () => {
+  const { readFile } = await import('node:fs/promises')
+  const src = await readFile(new URL('../dist/index.js', import.meta.url), 'utf8')
+  // The old style "width: 100%; height: auto; ... object-fit: contain" was
+  // the source of the chopped-bottom bug \u2014 it ignored the reserved
+  // aspect-ratio box and overflowed it. Only the legacy `mountMedia()`
+  // helper still has this literal (kept for backcompat); the inline copies
+  // in Banner/Sidebar/Popup/BottomBar/Overlay are all migrated. Two hits
+  // in the bundle is the ceiling (mountMedia default + a legacy fallback).
+  const legacy = src.match(/width:\s*100%;\s*height:\s*auto;[^'"`]*object-fit:\s*contain/g) ?? []
+  assert.ok(
+    legacy.length <= 2,
+    `expected \u22642 legacy raw img mounts, found ${legacy.length} \u2014 migrate to mountAdMedia`,
+  )
+})
+
+test('Phase 8 (fit): SDK_VERSION bumped to 1.3.x for the new mount pipeline', async () => {
+  const { SDK_VERSION } = await import('../dist/index.js')
+  assert.ok(
+    /^1\.3\./.test(SDK_VERSION),
+    `expected SDK_VERSION to start with 1.3., got ${SDK_VERSION}`,
+  )
 })
 

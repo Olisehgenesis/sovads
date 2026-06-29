@@ -4,7 +4,7 @@
 /** Runtime SDK version. Kept in sync with `sdk/package.json#version`.
  *  Sent as `X-SovAds-SDK-Version` on signed tracking requests and exported
  *  so host pages can log / gate on it. */
-export const SDK_VERSION = '1.2.1'
+export const SDK_VERSION = '1.3.0'
 
 export interface SovAdsConfig {
   siteId?: string // Optional - will be auto-detected if not provided
@@ -149,6 +149,24 @@ interface SlotConfig {
   /** Phase 2: per-slot override for the disclosure badge. Falls back to
    *  `SovAdsConfig.disclosureLabel` (which defaults to `true`). */
   disclosureLabel?: boolean | string
+  /** Phase 8: how the creative fits into the reserved slot.
+   *  - 'contain' (default) \u2014 always fit the whole image, letterboxing
+   *    when the creative aspect ratio doesn't match the slot.
+   *  - 'cover' \u2014 fill the slot and crop the overflow. Use when the
+   *    advertiser provides creatives sized to the slot.
+   *  - 'auto' \u2014 RECOMMENDED. Start with `contain` and upgrade to
+   *    `cover` on load() when the creative ratio is within \u00b110% of
+   *    the slot ratio (i.e. no visible crop, just a perfect fit). */
+  fit?: 'contain' | 'cover' | 'auto'
+  /** Phase 8: `object-position` value used when fit resolves to `cover`.
+   *  Defaults to `'50% 50%'` (centred). Example: `'50% 30%'` keeps the
+   *  upper third in frame \u2014 useful for product shots / faces. */
+  focus?: string
+  /** Phase 8: render a blurred copy of the creative behind it to fill the
+   *  letterbox bars when fit resolves to `contain`. Defaults to ON when
+   *  a slot `size` is given (so the slot never looks empty), OFF otherwise.
+   *  Pass `false` to keep the transparent placeholder background. */
+  letterboxBlur?: boolean
 }
 
 export interface AttachedCtaCompleteEvent {
@@ -1451,6 +1469,177 @@ export function mountMedia(opts: {
   return { element: img, kind: 'image', clickable: true }
 }
 
+// ============================================================================
+// Phase 8 \u2014 ratio-aware media mount (fixes "creative gets trimmed").
+//
+// Before: every surface inlined its own <img>/<video> with
+// `width:100%;height:auto;object-fit:contain;`. Combined with `reserveAdSlot`
+// locking the container to the IAB aspect-ratio + `overflow:hidden`, the
+// taller-than-slot creatives (e.g. a 1200\u00d7628 hero in a 728\u00d790 leaderboard)
+// silently got their bottoms chopped off. `object-fit:contain` is a no-op when
+// the element gets `height:auto`.
+//
+// After: `mountAdMedia` returns a wrapper that fills the reserved box
+// (`width:100%;height:100%`) plus a media element that ACTUALLY fits inside
+// via `object-fit`. When the creative ratio doesn't match the slot ratio we
+// also render a soft blurred-copy backdrop behind the image so the
+// letterbox area never looks empty (the YouTube Shorts trick).
+// ============================================================================
+
+export interface AdMediaMountOptions {
+  ad: AdComponent
+  /** Optional IAB size like '728x90'. Drives the aspect-ratio reservation
+   *  on the returned wrapper AND the `auto`-fit ratio check. When omitted,
+   *  layout falls back to media-driven (legacy `height:auto`). */
+  size?: string
+  /**
+   * - 'contain' (default) \u2014 always fit the whole image, letterbox the rest.
+   * - 'cover'              \u2014 fill the slot, crop overflow.
+   * - 'auto'               \u2014 start with contain, promote to cover on load()
+   *                          when the creative ratio is within \u00b110% of the
+   *                          slot ratio (no visible crop, just a perfect fit).
+   */
+  fit?: 'contain' | 'cover' | 'auto'
+  /** `object-position`, applied when the effective fit is cover. Default '50% 50%'. */
+  focus?: string
+  /** Render a blurred copy of the creative behind it when letterboxing.
+   *  Defaults to TRUE when `size` is given, FALSE otherwise. */
+  letterboxBlur?: boolean
+  /** CSS `border-radius` to apply to the wrapper. Default ''. */
+  borderRadius?: string
+  /** CSS `background` for the wrapper (visible when no backdrop is rendered). */
+  background?: string
+  /** Optional `max-width` for the wrapper. Default unset (parent controls width). */
+  maxWidth?: string
+}
+
+export interface AdMediaMountResult {
+  /** Positioning context that holds the media (+ optional blur backdrop).
+   *  Append THIS to your slot container. */
+  wrapper: HTMLElement
+  /** The actual ad media. Attach `load` / `loadeddata` / `error` listeners here. */
+  element: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement
+  kind: 'image' | 'video' | 'streaming'
+  /** True only for plain images. Video / streaming iframes intercept their
+   *  own pointer events \u2014 callers must render an explicit "Learn more" CTA. */
+  clickable: boolean
+}
+
+export function mountAdMedia(opts: AdMediaMountOptions): AdMediaMountResult {
+  const { ad } = opts
+  const fit = opts.fit ?? 'contain'
+  const focus = opts.focus ?? '50% 50%'
+  const parsedSize = parseAdSize(opts.size)
+  // Blur backdrop only makes sense when (a) we know the slot ratio and (b)
+  // we're going to letterbox at all. Cover never letterboxes, so skip it.
+  const wantsBlur = (opts.letterboxBlur ?? Boolean(parsedSize)) && fit !== 'cover'
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'sovads-media'
+  // When a slot size is known, we let `aspect-ratio` drive the box height
+  // (rather than `height:100%`) so the wrapper computes the right shape
+  // regardless of whether the parent has a definite height. The media
+  // inside then fills the wrapper with `height:100%`, which IS definite
+  // because the wrapper's own height is locked by aspect-ratio.
+  const wrapperStyle =
+    'position:relative;overflow:hidden;width:100%;display:block;' +
+    (parsedSize ? `aspect-ratio:${parsedSize.width} / ${parsedSize.height};` : '') +
+    (opts.maxWidth ? `max-width:${opts.maxWidth};` : '') +
+    (opts.borderRadius ? `border-radius:${opts.borderRadius};` : '') +
+    (opts.background ? `background:${opts.background};` : '')
+  wrapper.style.cssText = wrapperStyle
+
+  // Streaming embeds (YouTube/Vimeo/TikTok) ship their own player chrome \u2014
+  // we just give them a sized box and exit.
+  const streamingEmbed = toStreamingEmbed(ad.bannerUrl)
+  if (streamingEmbed) {
+    const iframe = buildStreamingIframe(streamingEmbed, ad.description)
+    iframe.style.cssText = parsedSize
+      ? 'position:relative;z-index:1;width:100%;height:100%;display:block;border:0;background:#000;'
+      : 'width:100%;aspect-ratio:16/9;height:auto;display:block;border:0;background:#000;'
+    wrapper.appendChild(iframe)
+    return { wrapper, element: iframe, kind: 'streaming', clickable: false }
+  }
+
+  const mediaType = ad.mediaType === 'video' ? 'video' : 'image'
+  if (mediaType === 'video') {
+    const video = document.createElement('video')
+    video.src = ad.bannerUrl
+    video.muted = true
+    video.autoplay = true
+    video.loop = true
+    video.playsInline = true
+    video.controls = true
+    video.style.cssText = parsedSize
+      ? `position:relative;z-index:1;display:block;width:100%;height:100%;` +
+        `object-fit:${fit === 'auto' ? 'contain' : fit};object-position:${focus};` +
+        (opts.borderRadius ? `border-radius:${opts.borderRadius};` : '')
+      : 'width:100%;height:auto;display:block;' +
+        (opts.borderRadius ? `border-radius:${opts.borderRadius};` : '')
+    wrapper.appendChild(video)
+    return { wrapper, element: video, kind: 'video', clickable: false }
+  }
+
+  // \u2014 image case (the one that was getting clipped) \u2014
+  let backdrop: HTMLImageElement | null = null
+  if (wantsBlur && parsedSize) {
+    backdrop = document.createElement('img')
+    backdrop.src = ad.bannerUrl
+    backdrop.alt = ''
+    backdrop.setAttribute('aria-hidden', 'true')
+    backdrop.decoding = 'async'
+    // The browser already has the bytes in cache by the time the foreground
+    // <img> loads; loading=lazy here would only delay the cosmetic backdrop.
+    backdrop.style.cssText =
+      'position:absolute;inset:0;width:100%;height:100%;object-fit:cover;' +
+      'filter:blur(28px) saturate(1.25);transform:scale(1.15);' +
+      'z-index:0;opacity:0;transition:opacity 240ms ease;pointer-events:none;'
+    wrapper.appendChild(backdrop)
+  }
+
+  const img = document.createElement('img')
+  img.src = ad.bannerUrl
+  img.alt = ad.description || 'Sponsored'
+  img.decoding = 'async'
+  const initialFit = fit === 'auto' ? 'contain' : fit
+  img.style.cssText = parsedSize
+    ? `position:relative;z-index:1;display:block;width:100%;height:100%;` +
+      `object-fit:${initialFit};object-position:${focus};` +
+      (opts.borderRadius ? `border-radius:${opts.borderRadius};` : '')
+    : 'position:relative;z-index:1;display:block;width:100%;height:auto;max-width:100%;object-fit:contain;' +
+      (opts.borderRadius ? `border-radius:${opts.borderRadius};` : '')
+
+  // `auto` mode: on first paint, compare the creative's natural ratio to the
+  // slot ratio. Within \u00b110% \u2192 promote to `cover` (perfect fit, no visible
+  // crop) and hide the blur backdrop. Outside that band \u2192 stay on `contain`
+  // and fade the backdrop in to soften the letterbox bars.
+  if (parsedSize && (fit === 'auto' || backdrop)) {
+    const slotRatio = parsedSize.width / parsedSize.height
+    const settleFit = () => {
+      const w = img.naturalWidth
+      const h = img.naturalHeight
+      if (!w || !h) {
+        if (backdrop) backdrop.style.opacity = '1'
+        return
+      }
+      const creativeRatio = w / h
+      const drift = Math.abs(creativeRatio - slotRatio) / slotRatio
+      if (fit === 'auto' && drift < 0.1) {
+        img.style.objectFit = 'cover'
+        // No more letterbox, hide the backdrop entirely.
+        if (backdrop) backdrop.remove()
+      } else if (backdrop) {
+        backdrop.style.opacity = '1'
+      }
+    }
+    if (img.complete && img.naturalWidth > 0) settleFit()
+    else img.addEventListener('load', settleFit, { once: true })
+  }
+
+  wrapper.appendChild(img)
+  return { wrapper, element: img, kind: 'image', clickable: true }
+}
+
 /**
  * Build a compact "Sponsored" disclosure badge.
  *
@@ -2574,39 +2763,34 @@ export class Banner {
       }
 
       let mediaElement: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement
-      const streamingEmbed = toStreamingEmbed(this.currentAd.bannerUrl)
-      if (streamingEmbed) {
-        // Streaming platform (YouTube/Vimeo/TikTok) — sandboxed iframe.
-        const iframe = buildStreamingIframe(streamingEmbed, this.currentAd.description)
-        iframe.addEventListener('load', handleRenderSuccess, { once: true })
-        iframe.addEventListener('error', handleRenderError, { once: true })
-        mediaElement = iframe
-      } else if (mediaType === 'video') {
-        const video = document.createElement('video')
-        video.src = this.currentAd.bannerUrl
-        video.muted = true
-        video.autoplay = true
-        video.loop = true
-        video.playsInline = true
-        video.controls = true
-        video.style.cssText = 'width: 100%; height: auto; display: block; border-radius: 4px;'
-        video.addEventListener('loadeddata', handleRenderSuccess, { once: true })
-        video.addEventListener('error', handleRenderError, { once: true })
-        mediaElement = video
-      } else {
-        const img = document.createElement('img')
-        img.src = this.currentAd.bannerUrl
-        img.alt = this.currentAd.description
-        img.style.cssText = 'width: 100%; height: auto; display: block; max-width: 100%; object-fit: contain;'
-        img.addEventListener('load', handleRenderSuccess, { once: true })
-        img.addEventListener('error', handleRenderError, { once: true })
-        mediaElement = img
+      let mediaWrapper: HTMLElement
+      {
+        const mounted = mountAdMedia({
+          ad: this.currentAd,
+          size: this.slotConfig.size,
+          // Phase 8: default to 'auto' so creatives sized to the slot
+          // (most of them) get a clean object-fit:cover and out-of-ratio
+          // creatives letterbox cleanly with a blur backdrop instead of
+          // being cropped by `overflow:hidden`.
+          fit: this.slotConfig.fit ?? 'auto',
+          focus: this.slotConfig.focus,
+          letterboxBlur: this.slotConfig.letterboxBlur,
+        })
+        mediaWrapper = mounted.wrapper
+        mediaElement = mounted.element
+        if (mounted.kind === 'streaming' || mounted.kind === 'video') {
+          mediaElement.addEventListener('loadeddata', handleRenderSuccess, { once: true })
+          mediaElement.addEventListener('load', handleRenderSuccess, { once: true })
+        } else {
+          mediaElement.addEventListener('load', handleRenderSuccess, { once: true })
+        }
+        mediaElement.addEventListener('error', handleRenderError, { once: true })
       }
-      // Streaming iframes can't be made clickable as a whole — the iframe
+      // Streaming iframes can't be made clickable as a whole \u2014 the iframe
       // intercepts pointer events for its own player UI. Video <video> tags
       // get an external "Learn more" button below. Only plain images get the
       // banner-as-link cursor.
-      mediaElement.style.cursor = mediaType === 'video' || streamingEmbed ? 'default' : 'pointer'
+      mediaElement.style.cursor = mediaType === 'video' || toStreamingEmbed(this.currentAd.bannerUrl) ? 'default' : 'pointer'
       mediaElement.style.maxWidth = '100%'
 
       const handleClickThrough = () => {
@@ -2652,12 +2836,12 @@ export class Banner {
           cursor: pointer;
         `
         ctaButton.addEventListener('click', handleClickThrough)
-        adElement.appendChild(mediaElement)
+        adElement.appendChild(mediaWrapper)
         adElement.appendChild(ctaButton)
       } else {
         // Legacy: whole element is the click target. Backwards compatible.
         adElement.addEventListener('click', handleClickThrough)
-        adElement.appendChild(mediaElement)
+        adElement.appendChild(mediaWrapper)
       }
 
       // Phase 2: mount the Sponsored disclosure on every render unless
@@ -2845,6 +3029,14 @@ export interface PopupShowOptions {
   clickTarget?: 'media' | 'button'
   /** Phase 2: per-slot override for the Sponsored badge. */
   disclosureLabel?: boolean | string
+  /** Phase 8: see `SlotConfig.fit`. Defaults to `'auto'` for the popup
+   *  surface — popups don't have a fixed slot ratio so the media drives
+   *  layout; `auto` just picks the most flattering object-fit at load. */
+  fit?: 'contain' | 'cover' | 'auto'
+  /** Phase 8: see `SlotConfig.focus`. */
+  focus?: string
+  /** Phase 8: see `SlotConfig.letterboxBlur`. */
+  letterboxBlur?: boolean
 }
 
 export class Popup {
@@ -3142,60 +3334,36 @@ export class Popup {
     }
 
     let mediaElement: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement
+    let mediaWrapper: HTMLElement
     const streamingEmbed = toStreamingEmbed(this.currentAd.bannerUrl)
-    if (streamingEmbed) {
-      const iframe = buildStreamingIframe(streamingEmbed, this.currentAd.description)
-      iframe.style.borderRadius = '8px'
-      iframe.addEventListener(
-        'load',
-        () => {
-          if (this.popupElement) this.popupElement.style.opacity = '1'
-          const renderTime = Date.now() - renderStartTime
-          trackPopupImpression(true, renderTime)
-        },
-        { once: true }
-      )
-      iframe.addEventListener('error', handleMediaError, { once: true })
-      mediaElement = iframe
-    } else if (mediaType === 'video') {
-      const video = document.createElement('video')
-      video.src = this.currentAd.bannerUrl
-      video.muted = true
-      video.autoplay = true
-      video.loop = true
-      video.playsInline = true
-      video.controls = true
-      video.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;'
-      video.addEventListener('loadeddata', () => {
-        if (this.popupElement) {
-          this.popupElement.style.opacity = '1'
-        }
-        const renderTime = Date.now() - renderStartTime
-        trackPopupImpression(true, renderTime)
-        if (this.sovads.getConfig().debug) {
-          console.log(`Popup ad video loaded in ${renderTime}ms`)
-        }
-      }, { once: true })
-      video.addEventListener('error', handleMediaError, { once: true })
-      mediaElement = video
-    } else {
-      const img = document.createElement('img')
-      img.src = this.currentAd.bannerUrl
-      img.alt = this.currentAd.description
-      img.style.cssText = 'width: 100%; height: auto; border-radius: 8px; cursor: pointer;'
-
-      img.addEventListener('load', () => {
-        if (this.popupElement) {
-          this.popupElement.style.opacity = '1'
-        }
-        const renderTime = Date.now() - renderStartTime
-        trackPopupImpression(true, renderTime)
-        if (this.sovads.getConfig().debug) {
-          console.log(`Popup ad image loaded in ${renderTime}ms`)
-        }
+    {
+      const mounted = mountAdMedia({
+        ad: this.currentAd,
+        // Popups don't have a fixed slot ratio \u2014 we don't pass `size` so the
+        // wrapper falls back to media-driven layout. `auto` fit + (optional)
+        // blur backdrop still apply if the publisher explicitly opts in.
+        fit: this.currentOpts.fit ?? 'auto',
+        focus: this.currentOpts.focus,
+        letterboxBlur: this.currentOpts.letterboxBlur ?? false,
+        borderRadius: '8px',
       })
-      img.addEventListener('error', handleMediaError)
-      mediaElement = img
+      mediaWrapper = mounted.wrapper
+      mediaElement = mounted.element
+      const onSuccess = () => {
+        if (this.popupElement) this.popupElement.style.opacity = '1'
+        const renderTime = Date.now() - renderStartTime
+        trackPopupImpression(true, renderTime)
+        if (this.sovads.getConfig().debug) {
+          console.log(`Popup ad ${mounted.kind} loaded in ${renderTime}ms`)
+        }
+      }
+      if (mounted.kind === 'video' || mounted.kind === 'streaming') {
+        mediaElement.addEventListener('loadeddata', onSuccess, { once: true })
+        mediaElement.addEventListener('load', onSuccess, { once: true })
+      } else {
+        mediaElement.addEventListener('load', onSuccess, { once: true })
+      }
+      mediaElement.addEventListener('error', handleMediaError, { once: true })
     }
 
     const handleClickThrough = () => {
@@ -3238,7 +3406,7 @@ export class Popup {
 
     this.popupElement.appendChild(adLabel)
     this.popupElement.appendChild(closeBtn)
-    this.popupElement.appendChild(mediaElement)
+    this.popupElement.appendChild(mediaWrapper)
 
     // Render an explicit "Learn more" button only when the media itself is
     // NOT clickable (i.e. clickTarget === 'button', or media is video /
@@ -3364,6 +3532,12 @@ export interface BottomBarShowOptions {
   clickTarget?: 'media' | 'button'
   /** Phase 2: per-slot override for the Sponsored badge. */
   disclosureLabel?: boolean | string
+  /** Phase 8: see `SlotConfig.fit`. */
+  fit?: 'contain' | 'cover' | 'auto'
+  /** Phase 8: see `SlotConfig.focus`. */
+  focus?: string
+  /** Phase 8: see `SlotConfig.letterboxBlur`. */
+  letterboxBlur?: boolean
 }
 
 export class BottomBar {
@@ -3500,41 +3674,36 @@ export class BottomBar {
       this.hide()
     })
 
-    // create media element
+    // create media element (Phase 8 \u2014 ratio-aware mount).
+    // BottomBar has no fixed slot size, so we leave `size` unset and let the
+    // wrapper drive layout from the media's intrinsic ratio.
     const mediaType = this.currentAd.mediaType === 'video' ? 'video' : 'image'
-    let mediaEl: HTMLImageElement | HTMLVideoElement
-    if (mediaType === 'video') {
-      const video = document.createElement('video')
-      video.src = this.currentAd.bannerUrl
-      video.muted = true
-      video.autoplay = true
-      video.loop = true
-      video.playsInline = true
-      video.controls = true
-      video.style.cssText = 'width:100%;height:auto;'
-      video.addEventListener('loadeddata', () => {
+    let mediaEl: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement
+    let mediaWrap: HTMLElement
+    {
+      const mounted = mountAdMedia({
+        ad: this.currentAd,
+        fit: this.currentOpts.fit ?? 'auto',
+        focus: this.currentOpts.focus,
+        letterboxBlur: this.currentOpts.letterboxBlur ?? false,
+      })
+      mediaEl = mounted.element
+      mediaWrap = mounted.wrapper
+      const onSuccess = () => {
         const rt = Date.now() - renderStart
         trackImp(true, rt)
-      }, { once: true })
-      video.addEventListener('error', () => {
+      }
+      const onErr = () => {
         const rt = Date.now() - renderStart
         trackImp(false, rt)
-      }, { once: true })
-      mediaEl = video
-    } else {
-      const img = document.createElement('img')
-      img.src = this.currentAd.bannerUrl
-      img.alt = this.currentAd.description
-      img.style.cssText = 'width:100%;height:auto;'
-      img.addEventListener('load', () => {
-        const rt = Date.now() - renderStart
-        trackImp(true, rt)
-      })
-      img.addEventListener('error', () => {
-        const rt = Date.now() - renderStart
-        trackImp(false, rt)
-      })
-      mediaEl = img
+      }
+      if (mounted.kind === 'video' || mounted.kind === 'streaming') {
+        mediaEl.addEventListener('loadeddata', onSuccess, { once: true })
+        mediaEl.addEventListener('load', onSuccess, { once: true })
+      } else {
+        mediaEl.addEventListener('load', onSuccess, { once: true })
+      }
+      mediaEl.addEventListener('error', onErr, { once: true })
     }
 
     const handleClick = () => {
@@ -3584,7 +3753,7 @@ export class BottomBar {
       row.style.cssText = 'display:flex;flex-direction:row;gap:12px;align-items:center;width:100%;'
       const mediaCol = document.createElement('div')
       mediaCol.style.cssText = `flex:1 1 auto;min-width:0;cursor:${useButtonCta ? 'default' : 'pointer'};`
-      mediaCol.appendChild(mediaEl)
+      mediaCol.appendChild(mediaWrap)
       // Phase 2: only the media column is clickable when clickTarget='media'.
       // With 'button', media is silent and viewers must use the inline CTA
       // panel (which has its own per-task buttons).
@@ -3615,7 +3784,7 @@ export class BottomBar {
       // No attached tasks but caller wants an explicit click target. Render
       // the media + a "Learn more" pill underneath, same as Banner/Popup.
       bar.style.cursor = 'default'
-      bar.appendChild(mediaEl)
+      bar.appendChild(mediaWrap)
       const ctaButton = document.createElement('button')
       ctaButton.type = 'button'
       ctaButton.textContent = 'Learn more'
@@ -3637,7 +3806,7 @@ export class BottomBar {
       })
       bar.appendChild(ctaButton)
     } else {
-      bar.appendChild(mediaEl)
+      bar.appendChild(mediaWrap)
       bar.addEventListener('click', handleClick)
     }
     wrapper.appendChild(bar)
@@ -3865,27 +4034,26 @@ export class Sidebar {
         })
       }
 
-      let mediaElement: HTMLImageElement | HTMLVideoElement
-      if (mediaType === 'video') {
-        const video = document.createElement('video')
-        video.src = this.currentAd.bannerUrl
-        video.muted = true
-        video.autoplay = true
-        video.loop = true
-        video.playsInline = true
-        video.controls = true
-        video.style.cssText = 'width: 100%; height: auto; display: block; border-radius: 4px;'
-        video.addEventListener('loadeddata', handleRenderSuccess, { once: true })
-        video.addEventListener('error', handleRenderError, { once: true })
-        mediaElement = video
-      } else {
-        const img = document.createElement('img')
-        img.src = this.currentAd.bannerUrl
-        img.alt = this.currentAd.description
-        img.style.cssText = 'width: 100%; height: auto; display: block; border-radius: 4px;'
-        img.addEventListener('load', handleRenderSuccess, { once: true })
-        img.addEventListener('error', handleRenderError, { once: true })
-        mediaElement = img
+      let mediaElement: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement
+      let mediaWrapper: HTMLElement
+      {
+        const mounted = mountAdMedia({
+          ad: this.currentAd,
+          size: this.slotConfig.size,
+          fit: this.slotConfig.fit ?? 'auto',
+          focus: this.slotConfig.focus,
+          letterboxBlur: this.slotConfig.letterboxBlur,
+          borderRadius: '4px',
+        })
+        mediaWrapper = mounted.wrapper
+        mediaElement = mounted.element
+        if (mounted.kind === 'video' || mounted.kind === 'streaming') {
+          mediaElement.addEventListener('loadeddata', handleRenderSuccess, { once: true })
+          mediaElement.addEventListener('load', handleRenderSuccess, { once: true })
+        } else {
+          mediaElement.addEventListener('load', handleRenderSuccess, { once: true })
+        }
+        mediaElement.addEventListener('error', handleRenderError, { once: true })
       }
 
       const handleClickThrough = () => {
@@ -3933,11 +4101,11 @@ export class Sidebar {
           cursor: pointer;
         `
         ctaButton.addEventListener('click', handleClickThrough)
-        adElement.appendChild(mediaElement)
+        adElement.appendChild(mediaWrapper)
         adElement.appendChild(ctaButton)
       } else {
         adElement.addEventListener('click', handleClickThrough)
-        adElement.appendChild(mediaElement)
+        adElement.appendChild(mediaWrapper)
       }
 
       // Phase 2: mount disclosure badge after media so it stacks on top.
@@ -4118,6 +4286,12 @@ export interface OverlayShowOptions {
   dismissOnBackdrop?: boolean
   /** When true, pressing Escape dismisses the overlay. Default true. */
   dismissOnEscape?: boolean
+  /** Phase 8: see `SlotConfig.fit`. */
+  fit?: 'contain' | 'cover' | 'auto'
+  /** Phase 8: see `SlotConfig.focus`. */
+  focus?: string
+  /** Phase 8: see `SlotConfig.letterboxBlur`. */
+  letterboxBlur?: boolean
 }
 
 export class Overlay {
@@ -4278,33 +4452,29 @@ export class Overlay {
     const clickTarget = this.currentOpts.clickTarget ?? 'media'
     const useButtonCta = clickTarget === 'button' || mediaType === 'video'
 
-    let mediaEl: HTMLImageElement | HTMLVideoElement
-    if (mediaType === 'video') {
-      const video = document.createElement('video')
-      video.src = this.currentAd.bannerUrl
-      video.muted = true
-      video.autoplay = true
-      video.loop = true
-      video.playsInline = true
-      video.controls = true
-      video.style.cssText = 'display:block; max-width:100%; height:auto;'
-      video.addEventListener('loadeddata', () => {
+    let mediaEl: HTMLImageElement | HTMLVideoElement | HTMLIFrameElement
+    let mediaWrap: HTMLElement
+    {
+      const mounted = mountAdMedia({
+        ad: this.currentAd,
+        // Overlay/Interstitial don't impose a slot size \u2014 media drives layout.
+        fit: this.currentOpts.fit ?? 'auto',
+        focus: this.currentOpts.focus,
+        letterboxBlur: this.currentOpts.letterboxBlur ?? false,
+      })
+      mediaEl = mounted.element
+      mediaWrap = mounted.wrapper
+      const onSuccess = () => {
         wrapper.style.opacity = '1'
         trackImp(true)
-      }, { once: true })
-      video.addEventListener('error', () => trackImp(false), { once: true })
-      mediaEl = video
-    } else {
-      const img = document.createElement('img')
-      img.src = this.currentAd.bannerUrl
-      img.alt = this.currentAd.description
-      img.style.cssText = 'display:block; max-width:100%; height:auto;'
-      img.addEventListener('load', () => {
-        wrapper.style.opacity = '1'
-        trackImp(true)
-      }, { once: true })
-      img.addEventListener('error', () => trackImp(false), { once: true })
-      mediaEl = img
+      }
+      if (mounted.kind === 'video' || mounted.kind === 'streaming') {
+        mediaEl.addEventListener('loadeddata', onSuccess, { once: true })
+        mediaEl.addEventListener('load', onSuccess, { once: true })
+      } else {
+        mediaEl.addEventListener('load', onSuccess, { once: true })
+      }
+      mediaEl.addEventListener('error', () => trackImp(false), { once: true })
     }
 
     const handleClick = () => {
@@ -4332,7 +4502,7 @@ export class Overlay {
     }
 
     card.appendChild(closeBtn)
-    card.appendChild(mediaEl)
+    card.appendChild(mediaWrap)
 
     if (useButtonCta) {
       const ctaButton = document.createElement('button')
@@ -4459,6 +4629,8 @@ export interface NativeCardRenderOptions {
   clickTarget?: 'media' | 'button'
   /** Phase 2: per-slot override for the Sponsored badge. */
   disclosureLabel?: boolean | string
+  /** Phase 8: `object-position` for the 80×80 thumb. Default `'50% 50%'`. */
+  focus?: string
 }
 
 export class NativeCard {
@@ -4523,7 +4695,12 @@ export class NativeCard {
 
     const img = document.createElement('img')
     img.src = this.currentAd.bannerUrl
-    img.style.cssText = 'width: 80px; height: 80px; object-fit: cover; border-radius: 8px;'
+    img.alt = this.currentAd.description || 'Sponsored'
+    img.decoding = 'async'
+    // Phase 8: honour `focus` so the advertiser can keep the subject in
+    // frame when the 1:1 thumbnail crops an off-centre creative.
+    const thumbFocus = opts.focus ?? '50% 50%'
+    img.style.cssText = `width: 80px; height: 80px; object-fit: cover; object-position: ${thumbFocus}; border-radius: 8px;`
 
     const content = document.createElement('div')
     content.style.cssText = 'flex:1 1 auto;min-width:0;'
