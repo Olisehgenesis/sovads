@@ -95,13 +95,16 @@ interface AdLoadOptions {
     walletAddress?: string;
     /** Ask the server to include attached CTA tasks (VISIT_URL/SIGN_MESSAGE/POLL)
      *  and to keep serving banners whose token budget is exhausted (with
-     *  bannerClickActive=false). Off by default for backward compatibility. */
+     *  bannerClickActive=false). Defaults to ON — the SDK auto-detects CTAs.
+     *  Pass `false` explicitly to opt out (e.g. for legacy bare-banner slots). */
     attached?: boolean;
 }
 interface SlotConfig {
     placementId?: string;
     size?: string;
-    /** Render attached CTAs under the banner (auto-passes attached=true to loadAd). */
+    /** Request attached CTAs and render them under the banner. Defaults to ON;
+     *  pass `false` to opt out. When the server returns no tasks for the
+     *  selected campaign, the slot quietly renders as a bare banner. */
     attached?: boolean;
     /** Optional handler invoked after each attached-CTA submission attempt. */
     onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void;
@@ -480,8 +483,8 @@ export interface PopupShowOptions {
     consumerId?: string;
     /** Milliseconds to wait after `show()` before mounting the popup. Default 3000. */
     delay?: number;
-    /** Phase 1: request attached CTA tasks from the server and render them
-     *  beneath the media. Off by default for backward compatibility. */
+    /** Request attached CTA tasks and render them beneath the media. Defaults to
+     *  ON — the SDK auto-detects CTAs. Pass `false` to opt out. */
     attached?: boolean;
     /** Phase 1: callback fired after each CTA submission attempt. */
     onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void;
@@ -528,8 +531,8 @@ export declare class Popup {
 }
 export interface BottomBarShowOptions {
     consumerId?: string;
-    /** Phase 1: request attached CTA tasks from the server and render them
-     *  to the right of the media (inline layout). Off by default. */
+    /** Request attached CTA tasks and render them to the right of the media
+     *  (inline layout). Defaults to ON; pass `false` to opt out. */
     attached?: boolean;
     /** Phase 1: callback fired after each CTA submission attempt. */
     onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void;
@@ -587,7 +590,7 @@ export declare class Sidebar {
 }
 export interface OverlayShowOptions {
     consumerId?: string;
-    /** Render attached CTA tasks inside the overlay. Off by default. */
+    /** Render attached CTA tasks inside the overlay. Defaults to ON; pass `false` to opt out. */
     attached?: boolean;
     /** Callback fired after each CTA submission attempt. */
     onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void;
@@ -633,7 +636,8 @@ export declare class Interstitial extends Overlay {
 }
 export interface NativeCardRenderOptions {
     consumerId?: string;
-    /** Phase 1: request attached CTA tasks and render them under the card body. */
+    /** Request attached CTA tasks and render them under the card body. Defaults to
+     *  ON — the SDK auto-detects CTAs. Pass `false` to opt out. */
     attached?: boolean;
     /** Phase 1: callback fired after each CTA submission attempt. */
     onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void;

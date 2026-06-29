@@ -1888,7 +1888,8 @@ export class Banner {
                 consumerId,
                 placement: this.slotConfig.placementId || 'banner',
                 size: this.slotConfig.size,
-                attached: this.slotConfig.attached === true,
+                // Auto-detect: ask the server for CTAs unless the publisher explicitly opted out.
+                attached: this.slotConfig.attached !== false,
             });
             this.hasTrackedImpression = false;
             // Skip if same ad (rotation disabled or same ad returned)
@@ -2135,10 +2136,11 @@ export class Banner {
                 });
             }
             container.appendChild(adElement);
-            // Mount attached CTAs under the banner when the slot opted in and the
-            // server returned at least one. When bannerClickActive=false this is the
-            // only way the viewer can earn from this impression.
-            if (this.slotConfig.attached === true &&
+            // Auto-detect: whenever the server returned at least one attached task,
+            // mount the CTA panel under the banner. Publisher can suppress this by
+            // constructing the slot with `attached: false`. When bannerClickActive=false
+            // the CTA panel is the only way the viewer can earn from this impression.
+            if (this.slotConfig.attached !== false &&
                 Array.isArray(this.currentAd.attachedTasks) &&
                 this.currentAd.attachedTasks.length > 0) {
                 try {
@@ -2345,7 +2347,8 @@ export class Popup {
                 consumerId: opts.consumerId,
                 placement: 'popup',
                 size: window.innerWidth < 640 ? '320x100' : '360x120',
-                attached: opts.attached === true,
+                // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+                attached: opts.attached !== false,
             });
             if (!this.currentAd) {
                 if (this.retryCount < this.maxRetries) {
@@ -2657,8 +2660,9 @@ export class Popup {
             ctaButton.addEventListener('click', handleClickThrough);
             this.popupElement.appendChild(ctaButton);
         }
-        // Phase 1: mount attached CTAs inside the popup card when opted in.
-        if (this.currentOpts.attached === true &&
+        // Auto-detect: mount attached CTAs inside the popup card whenever the
+        // server returned at least one task. Caller can suppress with `attached: false`.
+        if (this.currentOpts.attached !== false &&
             Array.isArray(this.currentAd.attachedTasks) &&
             this.currentAd.attachedTasks.length > 0) {
             const ctaSlot = document.createElement('div');
@@ -2684,7 +2688,7 @@ export class Popup {
         // complete. If the viewer might be mid-interaction with an attached task
         // (typing, signing, waiting for dwell), keep the card open until they
         // dismiss it manually.
-        const hasCtas = this.currentOpts.attached === true &&
+        const hasCtas = this.currentOpts.attached !== false &&
             Array.isArray(this.currentAd?.attachedTasks) &&
             (this.currentAd?.attachedTasks?.length ?? 0) > 0;
         if (!hasCtas) {
@@ -2780,7 +2784,8 @@ export class BottomBar {
                 consumerId: opts.consumerId,
                 placement: 'bottom-bar',
                 size: 'full-width',
-                attached: opts.attached === true,
+                // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+                attached: opts.attached !== false,
             });
             if (!this.currentAd) {
                 if (this.retryCount < this.maxRetries) {
@@ -2929,12 +2934,13 @@ export class BottomBar {
         });
         if (disclosure)
             bar.appendChild(disclosure);
-        // Phase 1: when CTAs are requested + returned, lay media + CTA panel in a
+        // Auto-detect: when CTAs were returned, lay media + CTA panel in a
         // horizontal row. Media keeps its own click target (so the existing
         // banner-click path still works); CTA buttons get their own click handlers
         // and we suppress the bar-wide click handler so taps on a poll option
-        // don't double-fire as a banner click + redirect.
-        const hasCtas = this.currentOpts.attached === true &&
+        // don't double-fire as a banner click + redirect. Caller can opt out with
+        // `attached: false`.
+        const hasCtas = this.currentOpts.attached !== false &&
             Array.isArray(this.currentAd.attachedTasks) &&
             this.currentAd.attachedTasks.length > 0;
         if (hasCtas) {
@@ -3077,7 +3083,8 @@ export class Sidebar {
                 consumerId,
                 placement: this.slotConfig.placementId || 'sidebar',
                 size: this.slotConfig.size,
-                attached: this.slotConfig.attached === true,
+                // Auto-detect: ask the server for CTAs unless the publisher explicitly opted out.
+                attached: this.slotConfig.attached !== false,
             });
             this.hasTrackedImpression = false;
             // Skip if same ad (rotation disabled or same ad returned)
@@ -3281,9 +3288,10 @@ export class Sidebar {
             if (disclosure)
                 adElement.appendChild(disclosure);
             container.appendChild(adElement);
-            // Phase 1: mount attached CTAs under the sidebar ad when the slot opted
-            // in and the server returned at least one task. Same semantics as Banner.
-            if (this.slotConfig.attached === true &&
+            // Auto-detect: mount attached CTAs under the sidebar ad whenever the
+            // server returned at least one task. Same semantics as Banner. Publisher
+            // can suppress this by constructing the slot with `attached: false`.
+            if (this.slotConfig.attached !== false &&
                 Array.isArray(this.currentAd.attachedTasks) &&
                 this.currentAd.attachedTasks.length > 0) {
                 mountCtaPanel({
@@ -3468,7 +3476,8 @@ export class Overlay {
             this.currentAd = await this.sovads.loadAd({
                 consumerId: opts.consumerId,
                 placement: this.placement,
-                attached: opts.attached === true,
+                // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+                attached: opts.attached !== false,
             });
             if (!this.currentAd) {
                 this.isShowing = false;
@@ -3619,8 +3628,9 @@ export class Overlay {
             });
             card.appendChild(ctaButton);
         }
-        // Phase 1: attached CTA panel.
-        if (this.currentOpts.attached === true &&
+        // Auto-detect: mount the attached CTA panel whenever the server returned
+        // at least one task. Caller can suppress with `attached: false`.
+        if (this.currentOpts.attached !== false &&
             Array.isArray(this.currentAd.attachedTasks) &&
             this.currentAd.attachedTasks.length > 0) {
             const ctaSlot = document.createElement('div');
@@ -3732,7 +3742,8 @@ export class NativeCard {
         this.currentAd = await this.sovads.loadAd({
             consumerId: opts.consumerId,
             placement: 'native',
-            attached: opts.attached === true,
+            // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+            attached: opts.attached !== false,
         });
         if (!this.currentAd)
             return;
@@ -3830,8 +3841,9 @@ export class NativeCard {
         card.appendChild(content);
         container.innerHTML = '';
         container.appendChild(card);
-        // Phase 1: mount attached CTAs underneath the card body.
-        if (opts.attached === true &&
+        // Auto-detect: mount attached CTAs underneath the card body whenever the
+        // server returned at least one task. Caller can suppress with `attached: false`.
+        if (opts.attached !== false &&
             Array.isArray(this.currentAd.attachedTasks) &&
             this.currentAd.attachedTasks.length > 0) {
             const ctaSlot = document.createElement('div');
