@@ -150,7 +150,10 @@ export default function AdminPopupPreview({ campaign, onClose }: AdminPopupPrevi
   }, [campaignId])
 
   // Mount the SDK's own attached-CTA panel in preview mode. Same DOM the
-  // publisher sees, but with click handlers / submission disabled.
+  // publisher sees, but with submission disabled. We layer on top of the
+  // SDK's preview-mode (which kills all click handlers) so admins can still
+  // click VISIT_URL buttons and see where they go — no tracking, no submit,
+  // just window.open() to the campaign's target URL in a new tab.
   const ctaHostRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const host = ctaHostRef.current
@@ -166,6 +169,31 @@ export default function AdminPopupPreview({ campaign, onClose }: AdminPopupPrevi
         preview: true,
         layout: 'auto',
       })
+
+      // SDK preview mode strips click handlers; wire admin-only "open target"
+      // handlers so the rendered CTA buttons actually navigate. We match
+      // rows to tasks by DOM order (renderAttachedCtas appends one row per
+      // task in the same order we passed them).
+      const panel = host.querySelector('.sovads-cta-panel')
+      if (panel) {
+        const rows = Array.from(panel.children) as HTMLElement[]
+        attachedTasks.forEach((task, i) => {
+          const row = rows[i]
+          if (!row) return
+          if (task.kind !== 'VISIT_URL') return
+          const url = task.url
+          if (!url) return
+          const btn = row.querySelector('button')
+          if (!btn) return
+          btn.style.cursor = 'pointer'
+          btn.removeAttribute('aria-disabled')
+          btn.addEventListener('click', (e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            window.open(url, '_blank', 'noopener,noreferrer')
+          })
+        })
+      }
     } catch {
       // Defensive: a malformed task config shouldn't break the admin preview.
     }
@@ -198,20 +226,8 @@ export default function AdminPopupPreview({ campaign, onClose }: AdminPopupPrevi
         className="absolute bottom-4 right-4 w-[min(360px,calc(100vw-24px))]"
       >
         <div className="relative rounded-[12px] bg-white p-[14px] shadow-[0_10px_25px_rgba(0,0,0,0.3)]">
-          {/* SovAds logo badge */}
-          <div
-            className="absolute left-3 top-2 flex h-6 w-6 items-center justify-center rounded-[4px] text-[10px] font-bold text-white shadow-[0_2px_4px_rgba(0,0,0,0.1)]"
-            style={{
-              background:
-                'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-            }}
-            title="SovAds"
-          >
-            SA
-          </div>
-
           {/* Disclosure label */}
-          <div className="absolute left-3 top-9 text-[9px] font-medium uppercase tracking-[0.5px] text-[#999]">
+          <div className="absolute left-3 top-3 text-[9px] font-medium uppercase tracking-[0.5px] text-[#999]">
             Sponsored
           </div>
 
