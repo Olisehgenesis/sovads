@@ -227,9 +227,9 @@ export default function AdminPopupPreview({ campaign, onClose }: AdminPopupPrevi
         aria-label="Campaign popup preview"
         className="absolute bottom-4 right-4 w-[min(360px,calc(100vw-24px))]"
       >
-        <div className="relative rounded-[12px] bg-white p-[14px] shadow-[0_10px_25px_rgba(0,0,0,0.3)]">
+        <div className="relative rounded-[12px] bg-white px-2 pb-2 pt-[22px] shadow-[0_10px_25px_rgba(0,0,0,0.3)]">
           {/* Disclosure label */}
-          <div className="absolute left-3 top-3 text-[9px] font-medium uppercase tracking-[0.5px] text-[#999]">
+          <div className="absolute left-[10px] top-[6px] text-[9px] font-medium uppercase tracking-[0.5px] text-[#999]">
             Sponsored
           </div>
 
@@ -238,13 +238,13 @@ export default function AdminPopupPreview({ campaign, onClose }: AdminPopupPrevi
             type="button"
             onClick={onClose}
             aria-label="Close preview"
-            className="absolute right-[15px] top-[10px] cursor-pointer border-0 bg-transparent text-[24px] leading-none text-[#666]"
+            className="absolute right-2 top-1 cursor-pointer border-0 bg-transparent px-[6px] py-[2px] text-[22px] leading-none text-[#666]"
           >
             ×
           </button>
 
           {/* Media */}
-          <div className="pt-7">
+          <div>
             {streamingEmbed ? (
               <iframe
                 src={streamingEmbed.embedUrl}

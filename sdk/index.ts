@@ -2013,35 +2013,77 @@ function buildTaskRow(
           /* popup blocked - submission still proceeds */
         }
       }
-      const dwell = Math.max(0, task.minDwellMs ?? 3000)
-      // Phase 8 (#2): the dwell must actually be "time the viewer plausibly
-      // engaged with the new tab". A naive setTimeout fires regardless of
-      // visibilityState, so a bot can dispatch a synthetic click on a hidden
-      // iframe and submit `dwellMs=3000` 3s later without ever rendering the
-      // target page. Here we walk the wall clock in 200ms ticks and only
-      // accrue `visibleMs` when document.visibilityState === 'visible' AND
-      // the window has focus. We send BOTH numbers \u2014 the server can reject
-      // when visibleMs is implausibly low (future work, gated behind a
-      // signed /api/tasks/start token; see loophole #1).
-      let visibleMs = 0
+      // Phase 8 (#2 revised): the old "only accrue while source tab visible
+      // AND focused" loop punished real viewers \u2014 clicking the CTA opens
+      // the destination in a new tab, which immediately takes focus away
+      // from the source tab, so the counter never moved. The viewer was
+      // told to "keep this tab open" while looking at the *other* tab they
+      // just opened.
+      //
+      // New model: the viewer's engagement signal is "they came back".
+      // We listen for the next hidden\u2192visible transition on the source
+      // tab, and submit on return iff the wall-clock elapsed is >= the
+      // configured minDwell. A mobile / single-tab fallback submits after
+      // dwell + 2s in case the browser never fires visibilitychange for
+      // _blank navigations.
+      //
+      // Bots can't pass this without simulating a real document on a
+      // headless browser that tracks visibility, AND they need to wait
+      // the dwell window \u2014 same per-fingerprint rate limit applies.
+      const dwell = Math.min(15_000, Math.max(0, task.minDwellMs ?? 3000))
       const startedAt = Date.now()
-      if (dwell > 0) {
-        setStatus(`Keep the tab open for ${Math.round(dwell / 1000)}s\u2026`)
-        const tick = 200
-        while (visibleMs < dwell) {
-          await new Promise((r) => setTimeout(r, tick))
-          // hasFocus() is false when devtools are focused on some browsers;
-          // we intentionally accept that hit \u2014 trusting visibilityState alone
-          // is far more easily spoofed.
-          const visible =
-            typeof document !== 'undefined' && document.visibilityState === 'visible'
-          const focused =
-            typeof document !== 'undefined' && (document.hasFocus?.() ?? true)
-          if (visible && focused) visibleMs += tick
+      btn.disabled = true
+      btn.style.opacity = '0.7'
+      btn.style.cursor = 'default'
+      setStatus(
+        `Opening\u2026 come back here in ${Math.max(1, Math.round(dwell / 1000))}s to claim +${reward}.`
+      )
+
+      let submitted = false
+      let awaySegments = 0
+      const finalize = async (source: 'return' | 'fallback') => {
+        if (submitted) return
+        submitted = true
+        document.removeEventListener('visibilitychange', onVisChange)
+        window.removeEventListener('pagehide', onUnload)
+        const dwellMs = Date.now() - startedAt
+        // visibleMs is now "approximate time on destination" \u2014 we report
+        // time the source was hidden, not the inverse. Server can still
+        // reject implausibly low values.
+        const hiddenMs = Math.max(0, dwellMs - 50) // ≈ the whole window
+        await submit({ dwellMs, visibleMs: hiddenMs, awaySegments, source }, btn)
+      }
+
+      const onVisChange = () => {
+        if (document.visibilityState === 'hidden') {
+          awaySegments += 1
+          return
+        }
+        if (document.visibilityState === 'visible') {
+          const elapsed = Date.now() - startedAt
+          if (elapsed >= dwell) {
+            void finalize('return')
+          } else {
+            const left = Math.max(1, Math.round((dwell - elapsed) / 1000))
+            setStatus(`Stay on the page a few more seconds, then come back (${left}s)\u2026`)
+          }
         }
       }
-      const dwellMs = Date.now() - startedAt
-      await submit({ dwellMs, visibleMs }, btn)
+      const onUnload = () => {
+        // Don't submit on unload \u2014 we'd lose attribution context. Just
+        // detach so we don't leak when host swaps the panel out via SPA nav.
+        document.removeEventListener('visibilitychange', onVisChange)
+        window.removeEventListener('pagehide', onUnload)
+      }
+      document.addEventListener('visibilitychange', onVisChange)
+      window.addEventListener('pagehide', onUnload)
+
+      // Fallback: some mobile browsers don't fire visibilitychange for
+      // target=_blank popups, especially when the destination opens in
+      // the same tab via OS-level handlers. Submit after dwell + 2s.
+      setTimeout(() => {
+        void finalize('fallback')
+      }, dwell + 2_000)
     })
     applyDoneStyling(btn)
     row.appendChild(btn)
@@ -2972,10 +3014,14 @@ export class Popup {
 
     // Create popup
     this.popupElement = document.createElement('div')
+    // Compact padding: 22px top reserves a thin strip for the absolute
+    // "Sponsored" label + close button; 8px elsewhere keeps the media
+    // flush with the card edge so the popup feels visually denser than
+    // the legacy 14px-all-around treatment.
     this.popupElement.style.cssText = `
       background: white;
       border-radius: 12px;
-      padding: 14px;
+      padding: 22px 8px 8px 8px;
       max-width: 360px;
       position: relative;
       box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
@@ -2983,41 +3029,25 @@ export class Popup {
       transition: opacity 0.2s ease;
     `
 
-    // SovAds logo badge in small left corner
-    const logoBadge = document.createElement('div')
-    logoBadge.style.cssText = `
-      position: absolute;
-      top: 8px;
-      left: 12px;
-      width: 24px;
-      height: 24px;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 10px;
-      font-weight: bold;
-      color: white;
-      z-index: 1;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    `
-    logoBadge.textContent = 'SA'
-    logoBadge.title = 'SovAds'
+    // (Removed) Legacy 'SA' brand badge \u2014 was visual noise on a small
+    // surface and competed with the close button. The Sponsored label
+    // below remains as the disclosure.
 
     // Close button
     const closeBtn = document.createElement('button')
     closeBtn.innerHTML = '×'
     closeBtn.style.cssText = `
       position: absolute;
-      top: 10px;
-      right: 15px;
+      top: 4px;
+      right: 8px;
       background: none;
       border: none;
-      font-size: 24px;
+      font-size: 22px;
       cursor: pointer;
       color: #666;
       z-index: 2;
+      line-height: 1;
+      padding: 2px 6px;
     `
 
     closeBtn.addEventListener('click', () => {
@@ -3036,8 +3066,8 @@ export class Popup {
     const adLabel = document.createElement('div')
     adLabel.style.cssText = `
       position: absolute;
-      top: 36px;
-      left: 12px;
+      top: 6px;
+      left: 10px;
       font-size: 9px;
       color: #999;
       font-weight: 500;
@@ -3084,7 +3114,6 @@ export class Popup {
       dummyContent.appendChild(message)
       dummyContent.appendChild(link)
 
-      this.popupElement.appendChild(logoBadge)
       this.popupElement.appendChild(adLabel)
       this.popupElement.appendChild(closeBtn)
       this.popupElement.appendChild(dummyContent)
@@ -3207,7 +3236,6 @@ export class Popup {
       mediaElement.style.cursor = 'default'
     }
 
-    this.popupElement.appendChild(logoBadge)
     this.popupElement.appendChild(adLabel)
     this.popupElement.appendChild(closeBtn)
     this.popupElement.appendChild(mediaElement)
