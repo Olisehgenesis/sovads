@@ -835,6 +835,7 @@ export default function AdminDashboard() {
         campaign={
           previewCampaign
             ? {
+                id: previewCampaign.id,
                 name: previewCampaign.name,
                 description: previewCampaign.description ?? '',
                 bannerUrl: previewCampaign.bannerUrl ?? '',

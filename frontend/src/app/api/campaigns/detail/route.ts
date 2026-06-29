@@ -77,6 +77,7 @@ export async function GET(request: NextRequest) {
               maxPerWallet: t.maxPerWallet,
               cooldownSecs: t.cooldownSecs,
               active: t.active,
+              surface: t.surface,
               contractAllowlist: t.contractAllowlist,
               planGeneratedAt: t.planGeneratedAt,
               planModel: t.planModel,

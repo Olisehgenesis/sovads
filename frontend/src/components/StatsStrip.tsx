@@ -39,7 +39,6 @@ export default function StatsStrip() {
 
   const items = [
     { label: 'Verified Impressions', value: stats ? formatNumber(stats.totalImpressions) : '—' },
-    { label: 'Active Publishers', value: stats ? formatNumber(stats.totalPublishers) : '—' },
     { label: 'Rewards Distributed', value: stats ? formatMoney(stats.totalGsRedeemed) : '—' },
     { label: 'Active Campaigns', value: stats ? formatNumber(stats.activeCampaigns) : '—' },
   ]
@@ -50,7 +49,7 @@ export default function StatsStrip() {
       className="border-y-4 border-black bg-black text-white"
     >
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <ul className="grid grid-cols-2 md:grid-cols-4 divide-y-2 md:divide-y-0 md:divide-x-2 divide-white/20">
+        <ul className="grid grid-cols-1 md:grid-cols-3 divide-y-2 md:divide-y-0 md:divide-x-2 divide-white/20">
           {items.map((item) => (
             <li key={item.label} className="px-4 py-8 sm:py-10 text-center">
               <div className="font-heading text-4xl sm:text-5xl tracking-tight">

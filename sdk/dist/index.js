@@ -2612,20 +2612,33 @@ export class Popup {
         };
         // Phase 2: caller can force a button click target instead of the
         // legacy click-the-whole-image behaviour.
+        //
+        // Render policy:
+        //   - 'media'  (default for images) — image is clickable AND a visible
+        //              "Learn more" button is rendered below as an explicit
+        //              affordance. Without the button the popup looks like a
+        //              decorative card, viewers don't realise they can click.
+        //   - 'button' — only the button is clickable (image is decorative).
+        //   - video / streaming embeds — only the button is clickable, because
+        //              the media element captures its own pointer events.
         const popupClickTarget = this.currentOpts.clickTarget ?? 'media';
-        const useButtonCta = popupClickTarget === 'button' || mediaType === 'video' || !!streamingEmbed;
-        if (useButtonCta) {
-            mediaElement.style.cursor = 'default';
-        }
-        else {
+        const mediaIsClickable = popupClickTarget === 'media' && mediaType !== 'video' && !streamingEmbed;
+        if (mediaIsClickable) {
             mediaElement.style.cursor = 'pointer';
             mediaElement.addEventListener('click', handleClickThrough);
+        }
+        else {
+            mediaElement.style.cursor = 'default';
         }
         this.popupElement.appendChild(logoBadge);
         this.popupElement.appendChild(adLabel);
         this.popupElement.appendChild(closeBtn);
         this.popupElement.appendChild(mediaElement);
-        if (useButtonCta) {
+        // Render an explicit "Learn more" button only when the media itself is
+        // NOT clickable (i.e. clickTarget === 'button', or media is video /
+        // streaming embed). When the image is clickable, the image is the CTA
+        // and adding a second button would be visual noise.
+        if (!mediaIsClickable) {
             const ctaButton = document.createElement('button');
             ctaButton.type = 'button';
             ctaButton.textContent = 'Learn more';

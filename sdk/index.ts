@@ -124,14 +124,17 @@ interface AdLoadOptions {
   walletAddress?: string
   /** Ask the server to include attached CTA tasks (VISIT_URL/SIGN_MESSAGE/POLL)
    *  and to keep serving banners whose token budget is exhausted (with
-   *  bannerClickActive=false). Off by default for backward compatibility. */
+   *  bannerClickActive=false). Defaults to ON — the SDK auto-detects CTAs.
+   *  Pass `false` explicitly to opt out (e.g. for legacy bare-banner slots). */
   attached?: boolean
 }
 
 interface SlotConfig {
   placementId?: string
   size?: string
-  /** Render attached CTAs under the banner (auto-passes attached=true to loadAd). */
+  /** Request attached CTAs and render them under the banner. Defaults to ON;
+   *  pass `false` to opt out. When the server returns no tasks for the
+   *  selected campaign, the slot quietly renders as a bare banner. */
   attached?: boolean
   /** Optional handler invoked after each attached-CTA submission attempt. */
   onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void
@@ -2293,7 +2296,8 @@ export class Banner {
         consumerId,
         placement: this.slotConfig.placementId || 'banner',
         size: this.slotConfig.size,
-        attached: this.slotConfig.attached === true,
+        // Auto-detect: ask the server for CTAs unless the publisher explicitly opted out.
+        attached: this.slotConfig.attached !== false,
       })
       this.hasTrackedImpression = false
 
@@ -2560,11 +2564,12 @@ export class Banner {
 
       container.appendChild(adElement)
 
-      // Mount attached CTAs under the banner when the slot opted in and the
-      // server returned at least one. When bannerClickActive=false this is the
-      // only way the viewer can earn from this impression.
+      // Auto-detect: whenever the server returned at least one attached task,
+      // mount the CTA panel under the banner. Publisher can suppress this by
+      // constructing the slot with `attached: false`. When bannerClickActive=false
+      // the CTA panel is the only way the viewer can earn from this impression.
       if (
-        this.slotConfig.attached === true &&
+        this.slotConfig.attached !== false &&
         Array.isArray(this.currentAd.attachedTasks) &&
         this.currentAd.attachedTasks.length > 0
       ) {
@@ -2705,8 +2710,8 @@ export interface PopupShowOptions {
   consumerId?: string
   /** Milliseconds to wait after `show()` before mounting the popup. Default 3000. */
   delay?: number
-  /** Phase 1: request attached CTA tasks from the server and render them
-   *  beneath the media. Off by default for backward compatibility. */
+  /** Request attached CTA tasks and render them beneath the media. Defaults to
+   *  ON — the SDK auto-detects CTAs. Pass `false` to opt out. */
   attached?: boolean
   /** Phase 1: callback fired after each CTA submission attempt. */
   onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void
@@ -2807,7 +2812,8 @@ export class Popup {
         consumerId: opts.consumerId,
         placement: 'popup',
         size: window.innerWidth < 640 ? '320x100' : '360x120',
-        attached: opts.attached === true,
+        // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+        attached: opts.attached !== false,
       })
 
       if (!this.currentAd) {
@@ -3098,21 +3104,36 @@ export class Popup {
 
     // Phase 2: caller can force a button click target instead of the
     // legacy click-the-whole-image behaviour.
+    //
+    // Render policy:
+    //   - 'media'  (default for images) — image is clickable AND a visible
+    //              "Learn more" button is rendered below as an explicit
+    //              affordance. Without the button the popup looks like a
+    //              decorative card, viewers don't realise they can click.
+    //   - 'button' — only the button is clickable (image is decorative).
+    //   - video / streaming embeds — only the button is clickable, because
+    //              the media element captures its own pointer events.
     const popupClickTarget = this.currentOpts.clickTarget ?? 'media'
-    const useButtonCta = popupClickTarget === 'button' || mediaType === 'video' || !!streamingEmbed
+    const mediaIsClickable =
+      popupClickTarget === 'media' && mediaType !== 'video' && !streamingEmbed
 
-    if (useButtonCta) {
-      mediaElement.style.cursor = 'default'
-    } else {
+    if (mediaIsClickable) {
       mediaElement.style.cursor = 'pointer'
       mediaElement.addEventListener('click', handleClickThrough)
+    } else {
+      mediaElement.style.cursor = 'default'
     }
 
     this.popupElement.appendChild(logoBadge)
     this.popupElement.appendChild(adLabel)
     this.popupElement.appendChild(closeBtn)
     this.popupElement.appendChild(mediaElement)
-    if (useButtonCta) {
+
+    // Render an explicit "Learn more" button only when the media itself is
+    // NOT clickable (i.e. clickTarget === 'button', or media is video /
+    // streaming embed). When the image is clickable, the image is the CTA
+    // and adding a second button would be visual noise.
+    if (!mediaIsClickable) {
       const ctaButton = document.createElement('button')
       ctaButton.type = 'button'
       ctaButton.textContent = 'Learn more'
@@ -3132,9 +3153,10 @@ export class Popup {
       this.popupElement.appendChild(ctaButton)
     }
 
-    // Phase 1: mount attached CTAs inside the popup card when opted in.
+    // Auto-detect: mount attached CTAs inside the popup card whenever the
+    // server returned at least one task. Caller can suppress with `attached: false`.
     if (
-      this.currentOpts.attached === true &&
+      this.currentOpts.attached !== false &&
       Array.isArray(this.currentAd.attachedTasks) &&
       this.currentAd.attachedTasks.length > 0
     ) {
@@ -3164,7 +3186,7 @@ export class Popup {
     // (typing, signing, waiting for dwell), keep the card open until they
     // dismiss it manually.
     const hasCtas =
-      this.currentOpts.attached === true &&
+      this.currentOpts.attached !== false &&
       Array.isArray(this.currentAd?.attachedTasks) &&
       (this.currentAd?.attachedTasks?.length ?? 0) > 0
     if (!hasCtas) {
@@ -3220,8 +3242,8 @@ export class Popup {
 // BottomBar Component
 export interface BottomBarShowOptions {
   consumerId?: string
-  /** Phase 1: request attached CTA tasks from the server and render them
-   *  to the right of the media (inline layout). Off by default. */
+  /** Request attached CTA tasks and render them to the right of the media
+   *  (inline layout). Defaults to ON; pass `false` to opt out. */
   attached?: boolean
   /** Phase 1: callback fired after each CTA submission attempt. */
   onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void
@@ -3279,7 +3301,8 @@ export class BottomBar {
         consumerId: opts.consumerId,
         placement: 'bottom-bar',
         size: 'full-width',
-        attached: opts.attached === true,
+        // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+        attached: opts.attached !== false,
       })
 
       if (!this.currentAd) {
@@ -3434,13 +3457,14 @@ export class BottomBar {
     })
     if (disclosure) bar.appendChild(disclosure)
 
-    // Phase 1: when CTAs are requested + returned, lay media + CTA panel in a
+    // Auto-detect: when CTAs were returned, lay media + CTA panel in a
     // horizontal row. Media keeps its own click target (so the existing
     // banner-click path still works); CTA buttons get their own click handlers
     // and we suppress the bar-wide click handler so taps on a poll option
-    // don't double-fire as a banner click + redirect.
+    // don't double-fire as a banner click + redirect. Caller can opt out with
+    // `attached: false`.
     const hasCtas =
-      this.currentOpts.attached === true &&
+      this.currentOpts.attached !== false &&
       Array.isArray(this.currentAd.attachedTasks) &&
       this.currentAd.attachedTasks.length > 0
 
@@ -3593,7 +3617,8 @@ export class Sidebar {
         consumerId,
         placement: this.slotConfig.placementId || 'sidebar',
         size: this.slotConfig.size,
-        attached: this.slotConfig.attached === true,
+        // Auto-detect: ask the server for CTAs unless the publisher explicitly opted out.
+        attached: this.slotConfig.attached !== false,
       })
       this.hasTrackedImpression = false
 
@@ -3816,10 +3841,11 @@ export class Sidebar {
 
       container.appendChild(adElement)
 
-      // Phase 1: mount attached CTAs under the sidebar ad when the slot opted
-      // in and the server returned at least one task. Same semantics as Banner.
+      // Auto-detect: mount attached CTAs under the sidebar ad whenever the
+      // server returned at least one task. Same semantics as Banner. Publisher
+      // can suppress this by constructing the slot with `attached: false`.
       if (
-        this.slotConfig.attached === true &&
+        this.slotConfig.attached !== false &&
         Array.isArray(this.currentAd.attachedTasks) &&
         this.currentAd.attachedTasks.length > 0
       ) {
@@ -3968,7 +3994,7 @@ export class Sidebar {
 
 export interface OverlayShowOptions {
   consumerId?: string
-  /** Render attached CTA tasks inside the overlay. Off by default. */
+  /** Render attached CTA tasks inside the overlay. Defaults to ON; pass `false` to opt out. */
   attached?: boolean
   /** Callback fired after each CTA submission attempt. */
   onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void
@@ -4063,7 +4089,8 @@ export class Overlay {
       this.currentAd = await this.sovads.loadAd({
         consumerId: opts.consumerId,
         placement: this.placement,
-        attached: opts.attached === true,
+        // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+        attached: opts.attached !== false,
       })
       if (!this.currentAd) {
         this.isShowing = false
@@ -4220,9 +4247,10 @@ export class Overlay {
       card.appendChild(ctaButton)
     }
 
-    // Phase 1: attached CTA panel.
+    // Auto-detect: mount the attached CTA panel whenever the server returned
+    // at least one task. Caller can suppress with `attached: false`.
     if (
-      this.currentOpts.attached === true &&
+      this.currentOpts.attached !== false &&
       Array.isArray(this.currentAd.attachedTasks) &&
       this.currentAd.attachedTasks.length > 0
     ) {
@@ -4310,7 +4338,8 @@ export class Interstitial extends Overlay {
 // NativeCard Component
 export interface NativeCardRenderOptions {
   consumerId?: string
-  /** Phase 1: request attached CTA tasks and render them under the card body. */
+  /** Request attached CTA tasks and render them under the card body. Defaults to
+   *  ON — the SDK auto-detects CTAs. Pass `false` to opt out. */
   attached?: boolean
   /** Phase 1: callback fired after each CTA submission attempt. */
   onCtaComplete?: (ev: AttachedCtaCompleteEvent) => void
@@ -4354,7 +4383,8 @@ export class NativeCard {
     this.currentAd = await this.sovads.loadAd({
       consumerId: opts.consumerId,
       placement: 'native',
-      attached: opts.attached === true,
+      // Auto-detect: ask the server for CTAs unless the caller explicitly opted out.
+      attached: opts.attached !== false,
     })
 
     if (!this.currentAd) return
@@ -4462,9 +4492,10 @@ export class NativeCard {
     container.innerHTML = ''
     container.appendChild(card)
 
-    // Phase 1: mount attached CTAs underneath the card body.
+    // Auto-detect: mount attached CTAs underneath the card body whenever the
+    // server returned at least one task. Caller can suppress with `attached: false`.
     if (
-      opts.attached === true &&
+      opts.attached !== false &&
       Array.isArray(this.currentAd.attachedTasks) &&
       this.currentAd.attachedTasks.length > 0
     ) {
