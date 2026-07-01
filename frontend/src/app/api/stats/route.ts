@@ -45,10 +45,10 @@ export async function GET() {
       }),
     ])
 
-    const totalImpressions = Number((impressionsRes.rows[0] as { n: number | bigint }).n ?? 0)
-    const totalClicks = Number((clicksRes.rows[0] as { n: number | bigint }).n ?? 0)
+    const totalImpressions = Number((impressionsRes.rows[0] as unknown as { n: number | bigint }).n ?? 0)
+    const totalClicks = Number((clicksRes.rows[0] as unknown as { n: number | bigint }).n ?? 0)
     const totalUniqueImpressions = Number(
-      (uniqueFingerprintsRes.rows[0] as { n: number | bigint }).n ?? 0
+      (uniqueFingerprintsRes.rows[0] as unknown as { n: number | bigint }).n ?? 0
     )
 
     const totalEvents = totalImpressions + totalClicks
