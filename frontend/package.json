@@ -6,7 +6,7 @@
     "sdk:build": "tsc --project ../sdk/tsconfig.json --outDir ./src/_sovads_sdk",
     "sdk:watch": "tsc --project ../sdk/tsconfig.json --outDir ./src/_sovads_sdk --watch --preserveWatchOutput",
     "dev": "pnpm sdk:build && concurrently -k -n sdk,next -c yellow,cyan \"pnpm sdk:watch\" \"dotenvx run -- next dev --turbopack\"",
-    "build": "pnpm sdk:build && dotenvx run -- prisma generate && dotenvx run -- next build",
+    "build": "dotenvx run -- prisma generate && dotenvx run -- next build",
     "start": "dotenvx run -- next start",
     "start:system": "dotenvx run -- tsx scripts/start-system.ts",
     "testconnection": "dotenvx run -- tsx scripts/test-connection.ts",

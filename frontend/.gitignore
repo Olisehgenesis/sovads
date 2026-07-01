@@ -1,8 +1,9 @@
 .vercel
 .env*.local
 
-# Local SDK build output (produced by `pnpm sdk:build` / `pnpm dev`).
-src/_sovads_sdk/
+# The compiled SDK bundle (src/_sovads_sdk/) IS committed so Vercel can
+# serve it via /api/v1/sdk without needing sibling `../sdk/` sources at
+# build time. Rebuild locally with `pnpm sdk:build` before committing.
 
 .source/
 next-env.d.ts
