@@ -48,15 +48,25 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 200, headers: corsHeaders })
 }
 
-const TASK_KINDS = ['POLL', 'FEEDBACK', 'SURVEY'] as const
+const TASK_KINDS = ['POLL', 'QUIZ', 'FEEDBACK', 'SURVEY'] as const
 type ServeTaskKind = (typeof TASK_KINDS)[number]
 type ServeKind = 'BANNER' | ServeTaskKind
 
 // Kinds we are willing to attach next to a banner. Keep this conservative —
 // anything that needs more screen real-estate (FEEDBACK, SURVEY) or special
-// host-side flows (STAKE_GS, CONTRACT_CALL, QUIZ) stays on the standalone path.
-const ATTACHED_TASK_KINDS = ['VISIT_URL', 'SIGN_MESSAGE', 'POLL'] as const
+// host-side flows (STAKE_GS, CONTRACT_CALL) stays on the standalone path.
+// POLL + QUIZ render as colored option tiles; attached mode shows them under
+// the banner with the per-task reward chip.
+const ATTACHED_TASK_KINDS = ['VISIT_URL', 'SIGN_MESSAGE', 'POLL', 'QUIZ'] as const
 type AttachedTaskKind = (typeof ATTACHED_TASK_KINDS)[number]
+
+// Strip the QUIZ `correct` flag before shipping options to the client.
+// The viewer must never know which option is correct in advance.
+function publicOptions(
+  raw: NonNullable<TaskConfig['options']>
+): Array<{ id: string; label: string }> {
+  return raw.map((o) => ({ id: o.id, label: o.label }))
+}
 const MAX_ATTACHED_TASKS = 2
 
 function parseAttachedFlag(raw: string | null): boolean {
@@ -119,8 +129,8 @@ function publicTaskShape(task: {
     rewardPoints: task.rewardPoints,
     rewardGs: task.rewardGs ?? 0,
   }
-  if (task.kind === 'POLL') {
-    return { ...base, options: cfg.options ?? [] }
+  if (task.kind === 'POLL' || task.kind === 'QUIZ') {
+    return { ...base, options: publicOptions(cfg.options ?? []) }
   }
   if (task.kind === 'FEEDBACK') {
     return { ...base, feedback: cfg.feedback ?? { mode: 'rating_and_text' } }
@@ -155,8 +165,8 @@ function publicAttachedTaskShape(task: {
     rewardPoints: task.rewardPoints,
     rewardGs: task.rewardGs ?? 0,
   }
-  if (task.kind === 'POLL') {
-    return { ...base, options: cfg.options ?? [] }
+  if (task.kind === 'POLL' || task.kind === 'QUIZ') {
+    return { ...base, options: publicOptions(cfg.options ?? []) }
   }
   if (task.kind === 'VISIT_URL') {
     return {

@@ -1,33 +1,58 @@
 import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { tursoClient } from '@/lib/turso/client'
 
 /**
- * Get platform-wide statistics
+ * Get platform-wide statistics.
+ *
+ * Event counts (impressions/clicks) come from Turso — Postgres `Event` is
+ * write-frozen, so reading it returns a stale snapshot from the migration
+ * cutover. Campaigns/publishers/cashouts stay on Postgres (source of truth
+ * for money + relational entities).
  */
 export async function GET() {
   try {
-    const [totalAds, totalPublishers, activeCampaigns, totalImpressions, totalClicks, gsRedeemedResult] = await Promise.all([
+    const turso = tursoClient()
+    const [
+      totalAds,
+      totalPublishers,
+      activeCampaigns,
+      impressionsRes,
+      clicksRes,
+      uniqueFingerprintsRes,
+      gsRedeemedResult,
+    ] = await Promise.all([
       prisma.campaign.count(),
       prisma.publisherSite.count(),
       prisma.campaign.count({ where: { active: true } }),
-      prisma.event.count({ where: { type: { equals: 'IMPRESSION', mode: 'insensitive' } } }),
-      prisma.event.count({ where: { type: { equals: 'CLICK', mode: 'insensitive' } } }),
+      turso.execute({
+        sql: `SELECT COUNT(*) AS n FROM events WHERE UPPER(type) = 'IMPRESSION'`,
+        args: [],
+      }),
+      turso.execute({
+        sql: `SELECT COUNT(*) AS n FROM events WHERE UPPER(type) = 'CLICK'`,
+        args: [],
+      }),
+      turso.execute({
+        sql: `SELECT COUNT(DISTINCT fingerprint) AS n
+              FROM events
+              WHERE UPPER(type) = 'IMPRESSION' AND fingerprint IS NOT NULL`,
+        args: [],
+      }),
       prisma.viewerCashout.aggregate({
         _sum: { amount: true },
         where: { status: 'completed' },
       }),
     ])
 
+    const totalImpressions = Number((impressionsRes.rows[0] as { n: number | bigint }).n ?? 0)
+    const totalClicks = Number((clicksRes.rows[0] as { n: number | bigint }).n ?? 0)
+    const totalUniqueImpressions = Number(
+      (uniqueFingerprintsRes.rows[0] as { n: number | bigint }).n ?? 0
+    )
+
     const totalEvents = totalImpressions + totalClicks
     const ctr = totalImpressions > 0 ? (totalClicks / totalImpressions) * 100 : 0
-
-    // Total unique impressions (distinct fingerprints)
-    const uniqueFingerprints = await prisma.event.findMany({
-      where: { type: { equals: 'IMPRESSION', mode: 'insensitive' }, fingerprint: { not: null } },
-      select: { fingerprint: true },
-      distinct: ['fingerprint'],
-    })
-    const totalUniqueImpressions = uniqueFingerprints.length
 
     // Total revenue (sum of spent and budget from campaigns)
     const revenueResult = await prisma.campaign.aggregate({

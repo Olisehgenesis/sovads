@@ -49,8 +49,9 @@ export interface TaskConfig {
   eventSig?: string // bytes32 topic0
   // Optional override for the SDK button text. Falls back to task.label when absent.
   buttonLabel?: string
-  // POLL
-  options?: Array<{ id: string; label: string }>
+  // POLL / QUIZ — shared options array. `correct` is QUIZ-only and is
+  // STRIPPED from any client-facing payload (see publicTaskShape / SDK).
+  options?: Array<{ id: string; label: string; correct?: boolean }>
   // FEEDBACK
   feedback?: {
     mode?: 'rating' | 'text' | 'rating_and_text'
@@ -236,6 +237,18 @@ export async function verifyProof(args: {
         return { ok: true, details: { dwellMs: reported } }
       }
       if (kind === 'QUIZ') {
+        // Two acceptable proof shapes:
+        //   1. New: { optionId } — server looks up `correct` on the option
+        //      so option labels can change without invalidating the verifier.
+        //   2. Legacy: { answer } — text-match against config.expectedAnswer.
+        const options = config.options ?? []
+        if (proof.optionId && options.length > 0) {
+          const picked = options.find((o) => o.id === proof.optionId)
+          if (!picked) return { ok: false, reason: 'unknown optionId' }
+          return picked.correct === true
+            ? { ok: true, details: { optionId: picked.id } }
+            : { ok: false, reason: 'wrong answer' }
+        }
         const expected = (config.expectedAnswer ?? '').trim().toLowerCase()
         const got = (proof.answer ?? '').trim().toLowerCase()
         if (!expected) return { ok: false, reason: 'task missing expectedAnswer' }

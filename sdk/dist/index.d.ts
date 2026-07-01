@@ -47,10 +47,10 @@ export interface AdComponent {
     isUnverified?: boolean;
     /** false when the campaign is out of token budget; the SDK suppresses banner click-through. */
     bannerClickActive?: boolean;
-    /** Up to 2 inline CTAs (VISIT_URL / SIGN_MESSAGE / POLL) rendered under the banner. */
+    /** Up to 2 inline CTAs (VISIT_URL / SIGN_MESSAGE / POLL / QUIZ) rendered under the banner. */
     attachedTasks?: AttachedTask[];
 }
-export type AttachedTaskKind = 'VISIT_URL' | 'SIGN_MESSAGE' | 'POLL';
+export type AttachedTaskKind = 'VISIT_URL' | 'SIGN_MESSAGE' | 'POLL' | 'QUIZ';
 export interface AttachedPollOption {
     id: string;
     label: string;
@@ -486,6 +486,9 @@ export declare function mountCtaPanel(opts: {
      *  'auto' = stack normally, switch to inline at exactly 2 tasks so small
      *  surfaces (Banner, Popup, NativeCard) don't waste a row of vertical space. */
     layout?: 'stack' | 'inline' | 'auto';
+    /** Forwarded to `renderAttachedCtas`. When true, the panel is positioned
+     *  absolutely over the banner so POLL/QUIZ tiles overlay the creative. */
+    overlay?: boolean;
 }): void;
 /**
  * Public renderer for the attached-CTA panel.
@@ -514,6 +517,14 @@ export declare function renderAttachedCtas(opts: {
      *  inline when there are exactly 2 tasks so small surfaces (Banner, Popup)
      *  don't waste a second row of vertical space. Backcompat: omit \u2192 stack. */
     layout?: 'stack' | 'inline' | 'auto';
+    /** When true, the panel is positioned absolutely at the bottom of
+     *  `container` (which must be `position:relative`) so the tiles overlay
+     *  on top of the banner image. The panel uses `pointer-events:none` so
+     *  the uncovered banner area still receives clicks; only the tile
+     *  buttons capture pointer events. Used for POLL / QUIZ kinds where the
+     *  banner click-through is preserved and the option grid floats over
+     *  the bottom half of the creative. */
+    overlay?: boolean;
 }): void;
 export declare class Banner {
     private sovads;

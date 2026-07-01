@@ -23,20 +23,25 @@ export interface CtaPreviewProps {
   description?: string | null
   rewardPoints: number
   rewardGs?: number | null
-  /** Required for POLL — renders as stacked secondary buttons. */
+  /** Required for POLL / QUIZ — rendered as a Kahoot-style colored tile grid. */
   options?: Array<{ id: string; label: string }> | null
   /** Replaces "+N G$" with "+N pts*" — used when campaign budget is exhausted. */
   bannerClickActive?: boolean
+  /** Render in overlay mode (absolute, on top of a banner). The host element
+   *  fills its parent so the panel positions over the banner image. The
+   *  parent must be `position:relative`. POLL / QUIZ kinds use this. */
+  overlay?: boolean
 }
 
-// The SDK panel only knows how to render these kinds inline. Anything else
-// (FEEDBACK / SURVEY / STAKE_GS / CONTRACT_CALL / QUIZ / SOCIAL_FOLLOW) is
-// shown via a small fallback chip — those flows run via mountUnit() in
-// production, not the attached-CTA panel.
+// The SDK panel knows how to render these kinds inline. Anything else
+// (FEEDBACK / SURVEY / STAKE_GS / CONTRACT_CALL / SOCIAL_FOLLOW) is shown
+// via a small fallback chip — those flows run via mountUnit() in production,
+// not the attached-CTA panel.
 const SUPPORTED: Record<string, AttachedTaskKind> = {
   VISIT_URL: 'VISIT_URL',
   SIGN_MESSAGE: 'SIGN_MESSAGE',
   POLL: 'POLL',
+  QUIZ: 'QUIZ',
 }
 
 export function CtaPreview(props: CtaPreviewProps) {
@@ -49,6 +54,7 @@ export function CtaPreview(props: CtaPreviewProps) {
     rewardGs,
     options,
     bannerClickActive = true,
+    overlay = false,
   } = props
 
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -71,7 +77,7 @@ export function CtaPreview(props: CtaPreviewProps) {
       url: sdkKind === 'VISIT_URL' ? 'https://example.com' : undefined,
       minDwellMs: 3000,
       signMessage: sdkKind === 'SIGN_MESSAGE' ? 'Preview message' : undefined,
-      options: sdkKind === 'POLL' ? (options ?? []) : undefined,
+      options: sdkKind === 'POLL' || sdkKind === 'QUIZ' ? (options ?? []) : undefined,
     }
 
     try {
@@ -81,6 +87,7 @@ export function CtaPreview(props: CtaPreviewProps) {
         campaignId: 'preview-campaign',
         bannerClickActive,
         preview: true,
+        overlay,
       })
     } catch {
       // Defensive: a malformed task config shouldn't break the create page.
@@ -89,7 +96,7 @@ export function CtaPreview(props: CtaPreviewProps) {
     return () => {
       host.innerHTML = ''
     }
-  }, [sdkKind, label, buttonLabel, description, rewardPoints, rewardGs, options, bannerClickActive])
+  }, [sdkKind, label, buttonLabel, description, rewardPoints, rewardGs, options, bannerClickActive, overlay])
 
   // Unsupported kinds: show a small explanatory chip instead of the panel.
   if (!sdkKind) {
@@ -111,6 +118,19 @@ export function CtaPreview(props: CtaPreviewProps) {
     )
   }
 
+  // Overlay mode: host element fills its (position:relative) parent so the
+  // renderAttachedCtas panel’s `position:absolute; bottom:0` lines up with
+  // the banner image. Default (inline) mode lets the host size itself.
+  if (overlay) {
+    return (
+      <div
+        ref={containerRef}
+        data-cta-preview-kind={kind}
+        data-cta-preview-overlay="1"
+        className="pointer-events-none absolute inset-0"
+      />
+    )
+  }
   return <div ref={containerRef} data-cta-preview-kind={kind} />
 }
 

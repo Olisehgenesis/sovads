@@ -1,5 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { tursoClient } from '@/lib/turso/client'
+
+/**
+ * Events are read from Turso (firehose) — Postgres `Event` is write-frozen
+ * after the Turso migration, so reading it would return stale lifetime
+ * snapshots. Money + campaign/publisher metadata still come from Postgres.
+ */
+interface TursoEventRow {
+  id: string
+  type: string
+  campaign_id: string
+  publisher_id: string | null
+  site_id: string | null
+  timestamp: number
+}
+
+async function fetchTursoEvents(opts: {
+  startMs?: number | null
+  campaignId?: string | null
+  publisherId?: string | null
+  siteId?: string | null
+  limit?: number
+}): Promise<TursoEventRow[]> {
+  const filters: string[] = []
+  const args: (string | number)[] = []
+  if (opts.startMs != null) {
+    filters.push('timestamp >= ?')
+    args.push(opts.startMs)
+  }
+  if (opts.campaignId) {
+    filters.push('campaign_id = ?')
+    args.push(opts.campaignId)
+  }
+  if (opts.publisherId) {
+    filters.push('publisher_id = ?')
+    args.push(opts.publisherId)
+  }
+  if (opts.siteId) {
+    filters.push('site_id = ?')
+    args.push(opts.siteId)
+  }
+  const where = filters.length ? `WHERE ${filters.join(' AND ')}` : ''
+  const limit = opts.limit && opts.limit > 0 ? opts.limit : 50000
+  const res = await tursoClient().execute({
+    sql: `SELECT id, type, campaign_id, publisher_id, site_id, timestamp
+          FROM events ${where}
+          ORDER BY timestamp DESC
+          LIMIT ${limit}`,
+    args,
+  })
+  return res.rows as unknown as TursoEventRow[]
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -21,19 +73,17 @@ export async function GET(request: NextRequest) {
       startDate.setDate(startDate.getDate() - days)
     }
 
-    const where: Record<string, unknown> = {}
-    if (useTimeFilter) where.timestamp = { gte: startDate }
-    if (campaignId) where.campaignId = campaignId
-    if (publisherId) where.publisherId = publisherId
-    if (siteId) where.OR = [{ siteId }, { publisherSiteId: siteId }]
-
-    const events = await prisma.event.findMany({
-      where,
-      orderBy: { timestamp: 'desc' },
+    const events = await fetchTursoEvents({
+      startMs: useTimeFilter ? startDate.getTime() : null,
+      campaignId: campaignId ?? null,
+      publisherId: publisherId ?? null,
+      siteId: siteId ?? null,
     })
 
-    const campaignIds = Array.from(new Set(events.map((e) => e.campaignId)))
-    const publisherIds = Array.from(new Set(events.map((e) => e.publisherId)))
+    const campaignIds = Array.from(new Set(events.map((e) => e.campaign_id)))
+    const publisherIds = Array.from(
+      new Set(events.map((e) => e.publisher_id).filter((p): p is string => !!p))
+    )
 
     const [campaignDocs, publisherDocs] = await Promise.all([
       campaignIds.length
@@ -72,7 +122,7 @@ export async function GET(request: NextRequest) {
     const totalRevenue = events
       .filter((e) => normalizeEventType(e.type) === 'CLICK')
       .reduce((sum, event) => {
-        const campaign = campaignMap.get(event.campaignId)
+        const campaign = campaignMap.get(event.campaign_id)
         return sum + (campaign?.cpc ?? 0)
       }, 0)
 
@@ -89,7 +139,7 @@ export async function GET(request: NextRequest) {
         rec.impressions++
       } else if (eventType === 'CLICK') {
         rec.clicks++
-        rec.revenue += campaignMap.get(e.campaignId)?.cpc ?? 0
+        rec.revenue += campaignMap.get(e.campaign_id)?.cpc ?? 0
       }
     })
     const dailyStats = Array.from(dailyMap.values())
@@ -105,8 +155,10 @@ export async function GET(request: NextRequest) {
         id: event.id,
         type: event.type,
         timestamp: event.timestamp,
-        campaignName: campaignMap.get(event.campaignId)?.name ?? 'Unknown Campaign',
-        publisherDomain: publisherMap.get(event.publisherId)?.domain ?? 'Unknown Publisher',
+        campaignName: campaignMap.get(event.campaign_id)?.name ?? 'Unknown Campaign',
+        publisherDomain: event.publisher_id
+          ? publisherMap.get(event.publisher_id)?.domain ?? 'Unknown Publisher'
+          : 'Unknown Publisher',
       })),
     }
 
@@ -129,14 +181,17 @@ export async function POST(request: NextRequest) {
     const nextDay = new Date(targetDate)
     nextDay.setDate(nextDay.getDate() + 1)
 
-    // Get all events for the day
-    const events = await prisma.event.findMany({
-      where: {
-        timestamp: { gte: targetDate, lt: nextDay },
-      },
+    // Get all events for the day from Turso (firehose). Postgres `Event` is
+    // write-frozen, so we must read the source of truth here.
+    const dayRes = await tursoClient().execute({
+      sql: `SELECT id, type, campaign_id, publisher_id, site_id, timestamp
+            FROM events
+            WHERE timestamp >= ? AND timestamp < ?`,
+      args: [targetDate.getTime(), nextDay.getTime()],
     })
+    const events = dayRes.rows as unknown as TursoEventRow[]
 
-    const campaignIds = Array.from(new Set(events.map((e) => e.campaignId)))
+    const campaignIds = Array.from(new Set(events.map((e) => e.campaign_id)))
     const campaignDocs = campaignIds.length
       ? await prisma.campaign.findMany({
           where: { id: { in: campaignIds } },
@@ -154,8 +209,8 @@ export async function POST(request: NextRequest) {
     const publisherStats = new Map()
 
     events.forEach((event) => {
-      const evCampaignId = event.campaignId
-      const evPublisherId = event.publisherId
+      const evCampaignId = event.campaign_id
+      const evPublisherId = event.publisher_id ?? 'unknown'
 
       // Campaign stats
       if (!campaignStats.has(evCampaignId)) {
@@ -172,7 +227,7 @@ export async function POST(request: NextRequest) {
         campaignStat.impressions++
       } else if (event.type === 'CLICK') {
         campaignStat.clicks++
-        campaignStat.revenue += campaignMap.get(event.campaignId)?.cpc ?? 0
+        campaignStat.revenue += campaignMap.get(event.campaign_id)?.cpc ?? 0
       }
 
       // Publisher stats
@@ -190,7 +245,7 @@ export async function POST(request: NextRequest) {
         publisherStat.impressions++
       } else if (event.type === 'CLICK') {
         publisherStat.clicks++
-        publisherStat.revenue += campaignMap.get(event.campaignId)?.cpc ?? 0
+        publisherStat.revenue += campaignMap.get(event.campaign_id)?.cpc ?? 0
       }
     })
 

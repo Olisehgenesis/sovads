@@ -9,7 +9,7 @@
  * Query params (all optional except siteId + slotId):
  *   siteId      (required) publisher siteId
  *   slotId      (required) host-side slot id, echoed on every postMessage
- *   kind        csv of BANNER|POLL|FEEDBACK|SURVEY (default BANNER)
+ *   kind        csv of BANNER|POLL|QUIZ|FEEDBACK|SURVEY (default BANNER)
  *   location, placement, size, wallet — passed through to /api/serve
  *
  * Security: messages are sent with targetOrigin '*' (the host page is
@@ -56,8 +56,8 @@ function html(req: NextRequest): string {
   html, body { margin:0; padding:0; background:transparent; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; color:#111; }
   .sa-root { box-sizing:border-box; width:100%; padding:12px; }
   .sa-banner { display:block; width:100%; height:auto; }
-  .sa-card { border:1px solid #e5e7eb; border-radius:12px; padding:16px; background:#fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
-  .sa-h { font-weight:600; font-size:16px; margin:0 0 8px 0; }
+  .sa-card { position:relative; border:1px solid #e5e7eb; border-radius:12px; padding:16px; background:#fff; box-shadow: 0 1px 2px rgba(0,0,0,.04); }
+  .sa-h { font-weight:600; font-size:16px; margin:0 0 8px 0; padding-right:90px; }
   .sa-sub { margin:0 0 12px 0; color:#4b5563; font-size:14px; }
   .sa-opt { display:flex; align-items:center; gap:8px; padding:8px 12px; border:1px solid #e5e7eb; border-radius:8px; margin:6px 0; cursor:pointer; }
   .sa-opt input { accent-color:#16a34a; }
@@ -69,6 +69,40 @@ function html(req: NextRequest): string {
   .sa-input { width:100%; box-sizing:border-box; padding:10px; border:1px solid #d1d5db; border-radius:8px; font-size:14px; }
   .sa-err { color:#dc2626; font-size:13px; margin-top:8px; }
   .sa-thanks { color:#065f46; font-weight:600; }
+  /* Choice tiles — used by POLL + QUIZ. Five Kahoot-style hues mapped by
+     index; layout is 1×2 (2 opts), 2×2 (3–4) or 2×3 (5).
+     Tap turns all tiles inert immediately and the picked tile keeps its
+     colour while the others fade. */
+  .sa-tiles { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:4px; }
+  .sa-tiles.sa-tiles-1 { grid-template-columns:1fr; }
+  .sa-tiles.sa-tiles-5 .sa-tile-5 { grid-column:1 / span 2; }
+  .sa-tile { position:relative; display:flex; align-items:center; justify-content:center; gap:6px;
+    min-height:54px; padding:12px 14px; border:0; border-radius:10px; cursor:pointer;
+    font-size:14px; font-weight:600; color:#fff; line-height:1.2; text-align:center;
+    transition:opacity .15s ease, transform .1s ease; word-break:break-word; }
+  .sa-tile:hover:not([disabled]) { transform:translateY(-1px); }
+  .sa-tile[disabled] { cursor:default; }
+  .sa-tile.sa-faded { opacity:.35; }
+  .sa-tile.sa-picked::after { content:'✓'; position:absolute; top:6px; right:8px; font-size:14px; font-weight:800; opacity:.85; }
+  .sa-tile-c1 { background:#e21b3c; }
+  .sa-tile-c2 { background:#1368ce; }
+  .sa-tile-c3 { background:#d89e00; color:#1c1300; }
+  .sa-tile-c4 { background:#26890c; }
+  .sa-tile-c5 { background:#864cbf; }
+  /* Reward chip pinned to the top-right of the card */
+  .sa-reward { position:absolute; top:10px; right:10px; display:inline-flex; align-items:center; gap:4px;
+    padding:4px 9px; border-radius:999px; background:#f5f3f0; border:1px solid #2d2d2d;
+    font-size:11px; font-weight:800; color:#2d2d2d; line-height:1; }
+  .sa-reward img { width:13px; height:13px; object-fit:contain; display:block; }
+  /* Saved confirmation state */
+  .sa-saved { display:flex; flex-direction:column; align-items:center; justify-content:center;
+    padding:18px 12px; gap:6px; text-align:center; }
+  .sa-saved-icon { display:inline-flex; align-items:center; justify-content:center;
+    width:38px; height:38px; border-radius:999px; background:#dcfce7; color:#065f46;
+    font-size:22px; font-weight:800; }
+  .sa-saved-title { font-size:15px; font-weight:700; color:#0f172a; }
+  .sa-saved-sub { font-size:12px; color:#475569; }
+  .sa-saved.sa-saved-err .sa-saved-icon { background:#fee2e2; color:#991b1b; }
 </style>
 </head>
 <body>
@@ -184,32 +218,132 @@ function html(req: NextRequest): string {
     emitResize();
   }
 
-  function renderPoll(task){
-    post('LOADED', { kind: 'POLL', taskId: task.id, campaignId: task.campaignId });
-    var opts = (task.options || []).map(function(o){
-      return '<label class="sa-opt"><input type="radio" name="sa-poll" value="' + escapeHtml(o.id) + '"/> ' + escapeHtml(o.label) + '</label>';
+  // Build the reward-chip HTML for the top-right of a poll/quiz card.
+  function rewardChipHtml(task){
+    var pts = Number(task.rewardPoints || 0);
+    var gs  = Number(task.rewardGs || 0);
+    if(!pts && !gs) return '';
+    var parts = [];
+    if(pts) parts.push('+' + pts);
+    if(gs)  parts.push('· ' + gs + ' G$');
+    return '<span class="sa-reward" aria-label="reward">' + escapeHtml(parts.join(' ')) + '</span>';
+  }
+
+  // Swap the card to a centred ✓ — used after a successful submit, after a
+  // wrong-answer quiz attempt, or when the viewer has already answered.
+  // Auto-closes after 'holdMs' by signalling the host (RESIZE height:0 +
+  // CLOSE) so the SDK can collapse the iframe without page reflows.
+  function renderSaved(opts){
+    var ok = opts && opts.ok !== false;
+    var title = (opts && opts.title) || (ok ? 'Saved' : 'Not quite');
+    var sub = (opts && opts.sub) || '';
+    var holdMs = (opts && typeof opts.holdMs === 'number') ? opts.holdMs : 1200;
+    root.innerHTML =
+      '<div class="sa-card">' +
+        '<div class="sa-saved' + (ok ? '' : ' sa-saved-err') + '">' +
+          '<div class="sa-saved-icon">' + (ok ? '✓' : '✕') + '</div>' +
+          '<div class="sa-saved-title">' + escapeHtml(title) + '</div>' +
+          (sub ? '<div class="sa-saved-sub">' + escapeHtml(sub) + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    emitResize();
+    setTimeout(function(){
+      post('CLOSE', { reason: ok ? 'submitted' : 'closed' });
+      try { root.innerHTML = ''; } catch(e) {}
+      // Force a 0-height resize so the host iframe collapses.
+      try {
+        window.parent.postMessage({
+          source: CFG.source, protocolVersion: CFG.protocolVersion,
+          slotId: CFG.slotId, type: 'RESIZE', ts: Date.now(),
+          payload: { width: 0, height: 0 }
+        }, '*');
+      } catch(e) {}
+    }, holdMs);
+  }
+
+  // Shared renderer for POLL + QUIZ standalone units. Renders the question
+  // header, a reward chip in the top-right, then 2–5 colored option tiles.
+  // First tap disables the rest, posts the answer, then auto-closes via
+  // renderSaved(). Wrong QUIZ answers close with an “X Not quite” card.
+  function renderChoice(task, kind){
+    post('LOADED', { kind: kind, taskId: task.id, campaignId: task.campaignId });
+    var opts = (task.options || []).slice(0, 5);
+    if(opts.length < 2){
+      renderError(kind === 'QUIZ' ? 'Quiz has no options.' : 'Poll has no options.');
+      return;
+    }
+    var tilesCls = 'sa-tiles';
+    if(opts.length === 1) tilesCls += ' sa-tiles-1';
+    if(opts.length === 5) tilesCls += ' sa-tiles-5';
+    var tilesHtml = opts.map(function(o, i){
+      var color = 'sa-tile-c' + (((i) % 5) + 1);
+      var posCls = (opts.length === 5 && i === 4) ? ' sa-tile-5' : '';
+      return '<button type="button" class="sa-tile ' + color + posCls + '"' +
+             ' data-id="' + escapeHtml(o.id) + '"' +
+             ' data-idx="' + i + '">' +
+             escapeHtml(o.label) +
+             '</button>';
     }).join('');
     root.innerHTML =
       '<div class="sa-card">' +
+        rewardChipHtml(task) +
         '<div class="sa-h">' + escapeHtml(task.label) + '</div>' +
         (task.description ? '<div class="sa-sub">' + escapeHtml(task.description) + '</div>' : '') +
-        '<form id="sa-form">' + opts + '<button class="sa-btn" type="submit">Submit</button><div class="sa-err" id="sa-err"></div></form>' +
+        '<div class="' + tilesCls + '" id="sa-tiles">' + tilesHtml + '</div>' +
       '</div>';
     setupImpressionObserver();
     emitResize();
-    document.getElementById('sa-form').addEventListener('submit', function(ev){
-      ev.preventDefault();
-      var sel = document.querySelector('input[name="sa-poll"]:checked');
-      var err = document.getElementById('sa-err');
-      if(!sel){ err.textContent = 'Pick one option.'; return; }
-      err.textContent = '';
-      submitInteraction(task.id, { optionId: sel.value }).then(function(r){
-        if(r.status !== 200){ err.textContent = r.body.reason || r.body.error || 'Could not submit.'; return; }
-        post('COMPLETE', { completionId: r.body.completionId, awarded: r.body.awarded });
-        renderThanks(r.body.awarded);
-      }).catch(function(e){ err.textContent = String(e && e.message || e); });
+
+    var submitted = false;
+    var tilesEl = document.getElementById('sa-tiles');
+    tilesEl.addEventListener('click', function(ev){
+      var btn = ev.target.closest('.sa-tile');
+      if(!btn || submitted) return;
+      submitted = true;
+      var optionId = btn.getAttribute('data-id');
+
+      // Lock every tile, fade the unpicked ones, mark the chosen one.
+      Array.prototype.forEach.call(tilesEl.querySelectorAll('.sa-tile'), function(t){
+        t.setAttribute('disabled', 'disabled');
+        if(t !== btn) t.classList.add('sa-faded');
+      });
+      btn.classList.add('sa-picked');
+
+      submitInteraction(task.id, { optionId: optionId }).then(function(r){
+        var awarded = r.body && r.body.awarded;
+        var pts = awarded && awarded.points ? awarded.points : 0;
+        if(r.status === 200){
+          post('COMPLETE', { completionId: r.body.completionId, awarded: awarded, optionId: optionId, kind: kind });
+          renderSaved({
+            ok: true,
+            title: 'Saved',
+            sub: pts ? ('+' + pts + ' SovPoints') : '',
+            holdMs: 1200
+          });
+          return;
+        }
+        // Already answered: 409 — close politely.
+        if(r.status === 409){
+          renderSaved({ ok: true, title: 'Already answered', sub: '', holdMs: 1200 });
+          return;
+        }
+        // QUIZ wrong-answer comes back as 4xx with reason=='wrong answer'.
+        var reason = (r.body && (r.body.reason || r.body.error)) || 'Could not submit.';
+        if(kind === 'QUIZ' && /wrong\s+answer/i.test(reason)){
+          renderSaved({ ok: false, title: 'Not quite', sub: '', holdMs: 1500 });
+          return;
+        }
+        renderSaved({ ok: false, title: 'Could not submit', sub: reason, holdMs: 1800 });
+      }).catch(function(e){
+        renderSaved({ ok: false, title: 'Network error', sub: String(e && e.message || e), holdMs: 1800 });
+      });
     });
   }
+
+  // Back-compat shim so existing serve responses keep working while callers
+  // migrate. Both POLL and QUIZ now go through renderChoice.
+  function renderPoll(task){ return renderChoice(task, 'POLL'); }
+  function renderQuiz(task){ return renderChoice(task, 'QUIZ'); }
 
   function renderFeedback(task){
     post('LOADED', { kind: 'FEEDBACK', taskId: task.id, campaignId: task.campaignId });
@@ -356,6 +490,7 @@ function html(req: NextRequest): string {
       .then(function(j){
         if(j.kind === 'BANNER' && j.ad) return renderBanner(j.ad);
         if(j.kind === 'POLL'    && j.task) return renderPoll(j.task);
+        if(j.kind === 'QUIZ'    && j.task) return renderQuiz(j.task);
         if(j.kind === 'FEEDBACK'&& j.task) return renderFeedback(j.task);
         if(j.kind === 'SURVEY'  && j.task) return renderSurvey(j.task);
         if(j.kind === 'NONE'){ post('NONE', {}); root.innerHTML = ''; emitResize(); return; }

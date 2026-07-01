@@ -24,8 +24,11 @@ const ERC20_BALANCE_ABI = [{
 // refresh, a tab switch into wallet, or a browser crash doesn't lose progress.
 // Bumping DRAFT_SCHEMA_VERSION invalidates older saved drafts; do this when
 // the shape of `formData` / `CtaDraft` changes in a breaking way.
-const DRAFT_LS_KEY = 'sovads:create-campaign:draft:v1'
-const DRAFT_SCHEMA_VERSION = 1
+//
+// v2: POLL/QUIZ now carry a single question + colored options instead of
+// the old `pollQuestions: {q,a}[]` array. Old drafts are dropped on load.
+const DRAFT_LS_KEY = 'sovads:create-campaign:draft:v2'
+const DRAFT_SCHEMA_VERSION = 2
 // Debounce window for localStorage writes. 600 ms keeps the IO cheap during
 // continuous typing while still feeling instant — most users pause longer
 // than that between fields.
@@ -49,7 +52,7 @@ interface CampaignFormData {
   mediaType: 'image' | 'video'
 }
 
-const CTA_KINDS = ['VISIT_URL', 'SOCIAL_FOLLOW', 'QUIZ', 'STAKE_GS', 'CONTRACT_CALL', 'SIGN_MESSAGE'] as const
+const CTA_KINDS = ['VISIT_URL', 'SOCIAL_FOLLOW', 'POLL', 'QUIZ', 'STAKE_GS', 'CONTRACT_CALL', 'SIGN_MESSAGE'] as const
 const CTA_VERIFIERS = ['MANUAL', 'NA', 'ORACLE', 'SELF_SIGNED', 'STAKE_PROOF', 'ONCHAIN_EVENT', 'WEBHOOK', 'AI_PLAN'] as const
 type CtaKind = typeof CTA_KINDS[number]
 type CtaVerifier = typeof CTA_VERIFIERS[number]
@@ -60,7 +63,8 @@ type CtaVerifier = typeof CTA_VERIFIERS[number]
 const CTA_KIND_LABEL: Record<CtaKind, string> = {
   VISIT_URL: 'Visit a link',
   SOCIAL_FOLLOW: 'Follow on social',
-  QUIZ: 'Quick poll',
+  POLL: 'Quick poll',
+  QUIZ: 'Quick quiz',
   STAKE_GS: 'Stake G$',
   SIGN_MESSAGE: 'Sign a message',
   CONTRACT_CALL: 'On-chain action (advanced)',
@@ -83,13 +87,14 @@ const CTA_VERIFIER_LABEL: Record<CtaVerifier, string> = {
 // The CTA types that show up in the dropdown by default. CONTRACT_CALL is
 // power-user surface area (requires a contract address + event topic), so
 // it's gated behind the "Show advanced types" toggle in the CTA section.
-const BASIC_CTA_KINDS: CtaKind[] = ['VISIT_URL', 'SOCIAL_FOLLOW', 'QUIZ', 'STAKE_GS', 'SIGN_MESSAGE']
+const BASIC_CTA_KINDS: CtaKind[] = ['VISIT_URL', 'SOCIAL_FOLLOW', 'POLL', 'QUIZ', 'STAKE_GS', 'SIGN_MESSAGE']
 const ADVANCED_CTA_KINDS: CtaKind[] = ['CONTRACT_CALL']
 
 const DEFAULT_VERIFIER: Record<CtaKind, CtaVerifier> = {
   VISIT_URL: 'MANUAL',
   SOCIAL_FOLLOW: 'MANUAL',
-  QUIZ: 'MANUAL',
+  POLL: 'ORACLE',
+  QUIZ: 'ORACLE',
   STAKE_GS: 'MANUAL',
   CONTRACT_CALL: 'MANUAL',
   SIGN_MESSAGE: 'MANUAL',
@@ -108,25 +113,30 @@ interface CtaDraft {
   cooldownSecs: string
   url: string
   minDwellMs: string
-  expectedAnswer: string
   signMessage: string
   minAmount: string
   targetContract: string
   eventSig: string
   aiPrompt: string
   contractAllowlist: string
-  // Quick poll questions. Each entry is one question + the expected answer.
-  // Hard-capped at MAX_POLL_QUESTIONS in the UI; the back-end already accepts
-  // an array via cta.config.questions, so no API change is needed.
-  pollQuestions: { q: string; a: string }[]
+  // POLL / QUIZ shared editor model. The CTA `label` doubles as the
+  // question header rendered by the iframe / SDK, so we only need an
+  // option list here. For QUIZ exactly one option is marked `correct`;
+  // for POLL `correct` is irrelevant (any choice earns).
+  pollOptions: { id: string; label: string; correct?: boolean }[]
   collapsed: boolean
 }
 
-// Quick poll cap. Three questions is the sweet spot — enough to validate the
-// viewer actually engaged, few enough that completion rates stay high. The
-// UI hides the "+ Add question" button once this many are present and the
-// reducer that appends new ones short-circuits as a defence in depth.
-const MAX_POLL_QUESTIONS = 3
+// Per-question colored option cap. 5 is the hard upper bound the renderer
+// supports (2x3 grid with the last tile spanning); below 2 there's no
+// meaningful choice. Keep these in sync with the renderer in r/unit.
+const MAX_POLL_OPTIONS = 5
+const MIN_POLL_OPTIONS = 2
+
+// Short stable id for an option. Stored with the task so analytics survive
+// option-label edits; the renderer keys tiles by it.
+const newPollOptionId = () =>
+  'opt_' + Math.random().toString(36).slice(2, 8)
 
 // Tag / Geo presets. Free-text was tripping up non-technical advertisers
 // ("what should I even put here?"), so the targeting fields are now chip-
@@ -285,16 +295,21 @@ const newCtaDraft = (kind: CtaKind = 'VISIT_URL'): CtaDraft => ({
   // Hidden from the advertiser UI — normal users don't need to tune this in
   // milliseconds. Power-user override can live behind an admin tool later.
   minDwellMs: '60000',
-  expectedAnswer: '',
   signMessage: '',
   minAmount: '',
   targetContract: '',
   eventSig: '',
   aiPrompt: '',
   contractAllowlist: '',
-  // Start every QUIZ/poll draft with one empty question so the editor isn't
-  // a wall of blank space; the user can click "+ Add question" for more.
-  pollQuestions: kind === 'QUIZ' ? [{ q: '', a: '' }] : [],
+  // POLL / QUIZ default seed: two blank option rows so the editor opens
+  // with a meaningful skeleton (the renderer needs >= 2 options).
+  pollOptions:
+    kind === 'POLL' || kind === 'QUIZ'
+      ? [
+          { id: newPollOptionId(), label: '' },
+          { id: newPollOptionId(), label: '' },
+        ]
+      : [],
   collapsed: false,
 })
 
@@ -305,21 +320,25 @@ function buildCtaConfig(c: CtaDraft): Record<string, unknown> {
     if (c.url) cfg.url = c.url
     if (c.minDwellMs) cfg.minDwellMs = Number(c.minDwellMs)
   }
-  if (c.kind === 'QUIZ') {
-    // Emit the trimmed, non-empty question/answer pairs. We cap at
-    // MAX_POLL_QUESTIONS as a belt-and-braces guard in case the draft was
-    // hand-edited via localStorage. The legacy single-answer field is still
-    // accepted by the server for older drafts, so populate it from the first
-    // question for backwards compatibility.
-    const questions = c.pollQuestions
-      .slice(0, MAX_POLL_QUESTIONS)
-      .map((qa) => ({ q: qa.q.trim(), a: qa.a.trim() }))
-      .filter((qa) => qa.q && qa.a)
-    if (questions.length > 0) {
-      cfg.questions = questions
-      cfg.expectedAnswer = questions[0].a
-    } else if (c.expectedAnswer) {
-      cfg.expectedAnswer = c.expectedAnswer
+  if (c.kind === 'POLL' || c.kind === 'QUIZ') {
+    const opts = c.pollOptions
+      .slice(0, MAX_POLL_OPTIONS)
+      .map((o) => ({
+        id: o.id || newPollOptionId(),
+        label: o.label.trim(),
+        // Persist the correct flag for QUIZ; POLL ignores it server-side.
+        ...(c.kind === 'QUIZ' && o.correct ? { correct: true } : {}),
+      }))
+      .filter((o) => o.label)
+    if (opts.length > 0) {
+      cfg.options = opts
+      // QUIZ keeps `expectedAnswer` populated for back-compat with the
+      // legacy text-match verifier path. The new optionId path takes
+      // precedence server-side when both are present.
+      if (c.kind === 'QUIZ') {
+        const correct = opts.find((o) => 'correct' in o && o.correct)
+        if (correct) cfg.expectedAnswer = correct.label
+      }
     }
   }
   if (c.kind === 'SIGN_MESSAGE' && c.signMessage) cfg.signMessage = c.signMessage
@@ -663,16 +682,25 @@ export default function CreateCampaign() {
         !parsed.formData.budget?.trim() &&
         (!parsed.ctaDrafts || parsed.ctaDrafts.length === 0)
       if (looksEmpty) return
-      // Defend against older drafts that pre-date the pollQuestions field by
-      // back-filling it. We also re-seed an empty row for QUIZ kinds so the
-      // editor isn't blank after restore.
+      // Defend against older drafts that pre-date the pollOptions field by
+      // back-filling a fresh two-option seed for POLL / QUIZ kinds. v1 drafts
+      // are already filtered out by the schema-version check above, so this
+      // branch only covers v2 drafts saved before pollOptions stabilised.
+      const seed = () => [
+        { id: newPollOptionId(), label: '' },
+        { id: newPollOptionId(), label: '' },
+      ]
       const migratedCtas: CtaDraft[] = (parsed.ctaDrafts || []).map((c) => ({
         ...c,
-        pollQuestions:
-          c.pollQuestions && c.pollQuestions.length > 0
-            ? c.pollQuestions.slice(0, MAX_POLL_QUESTIONS)
-            : c.kind === 'QUIZ'
-              ? [{ q: '', a: c.expectedAnswer || '' }]
+        pollOptions:
+          Array.isArray(c.pollOptions) && c.pollOptions.length >= MIN_POLL_OPTIONS
+            ? c.pollOptions.slice(0, MAX_POLL_OPTIONS).map((o) => ({
+                id: o.id || newPollOptionId(),
+                label: o.label || '',
+                ...(o.correct ? { correct: true } : {}),
+              }))
+            : c.kind === 'POLL' || c.kind === 'QUIZ'
+              ? seed()
               : [],
       }))
       setRestoredDraft({
@@ -863,7 +891,9 @@ export default function CreateCampaign() {
         tpl.ctas.map((c) => ({
           ...newCtaDraft(c.kind),
           ...c,
-          pollQuestions: c.kind === 'QUIZ' ? [{ q: '', a: '' }] : [],
+          // newCtaDraft already seeds the right pollOptions shape based on
+          // kind; the spread above intentionally doesn't carry option data
+          // because templates don't ship per-option labels.
         })),
       )
     }
@@ -1801,15 +1831,20 @@ export default function CreateCampaign() {
                               const kind = e.target.value as CtaKind
                               setCtaDrafts((prev) => prev.map((x) => {
                                 if (x.uid !== c.uid) return x
-                                // When switching INTO a poll, make sure there's
-                                // at least one row to type into. We don't drop
-                                // pollQuestions when switching OUT so the user
-                                // can toggle without losing work.
-                                const pollQuestions =
-                                  kind === 'QUIZ' && x.pollQuestions.length === 0
-                                    ? [{ q: '', a: '' }]
-                                    : x.pollQuestions
-                                return { ...x, kind, verifier: DEFAULT_VERIFIER[kind], pollQuestions }
+                                // When switching INTO a poll/quiz, make sure
+                                // there are at least two option rows to type
+                                // into. We DON'T drop pollOptions when
+                                // switching OUT so the user can toggle
+                                // between POLL and QUIZ without losing work.
+                                const needsOptions = kind === 'POLL' || kind === 'QUIZ'
+                                const pollOptions =
+                                  needsOptions && x.pollOptions.length < MIN_POLL_OPTIONS
+                                    ? [
+                                        { id: newPollOptionId(), label: '' },
+                                        { id: newPollOptionId(), label: '' },
+                                      ]
+                                    : x.pollOptions
+                                return { ...x, kind, verifier: DEFAULT_VERIFIER[kind], pollOptions }
                               }))
                             }}
                             className={SELECT}
@@ -1856,63 +1891,120 @@ export default function CreateCampaign() {
                             </label>
                           )
                         })()}
-                        {c.kind === 'QUIZ' && (
-                          <div className="space-y-2">
-                            <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-[#666]">
-                              Poll questions
-                              <span className="ml-1.5 text-[10px] normal-case tracking-normal text-[#888]">
-                                ({c.pollQuestions.length}/{MAX_POLL_QUESTIONS})
-                              </span>
-                            </p>
-                            {c.pollQuestions.map((qa, qIdx) => (
-                              <div key={qIdx} className="flex flex-col gap-2 border border-[#E5E5E5] bg-white p-2 sm:flex-row sm:items-start">
-                                <div className="mt-1 w-6 shrink-0 text-center text-[11px] font-medium text-[#888]">{qIdx + 1}.</div>
-                                <div className="flex flex-1 flex-col gap-2 sm:flex-row">
+                        {(c.kind === 'POLL' || c.kind === 'QUIZ') && (() => {
+                          // Editor for the colored option tiles. Question text
+                          // lives in the CTA `label` field above — that's what
+                          // the iframe renderer paints as the card header. Here
+                          // we only collect the 2–5 options.
+                          //
+                          // QUIZ additionally requires exactly one option to be
+                          // marked correct; the radio in the leading column
+                          // enforces that with native single-select behaviour.
+                          const TILE_BG = ['#e21b3c', '#1368ce', '#d89e00', '#26890c', '#864cbf']
+                          const TILE_FG = ['#fff', '#fff', '#1c1300', '#fff', '#fff']
+                          const setOptions = (next: { id: string; label: string; correct?: boolean }[]) =>
+                            setCtaDrafts((prev) => prev.map((x) => (x.uid === c.uid ? { ...x, pollOptions: next } : x)))
+                          const correctCount = c.pollOptions.filter((o) => o.correct).length
+                          const missingCorrect = c.kind === 'QUIZ' && correctCount === 0
+                          const filledCount = c.pollOptions.filter((o) => o.label.trim()).length
+                          return (
+                            <div className="space-y-2">
+                              <p className="text-[11px] font-medium uppercase tracking-[0.1em] text-[#666]">
+                                {c.kind === 'QUIZ' ? 'Quiz options' : 'Poll options'}
+                                <span className="ml-1.5 text-[10px] normal-case tracking-normal text-[#888]">
+                                  ({filledCount}/{MAX_POLL_OPTIONS} · min {MIN_POLL_OPTIONS})
+                                </span>
+                              </p>
+                              <p className="text-[10px] leading-4 text-[#888]">
+                                {c.kind === 'QUIZ'
+                                  ? 'Pick the one correct option. Wrong answers don’t earn the reward.'
+                                  : 'Every option earns the same reward — use this for demographics or audience polls.'}
+                              </p>
+                              {c.pollOptions.map((opt, oIdx) => (
+                                <div key={opt.id} className="flex items-stretch gap-2">
+                                  {/* Color swatch — mirrors the renderer's tile palette
+                                       so the advertiser sees the exact same hue order. */}
+                                  <div
+                                    aria-hidden
+                                    className="flex w-9 shrink-0 items-center justify-center text-[11px] font-bold"
+                                    style={{ background: TILE_BG[oIdx % 5], color: TILE_FG[oIdx % 5] }}
+                                    title={`Tile color #${oIdx + 1}`}
+                                  >
+                                    {oIdx + 1}
+                                  </div>
                                   <input
-                                    value={qa.q}
-                                    onChange={(e) => setCtaDrafts((prev) => prev.map((x) => (x.uid === c.uid ? { ...x, pollQuestions: x.pollQuestions.map((p, i) => (i === qIdx ? { ...p, q: e.target.value } : p)) } : x)))}
-                                    placeholder="Question"
+                                    value={opt.label}
+                                    onChange={(e) => {
+                                      const v = e.target.value
+                                      setOptions(c.pollOptions.map((p, i) => (i === oIdx ? { ...p, label: v } : p)))
+                                    }}
+                                    placeholder={`Option ${oIdx + 1}`}
+                                    maxLength={60}
                                     className={`${INPUT} flex-1`}
                                   />
-                                  <input
-                                    value={qa.a}
-                                    onChange={(e) => setCtaDrafts((prev) => prev.map((x) => (x.uid === c.uid ? { ...x, pollQuestions: x.pollQuestions.map((p, i) => (i === qIdx ? { ...p, a: e.target.value } : p)) } : x)))}
-                                    placeholder="Expected answer"
-                                    className={`${INPUT} flex-1`}
-                                  />
+                                  {c.kind === 'QUIZ' && (
+                                    <label
+                                      className="flex shrink-0 cursor-pointer items-center gap-1.5 border border-[#E5E5E5] bg-white px-2 text-[10px] font-medium text-[#666] hover:bg-[#FAFAF8]"
+                                      title="Mark as the correct answer"
+                                    >
+                                      <input
+                                        type="radio"
+                                        name={`cta-correct-${c.uid}`}
+                                        checked={!!opt.correct}
+                                        onChange={() =>
+                                          setOptions(
+                                            c.pollOptions.map((p, i) => ({
+                                              ...p,
+                                              correct: i === oIdx ? true : false,
+                                            })),
+                                          )
+                                        }
+                                        className="accent-[#26890c]"
+                                      />
+                                      Correct
+                                    </label>
+                                  )}
+                                  {c.pollOptions.length > MIN_POLL_OPTIONS && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setOptions(c.pollOptions.filter((_, i) => i !== oIdx))}
+                                      className="shrink-0 border border-[#E5E5E5] bg-white px-2 text-[11px] text-[#999] hover:bg-[#FAFAF8] hover:text-[#2D2D2D]"
+                                      aria-label={`Remove option ${oIdx + 1}`}
+                                    >
+                                      −
+                                    </button>
+                                  )}
                                 </div>
-                                {c.pollQuestions.length > 1 && (
+                              ))}
+                              <div className="flex flex-wrap items-center gap-2">
+                                {c.pollOptions.length < MAX_POLL_OPTIONS && (
                                   <button
                                     type="button"
-                                    onClick={() => setCtaDrafts((prev) => prev.map((x) => (x.uid === c.uid ? { ...x, pollQuestions: x.pollQuestions.filter((_, i) => i !== qIdx) } : x)))}
-                                    className="text-[11px] text-[#999] hover:text-[#2D2D2D] hover:underline"
-                                    aria-label={`Remove question ${qIdx + 1}`}
+                                    onClick={() =>
+                                      setOptions([
+                                        ...c.pollOptions,
+                                        { id: newPollOptionId(), label: '' },
+                                      ])
+                                    }
+                                    className="border border-[#E5E5E5] bg-white px-2 py-1 text-[11px] text-[#2D2D2D] hover:bg-[#FAFAF8]"
                                   >
-                                    Remove
+                                    + Add option
                                   </button>
                                 )}
+                                {c.pollOptions.length >= MAX_POLL_OPTIONS && (
+                                  <span className="text-[10px] text-[#888]">
+                                    Max {MAX_POLL_OPTIONS} options. The renderer can’t show more cleanly.
+                                  </span>
+                                )}
+                                {missingCorrect && (
+                                  <span className="text-[10px] font-medium text-[#B00020]">
+                                    Pick the correct option before launching.
+                                  </span>
+                                )}
                               </div>
-                            ))}
-                            {c.pollQuestions.length < MAX_POLL_QUESTIONS && (
-                              <button
-                                type="button"
-                                onClick={() => setCtaDrafts((prev) => prev.map((x) => {
-                                  if (x.uid !== c.uid) return x
-                                  if (x.pollQuestions.length >= MAX_POLL_QUESTIONS) return x
-                                  return { ...x, pollQuestions: [...x.pollQuestions, { q: '', a: '' }] }
-                                }))}
-                                className="border border-[#E5E5E5] bg-white px-2 py-1 text-[11px] text-[#2D2D2D] hover:bg-[#FAFAF8]"
-                              >
-                                + Add question
-                              </button>
-                            )}
-                            {c.pollQuestions.length >= MAX_POLL_QUESTIONS && (
-                              <p className="text-[10px] text-[#888]">
-                                Max {MAX_POLL_QUESTIONS} questions — keeping it short keeps completion rates up.
-                              </p>
-                            )}
-                          </div>
-                        )}
+                            </div>
+                          )
+                        })()}
                         {c.kind === 'SIGN_MESSAGE' && (
                           <label className="block">
                             <span className={LABEL}>Message to sign</span>
@@ -2174,23 +2266,19 @@ export default function CreateCampaign() {
                 </header>
                 <div className="p-3">
                   <div className="overflow-hidden border border-[#E5E5E5]">
-                    <div className="aspect-[16/8] bg-[#EFEDE7]">
+                    {/* POLL / QUIZ overlay sits inside this aspect box; we set
+                        position:relative so the SDK panel\u2019s position:absolute
+                        anchors to the banner image. Empty state = flat cream
+                        background (theme `--background`), no placeholder icon
+                        or copy \u2014 the empty box itself is the affordance. Once
+                        an image is mounted it covers the whole box. */}
+                    <div className="relative aspect-[16/8] bg-[#F5F3F0]">
                       {(() => {
                         if (!bannerPreview) {
-                          return (
-                            // Phase 8: nicer empty state. Tells the advertiser
-                            // exactly what fills this space so they know which
-                            // field drives the preview.
-                            <div className="flex h-full w-full flex-col items-center justify-center gap-1 px-4 text-center text-[11px] text-[#888]">
-                              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true">
-                                <rect x="3" y="3" width="18" height="18" rx="0" />
-                                <circle cx="9" cy="9" r="2" />
-                                <path d="M21 15l-5-5L5 21" />
-                              </svg>
-                              <p>Your creative will appear here.</p>
-                              <p className="text-[10px] text-[#9a9a9a]">Upload a file or paste a URL above.</p>
-                            </div>
-                          )
+                          // Intentionally empty: cream surface only. The
+                          // upload affordance lives in the form above, no
+                          // need to repeat it inside the preview rail.
+                          return null
                         }
                         // Streaming URL \u2192 mirror the SDK's iframe path so the
                         // advertiser sees exactly what viewers will see.
@@ -2218,26 +2306,91 @@ export default function CreateCampaign() {
                           <img src={bannerPreview} alt="" className="h-full w-full object-cover" />
                         )
                       })()}
+                      {/* First POLL/QUIZ CTA renders as a Kahoot-style tile
+                          grid overlaying the bottom of the banner. The
+                          banner image is still clickable wherever the
+                          gradient is transparent. */}
+                      {(() => {
+                        const overlayCta = ctaDrafts.find(
+                          (c) => c.label.trim() && (c.kind === 'POLL' || c.kind === 'QUIZ'),
+                        )
+                        if (!overlayCta) return null
+                        return (
+                          <CtaPreview
+                            key={`overlay-${overlayCta.uid}`}
+                            kind={overlayCta.kind}
+                            label={overlayCta.label}
+                            buttonLabel={overlayCta.buttonLabel}
+                            description={overlayCta.description}
+                            rewardPoints={Number(overlayCta.rewardPoints) || 0}
+                            rewardGs={overlayCta.rewardGs ? Number(overlayCta.rewardGs) : null}
+                            options={overlayCta.pollOptions
+                              .filter((o) => o.label.trim())
+                              .map((o) => ({ id: o.id, label: o.label.trim() }))}
+                            overlay
+                          />
+                        )
+                      })()}
                     </div>
-                    <div className="p-3">
-                      <p className="truncate text-[13px] font-semibold text-[#2D2D2D]">
-                        {formData.name || 'Campaign name'}
-                      </p>
-                      <p className="line-clamp-2 text-[12px] text-[#666]">
-                        {formData.description || 'Description shows here.'}
-                      </p>
-                      <p className="mt-2 truncate text-[11px] text-[#888]">
-                        {formData.targetUrl || 'https://your-landing.example'}
-                      </p>
-                    </div>
+                    {/* Banner footer (name / description / URL). For POLL or
+                        QUIZ overlays the question + reward chip are already
+                        painted on top of the banner, so we shrink the footer
+                        to title + URL only (description is redundant with
+                        the on-banner question). URL is only shown when the
+                        advertiser has actually typed one; protocol stripped
+                        so it reads like a domain. */}
+                    {(() => {
+                      const overlayActive = ctaDrafts.some(
+                        (c) => c.label.trim() && (c.kind === 'POLL' || c.kind === 'QUIZ'),
+                      )
+                      // Display form: drop the protocol + trailing slash so
+                      // \"https://example.com/\" reads as \"example.com\". Falls
+                      // back to '' when empty, which we then hide entirely.
+                      const prettyUrl = (formData.targetUrl || '')
+                        .trim()
+                        .replace(/^https?:\/\//i, '')
+                        .replace(/\/+$/, '')
+                      const trimmedName = (formData.name || '').trim()
+                      if (overlayActive) {
+                        // Nothing to show? Skip the footer entirely so the
+                        // preview card ends at the banner.
+                        if (!trimmedName && !prettyUrl) return null
+                        return (
+                          <div className="flex items-center justify-between gap-3 px-3 py-2">
+                            {trimmedName && (
+                              <p className="truncate text-[12px] font-semibold text-[#2D2D2D]">
+                                {trimmedName}
+                              </p>
+                            )}
+                            {prettyUrl && (
+                              <p className="truncate text-[11px] text-[#888]">{prettyUrl}</p>
+                            )}
+                          </div>
+                        )
+                      }
+                      return (
+                        <div className="p-3">
+                          <p className="truncate text-[13px] font-semibold text-[#2D2D2D]">
+                            {trimmedName || 'Campaign name'}
+                          </p>
+                          <p className="line-clamp-2 text-[12px] text-[#666]">
+                            {formData.description || 'Description shows here.'}
+                          </p>
+                          {prettyUrl && (
+                            <p className="mt-2 truncate text-[11px] text-[#888]">{prettyUrl}</p>
+                          )}
+                        </div>
+                      )
+                    })()}
                   </div>
 
-                  {/* CTA chips — render each via the SDK in preview mode so the
-                      advertiser sees pixel-exact what viewers will get. */}
-                  {ctaDrafts.filter((c) => c.label.trim()).length > 0 && (
+                  {/* CTA chips for non-overlay kinds (VISIT_URL / SIGN_MESSAGE
+                      / unsupported). POLL / QUIZ are rendered over the banner
+                      above, so we exclude them here to avoid duplication. */}
+                  {ctaDrafts.filter((c) => c.label.trim() && c.kind !== 'POLL' && c.kind !== 'QUIZ').length > 0 && (
                     <div className="mt-3 space-y-2">
                       {ctaDrafts
-                        .filter((c) => c.label.trim())
+                        .filter((c) => c.label.trim() && c.kind !== 'POLL' && c.kind !== 'QUIZ')
                         .map((c) => (
                           <CtaPreview
                             key={c.uid}

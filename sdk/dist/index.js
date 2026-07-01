@@ -1420,6 +1420,7 @@ export function mountCtaPanel(opts) {
             onComplete: wrappedOnComplete,
             preview: opts.preview,
             layout: opts.layout,
+            overlay: opts.overlay,
         });
     }
     catch (e) {
@@ -1457,6 +1458,7 @@ export function mountCtaPanel(opts) {
 export function renderAttachedCtas(opts) {
     const { container, sovads, tasks, campaignId, bannerClickActive, onComplete, preview } = opts;
     const requestedLayout = opts.layout ?? 'stack';
+    const overlay = !!opts.overlay;
     // 'auto' resolves at render time: 2 tasks side-by-side, otherwise stack.
     // 1 task in a row would look identical to stack; 3+ tasks side-by-side in
     // a 300px-wide Banner would each end up ~90px wide with a truncated label,
@@ -1481,35 +1483,64 @@ export function renderAttachedCtas(opts) {
         panel.setAttribute('data-layout-requested', 'auto');
     if (preview)
         panel.setAttribute('data-preview', '1');
-    // No card chrome \u2014 the buttons themselves carry all the visual weight.
-    // Tight spacing so the banner + CTAs read as one cohesive component:
-    // 2px gap to the banner above, 4px between stacked CTA buttons.
-    // In 'inline' layout the panel becomes a horizontal row of equal-width
-    // items so it can sit next to the media element (used by BottomBar).
-    panel.style.cssText = layout === 'inline'
-        ? `
-        margin: 0;
-        color: var(--sovads-accent, #2D2D2D);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 13px;
-        display: flex;
-        flex-direction: row;
-        align-items: stretch;
-        gap: 6px;
-        box-sizing: border-box;
-        width: 100%;
-      `
-        : `
-        margin-top: 2px;
-        color: var(--sovads-accent, #2D2D2D);
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        font-size: 13px;
-        display: flex;
-        flex-direction: column;
-        gap: 4px;
-        box-sizing: border-box;
-        width: 100%;
-      `;
+    if (overlay)
+        panel.setAttribute('data-overlay', '1');
+    // Three rendering modes:
+    //   overlay  \u2014 panel sits absolutely on top of the banner image; the
+    //              empty area between tiles is pointer-events:none so banner
+    //              click-through still works. A subtle dark gradient under
+    //              the tiles keeps light tile colors readable over busy
+    //              creatives. POLL / QUIZ kinds opt into this.
+    //   inline   \u2014 horizontal row, used by BottomBar where vertical stacking
+    //              would blow up the bar height.
+    //   stack    \u2014 (default) vertical column under the banner.
+    if (overlay) {
+        panel.style.cssText = `
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      margin: 0;
+      padding: 14px 10px 10px;
+      color: var(--sovads-on-accent, #F5F3F0);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      box-sizing: border-box;
+      width: 100%;
+      background: linear-gradient(to top, rgba(0,0,0,0.78) 0%, rgba(0,0,0,0.55) 60%, rgba(0,0,0,0) 100%);
+      pointer-events: none;
+      z-index: 2;
+    `;
+    }
+    else {
+        panel.style.cssText = layout === 'inline'
+            ? `
+          margin: 0;
+          color: var(--sovads-accent, #2D2D2D);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 13px;
+          display: flex;
+          flex-direction: row;
+          align-items: stretch;
+          gap: 6px;
+          box-sizing: border-box;
+          width: 100%;
+        `
+            : `
+          margin-top: 2px;
+          color: var(--sovads-accent, #2D2D2D);
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+          font-size: 13px;
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+          box-sizing: border-box;
+          width: 100%;
+        `;
+    }
     container.appendChild(panel);
     const renderBudgetNotice = () => {
         if (bannerClickActive)
@@ -1537,6 +1568,7 @@ export function renderAttachedCtas(opts) {
                 preview: !!preview,
                 gsLogoUrl: resolveGsLogoUrl(sovads),
                 done,
+                overlay,
             });
             // In inline layout the row needs to flex so multiple tasks share width
             // equally. In stack mode (default) we leave width alone so the row
@@ -1544,6 +1576,12 @@ export function renderAttachedCtas(opts) {
             if (layout === 'inline') {
                 row.style.flex = '1 1 0';
                 row.style.minWidth = '0';
+            }
+            // Overlay mode: the panel itself is pointer-events:none so banner
+            // clicks pass through the gradient. Re-enable pointer events on the
+            // task row so the tiles inside are still clickable.
+            if (overlay) {
+                row.style.pointerEvents = 'auto';
             }
             panel.appendChild(row);
         }
@@ -1882,57 +1920,178 @@ function buildTaskRow(task, ctx) {
         applyDoneStyling(btn);
         row.appendChild(btn);
     }
-    else if (task.kind === 'POLL') {
+    else if (task.kind === 'POLL' || task.kind === 'QUIZ') {
+        // Unified colored-tile renderer (POLL + QUIZ). 2\u20135 options laid out as
+        // a Kahoot-style grid (1\u00d72, 2\u00d72, or 2\u00d73 with the 5th spanning the
+        // last row). Each tile gets its own fixed hue so the viewer\u2019s eye can
+        // pair color with label across both the attached and standalone forms.
         const optionsList = task.options ?? [];
         if (optionsList.length === 0) {
-            setStatus('Poll has no options.', 'err');
+            setStatus(`${task.kind === 'QUIZ' ? 'Quiz' : 'Poll'} has no options.`, 'err');
             row.appendChild(status);
             return row;
         }
-        // Reward chip floats above the option row (we can't stamp +N on every
-        // option button without it reading like each pick rewards multiple times).
+        // Reward chip floats above the option grid \u2014 same affordance the
+        // standalone iframe paints, so the price reads identically across surfaces.
+        // We pair it with the task label in a single header row: label on the
+        // left, chip on the right. The label gives the viewer the question
+        // (\u201cWhat did you use G$ for?\u201d); without it the tiles read as decisions
+        // floating in space, especially in overlay mode where there\u2019s no
+        // surrounding card chrome to imply context.
         const rewardChip = makeRewardChip(reward, ctx.gsLogoUrl);
-        const rewardWrap = document.createElement('div');
-        rewardWrap.style.cssText = 'display:flex;justify-content:flex-end;margin-bottom:2px;';
-        rewardWrap.appendChild(rewardChip);
-        row.appendChild(rewardWrap);
-        // Layout heuristic: 2 short labels (\u2264 18 chars) \u2192 side-by-side pair so the
-        // viewer reads them as a real binary choice. Otherwise stack vertically
-        // and emphasise the first option as primary, the rest as secondary so the
-        // group reads as a single decision tree, not a wall of equal buttons.
-        const allShort = optionsList.every((o) => (o.label || '').length <= 18);
-        const horizontal = optionsList.length === 2 && allShort;
+        if (ctx.overlay) {
+            // Lift the chip onto the dark gradient: white pill on a dark gradient
+            // reads better than the default surface-tinted chip.
+            rewardChip.style.background = 'rgba(255,255,255,0.94)';
+            rewardChip.style.borderColor = 'rgba(255,255,255,0.94)';
+            rewardChip.style.color = '#1a1a1a';
+            rewardChip.style.boxShadow = '0 1px 3px rgba(0,0,0,0.25)';
+        }
+        const headerWrap = document.createElement('div');
+        headerWrap.style.cssText =
+            'display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;';
+        const labelEl = document.createElement('div');
+        labelEl.textContent = task.label || '';
+        labelEl.style.cssText = ctx.overlay
+            ? // Overlay: white label over the dark gradient with a subtle text
+                // shadow so it stays legible if the banner image is light at the
+                // bottom edge (gradient is translucent at the very top of the panel).
+                'flex:1 1 auto;min-width:0;font-size:13px;font-weight:700;line-height:1.2;' +
+                    'color:#fff;text-shadow:0 1px 2px rgba(0,0,0,0.55);' +
+                    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;'
+            : // Attached (non-overlay): standard dark label on the surface card.
+                'flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;line-height:1.2;' +
+                    'color:var(--sovads-accent, #2D2D2D);' +
+                    'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+        headerWrap.appendChild(labelEl);
+        headerWrap.appendChild(rewardChip);
+        row.appendChild(headerWrap);
+        // Palette mirrors /r/unit renderer so attached + iframe stay visually
+        // unified. Light yellow (#d89e00) uses dark text for legibility; the rest
+        // use white text on saturated backgrounds.
+        const TILE_BG = ['#e21b3c', '#1368ce', '#d89e00', '#26890c', '#864cbf'];
+        const TILE_FG = ['#fff', '#fff', '#1c1300', '#fff', '#fff'];
+        const n = Math.min(5, Math.max(2, optionsList.length));
+        // 2 \u2192 single row of 2; 3\u20134 \u2192 2x2 grid; 5 \u2192 2x3 with the last tile
+        // spanning both columns of its row so it still reads as primary.
+        const cols = n === 2 ? 2 : 2;
         const optionsWrap = document.createElement('div');
-        optionsWrap.style.cssText = horizontal
-            ? 'display:flex;flex-direction:row;gap:4px;align-items:stretch;'
-            : 'display:flex;flex-direction:column;gap:3px;';
-        optionsList.forEach((opt, idx) => {
-            const variant = horizontal
-                ? 'secondary'
-                : idx === 0
-                    ? 'primary'
-                    : 'secondary';
-            const optBtn = makeButton(opt.label, variant);
-            if (horizontal) {
-                optBtn.style.flex = '1 1 0';
-                optBtn.style.minWidth = '0';
-                optBtn.style.whiteSpace = 'normal';
+        optionsWrap.style.cssText =
+            `display:grid;grid-template-columns:repeat(${cols},1fr);gap:4px;`;
+        // Single-shot submit guard \u2014 you only get one chance to answer. Wins
+        // race conditions where the viewer mashes two tiles before the network
+        // round-trip resolves.
+        let submitted = false;
+        const lockGrid = () => {
+            for (const child of Array.from(optionsWrap.children)) {
+                ;
+                child.disabled = true;
+                child.style.cursor = 'default';
             }
-            wireClick(optBtn, async () => {
+        };
+        const renderSaved = (text, tone) => {
+            // Replace the tile grid with a single confirmation card. Wipe the
+            // status text too \u2014 the card itself communicates the outcome and a
+            // duplicate \u201cThanks! +N\u201d below would feel like a bug.
+            optionsWrap.replaceChildren();
+            optionsWrap.style.display = 'flex';
+            optionsWrap.style.flexDirection = 'column';
+            optionsWrap.style.alignItems = 'stretch';
+            const card = document.createElement('div');
+            card.setAttribute('role', 'status');
+            card.style.cssText =
+                'display:flex;align-items:center;justify-content:center;gap:6px;' +
+                    'padding:10px 12px;font-size:13px;font-weight:600;line-height:1.2;' +
+                    'border:1px solid ' +
+                    (tone === 'ok' ? 'var(--sovads-success, #1f7a3a)' : '#a02020') +
+                    ';color:' +
+                    (tone === 'ok' ? 'var(--sovads-success, #1f7a3a)' : '#a02020') +
+                    ';background:var(--sovads-surface, #FAFAF8);border-radius:6px;';
+            card.textContent = (tone === 'ok' ? '\u2713 ' : '\u2715 ') + text;
+            optionsWrap.appendChild(card);
+            setStatus('', 'info');
+        };
+        optionsList.slice(0, 5).forEach((opt, idx) => {
+            const tile = document.createElement('button');
+            tile.type = 'button';
+            tile.setAttribute('data-option-id', opt.id);
+            tile.style.cssText =
+                'display:flex;align-items:center;justify-content:center;gap:6px;' +
+                    'min-height:44px;padding:8px 10px;' +
+                    'border:0;border-radius:6px;cursor:pointer;' +
+                    'font-size:13px;font-weight:700;line-height:1.2;text-align:center;' +
+                    `background:${TILE_BG[idx % 5]};color:${TILE_FG[idx % 5]};` +
+                    'white-space:normal;word-break:break-word;' +
+                    'transition:transform 0.05s ease, opacity 0.15s ease;';
+            // 5th option spans both columns of its (third) row so the grid still
+            // looks balanced instead of leaving an orphan slot.
+            if (n === 5 && idx === 4)
+                tile.style.gridColumn = '1 / -1';
+            tile.textContent = opt.label || `Option ${idx + 1}`;
+            wireClick(tile, async () => {
+                if (submitted)
+                    return;
+                submitted = true;
+                lockGrid();
+                // Visual feedback on the picked tile while we round-trip.
+                tile.style.outline = '3px solid rgba(255,255,255,0.6)';
+                tile.style.outlineOffset = '-3px';
+                if (!ctx.sovads)
+                    return;
+                setStatus('Submitting\u2026');
+                const result = await ctx.sovads.submitTaskCompletion({
+                    taskId: task.id,
+                    proof: { optionId: opt.id },
+                });
+                // Notify host listeners regardless of outcome \u2014 mirrors the other
+                // task kinds so analytics get a consistent event stream.
+                try {
+                    ctx.onComplete?.({
+                        taskId: task.id,
+                        campaignId: task.campaignId,
+                        kind: task.kind,
+                        ok: result.ok,
+                        status: result.status,
+                        awarded: result.awarded,
+                        error: result.error,
+                    });
+                }
+                catch {
+                    /* host handler threw - swallow */
+                }
+                if (result.ok) {
+                    const aw = result.awarded;
+                    const total = aw ? (aw.points || 0) + (aw.gs || 0) : reward;
+                    renderSaved(`Saved \u00b7 +${total}`, 'ok');
+                    return;
+                }
+                // Already-answered (server returns 409). Treat as a soft \u201csaved\u201d
+                // since from the viewer\u2019s POV the choice is final.
+                if (result.status === 409) {
+                    renderSaved('Already answered', 'ok');
+                    return;
+                }
+                // QUIZ wrong-answer surfaces through the verifier error string.
+                // Server today returns a verify failure with a message containing
+                // "wrong answer" \u2014 match defensively so we don\u2019t break on minor
+                // copy changes.
+                const isWrong = /wrong\s+answer/i.test(result.error || '');
+                if (task.kind === 'QUIZ' && isWrong) {
+                    renderSaved('Wrong answer', 'err');
+                    return;
+                }
+                // Any other failure: re-open the grid so the viewer can try again.
+                submitted = false;
                 for (const child of Array.from(optionsWrap.children)) {
                     ;
-                    child.disabled = true;
-                    child.style.opacity = '0.6';
-                    child.style.cursor = 'default';
+                    child.disabled = false;
+                    child.style.cursor = 'pointer';
                 }
-                // Phase 5: themable selected-option swatch.
-                optBtn.style.background = 'var(--sovads-accent, #2D2D2D)';
-                optBtn.style.color = 'var(--sovads-on-accent, #F5F3F0)';
-                optBtn.style.opacity = '1';
-                await submit({ answer: opt.id });
+                tile.style.outline = '';
+                setStatus(result.error || `Submit failed (${result.status})`, 'err');
             });
-            applyDoneStyling(optBtn);
-            optionsWrap.appendChild(optBtn);
+            applyDoneStyling(tile);
+            optionsWrap.appendChild(tile);
         });
         row.appendChild(optionsWrap);
     }
@@ -2373,17 +2532,38 @@ export class Banner {
             if (this.slotConfig.attached !== false &&
                 Array.isArray(this.currentAd.attachedTasks) &&
                 this.currentAd.attachedTasks.length > 0) {
+                // POLL / QUIZ kinds render as a Kahoot-style tile grid that overlays
+                // the banner image so the banner click-through stays available on
+                // the uncovered area. We auto-pick overlay mode when every attached
+                // task is one of those kinds; mixed panels (e.g. POLL + VISIT_URL)
+                // fall back to stacked-below so the VISIT_URL button isn\u2019t
+                // half-hidden under the gradient.
+                const attached = this.currentAd.attachedTasks;
+                const allChoice = attached.every((t) => t.kind === 'POLL' || t.kind === 'QUIZ');
+                // Overlay needs a position:relative anchor that wraps the banner.
+                // `adElement` already lives inside `container`; we attach the panel
+                // straight onto `adElement` so its `position:absolute` is sized to
+                // the banner box, not the (potentially full-width) container.
+                const overlayHost = allChoice ? adElement : container;
+                if (allChoice) {
+                    // Don\u2019t clobber an explicit publisher style \u2014 only set when unset.
+                    const pos = adElement.style.position;
+                    if (!pos || pos === 'static')
+                        adElement.style.position = 'relative';
+                }
                 try {
                     renderAttachedCtas({
-                        container,
+                        container: overlayHost,
                         sovads: this.sovads,
-                        tasks: this.currentAd.attachedTasks,
+                        tasks: attached,
                         campaignId: this.currentAd.campaignId,
                         bannerClickActive: this.currentAd.bannerClickActive !== false,
                         onComplete: this.slotConfig.onCtaComplete,
                         // 2 tasks → horizontal row (saves the second line under a thin
-                        // banner); 1 or 3+ tasks → stack as before.
+                        // banner); 1 or 3+ tasks → stack as before. Ignored when
+                        // `overlay: true` is set.
                         layout: 'auto',
+                        overlay: allChoice,
                     });
                 }
                 catch (e) {
