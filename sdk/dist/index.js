@@ -3,7 +3,7 @@
 /** Runtime SDK version. Kept in sync with `sdk/package.json#version`.
  *  Sent as `X-SovAds-SDK-Version` on signed tracking requests and exported
  *  so host pages can log / gate on it. */
-export const SDK_VERSION = '1.3.0';
+export const SDK_VERSION = '1.3.1';
 export class SovAds {
     constructor(config = {}) {
         this.components = new Map();

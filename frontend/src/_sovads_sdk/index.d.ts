@@ -1,7 +1,7 @@
 /** Runtime SDK version. Kept in sync with `sdk/package.json#version`.
  *  Sent as `X-SovAds-SDK-Version` on signed tracking requests and exported
  *  so host pages can log / gate on it. */
-export declare const SDK_VERSION = "1.3.0";
+export declare const SDK_VERSION = "1.3.1";
 export interface SovAdsConfig {
     siteId?: string;
     apiUrl?: string;
